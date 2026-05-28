@@ -33,10 +33,11 @@ class AppController extends ChangeNotifier {
 
   // ── Projects ──────────────────────────────────────────────────
 
-  Future<void> addProject(String name, Priority priority) async {
+  Future<void> addProject(String name, Priority priority, String description) async {
     final p = Project(
       id: const Uuid().v4(),
       name: name,
+      description: description,
       priority: priority,
       createdAt: DateTime.now(),
     );

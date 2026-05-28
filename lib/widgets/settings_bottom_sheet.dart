@@ -226,6 +226,7 @@ class _Section extends StatelessWidget {
   }
 }
 
+// ── Reusable row widget ─────────────────────────────────────────
 class _Row extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -250,6 +251,8 @@ class _Row extends StatelessWidget {
   }
 }
 
+
+// Selectable row for reminder interval options
 class _SelectRow extends StatelessWidget {
   final String label;
   final bool selected;
@@ -283,6 +286,8 @@ class _SelectRow extends StatelessWidget {
   }
 }
 
+
+// Time picker row for quiet hours
 class _TimePickerRow extends StatelessWidget {
   final IconData icon;
   final String label;

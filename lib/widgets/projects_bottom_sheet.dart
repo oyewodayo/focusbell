@@ -282,6 +282,7 @@ class _AddButton extends StatelessWidget {
 
   void _showAddDialog(BuildContext context) {
     final nameCtrl = TextEditingController();
+    final descriptionCtrl = TextEditingController();
     Priority selectedPriority = Priority.medium;
 
     showDialog(
@@ -306,6 +307,24 @@ class _AddButton extends StatelessWidget {
                 style: const TextStyle(color: Colors.white),
                 decoration: InputDecoration(
                   hintText: 'Project name…',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF252525),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: descriptionCtrl,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Project description (optional)…',
                   hintStyle: const TextStyle(color: Colors.white38),
                   filled: true,
                   fillColor: const Color(0xFF252525),
@@ -383,7 +402,7 @@ class _AddButton extends StatelessWidget {
                 final name = nameCtrl.text.trim();
                 if (name.isEmpty) return;
                 final priority = selectedPriority;
-                await AppController.instance.addProject(name, priority);
+                await AppController.instance.addProject(name, priority,descriptionCtrl.text.trim());
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
                 onAdded();
