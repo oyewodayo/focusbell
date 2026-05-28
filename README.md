@@ -1,4 +1,4 @@
-# Reminder 🔔
+# FocusBell 🔔
 
 A minimal mobile app that keeps your priority project front of mind.  
 Sends **toast alerts** and **push notifications** — even when the screen is off.
