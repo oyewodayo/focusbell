@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../models/project.dart';
 import '../models/settings.dart';
-import '../services/notification_service.dart';
-import '../services/storage_service.dart';
+import 'foreground_service.dart';
+import 'notification_service.dart';
+import 'storage_service.dart';
 
 class AppController extends ChangeNotifier {
   AppController._();
@@ -29,11 +30,18 @@ class AppController extends ChangeNotifier {
     _settings = _storage.loadSettings();
     _loading = false;
     notifyListeners();
+
+    ForegroundServiceManager.instance.configure(_settings);
+    await rescheduleIfNeeded();
   }
 
   // ── Projects ──────────────────────────────────────────────────
 
-  Future<void> addProject(String name, Priority priority, String description) async {
+  Future<void> addProject(
+    String name,
+    Priority priority,
+    String description,
+  ) async {
     final p = Project(
       id: const Uuid().v4(),
       name: name,
@@ -46,18 +54,25 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> setActive(String id) async {
-    _projects = _projects.map((p) => p.copyWith(isActive: p.id == id)).toList();
+    _projects =
+        _projects.map((p) => p.copyWith(isActive: p.id == id)).toList();
     await _persist();
+
     final active = activeProject;
     if (active != null && _settings.notificationsEnabled) {
-      await NotificationService.instance.showInstant(active);
-      await NotificationService.instance.scheduleReminders(active, _settings);
+      await NotificationService.instance.showInstant(
+        active,
+        soundMode: _settings.soundMode,
+      );
+      await ForegroundServiceManager.instance.startOrUpdate(active, _settings);
     }
   }
 
   Future<void> removeProject(String id) async {
-    final wasActive = _projects.firstWhere((p) => p.id == id).isActive;
+    final wasActive =
+        _projects.firstWhere((p) => p.id == id).isActive;
     _projects = _projects.where((p) => p.id != id).toList();
+
     if (wasActive && _projects.isNotEmpty) {
       _projects = [
         _projects.first.copyWith(isActive: true),
@@ -65,7 +80,24 @@ class AppController extends ChangeNotifier {
       ];
     }
     await _persist();
-    if (wasActive) await _rescheduleIfNeeded();
+    await rescheduleIfNeeded();
+  }
+
+  Future<void> updateProject(
+    String id, {
+    required String name,
+    required String description,
+    required Priority priority,
+  }) async {
+    _projects = _projects.map((p) {
+      if (p.id != id) return p;
+      return p.copyWith(name: name, description: description, priority: priority);
+    }).toList();
+    await _persist();
+    if (activeProject?.id == id) {
+      await ForegroundServiceManager.instance
+          .updateData(activeProject!, _settings);
+    }
   }
 
   Future<void> updateProjectPriority(String id, Priority priority) async {
@@ -73,7 +105,7 @@ class AppController extends ChangeNotifier {
         .map((p) => p.id == id ? p.copyWith(priority: priority) : p)
         .toList();
     await _persist();
-    if (activeProject?.id == id) await _rescheduleIfNeeded();
+    if (activeProject?.id == id) await rescheduleIfNeeded();
   }
 
   // ── Settings ──────────────────────────────────────────────────
@@ -82,7 +114,18 @@ class AppController extends ChangeNotifier {
     _settings = s;
     await _storage.saveSettings(s);
     notifyListeners();
-    await _rescheduleIfNeeded();
+    await rescheduleIfNeeded();
+  }
+
+  // ── Reschedule ────────────────────────────────────────────────
+
+  Future<void> rescheduleIfNeeded() async {
+    final active = activeProject;
+    if (active == null || !_settings.notificationsEnabled) {
+      await ForegroundServiceManager.instance.stop();
+    } else {
+      await ForegroundServiceManager.instance.startOrUpdate(active, _settings);
+    }
   }
 
   // ── Internal ──────────────────────────────────────────────────
@@ -90,14 +133,5 @@ class AppController extends ChangeNotifier {
   Future<void> _persist() async {
     await _storage.saveProjects(_projects);
     notifyListeners();
-  }
-
-  Future<void> _rescheduleIfNeeded() async {
-    final active = activeProject;
-    if (active == null || !_settings.notificationsEnabled) {
-      await NotificationService.instance.cancelAll();
-    } else {
-      await NotificationService.instance.scheduleReminders(active, _settings);
-    }
   }
 }

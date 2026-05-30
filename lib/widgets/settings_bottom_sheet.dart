@@ -43,9 +43,14 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
+      // ── Fix: constrain height and make content scrollable ──────
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.88,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // ── Non-scrollable header ───────────────────────────────
           const SizedBox(height: 12),
           Container(
             width: 40,
@@ -56,7 +61,6 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
             ),
           ),
           const SizedBox(height: 20),
-
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
@@ -75,98 +79,132 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                   onTap: _save,
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 7),
+                      horizontal: 16,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1A2E1A),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                          color: const Color(0xFF4CAF50).withValues(alpha: 0.4)),
+                        color: const Color(0xFF4CAF50).withValues(alpha: 0.4),
+                      ),
                     ),
                     child: const Text(
                       'Save',
                       style: TextStyle(
-                          color: Color(0xFF4CAF50),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600),
+                        color: Color(0xFF4CAF50),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // Notifications toggle
-          _Section(
-            children: [
-              _Row(
-                icon: Icons.notifications_outlined,
-                label: 'Reminders',
-                trailing: CupertinoSwitch(
-                  value: _draft.notificationsEnabled,
-                  activeTrackColor: const Color(0xFF4CAF50),
-                  onChanged: (v) async {
-                    if (v) {
-                      final granted = await NotificationService.instance
-                          .requestPermissions();
-                      if (!mounted) return;
-                      if (!granted) {
-                        AppToast.show(
-                          context,
-                          msg: 'Notification permission denied.',
-                          backgroundColor: const Color(0xFF2E0A0A),
-                          textColor: const Color(0xFFFF3B30),
-                        );
-                        return;
-                      }
-                    }
-                    setState(() {
-                      _draft = _draft.copyWith(notificationsEnabled: v);
-                    });
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          // ── Scrollable body ─────────────────────────────────────
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Notifications toggle
+                  _Section(
+                    children: [
+                      _Row(
+                        icon: Icons.notifications_outlined,
+                        label: 'Reminders',
+                        trailing: CupertinoSwitch(
+                          value: _draft.notificationsEnabled,
+                          activeTrackColor: const Color(0xFF4CAF50),
+                          onChanged: (v) async {
+                            if (v) {
+                              final granted = await NotificationService.instance
+                                  .requestPermissions();
+                              if (!mounted) return;
+                              if (!granted) {
+                                AppToast.show(
+                                  context,
+                                  msg: 'Notification permission denied.',
+                                  backgroundColor: const Color(0xFF2E0A0A),
+                                  textColor: const Color(0xFFFF3B30),
+                                );
+                                return;
+                              }
+                            }
+                            setState(() {
+                              _draft = _draft.copyWith(notificationsEnabled: v);
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
 
-          // Interval
-          _Section(
-            header: 'Remind me',
-            children: ReminderInterval.values.map((interval) {
-              final selected = _draft.interval == interval;
-              return _SelectRow(
-                label: interval.label,
-                selected: selected,
-                onTap: () => setState(
-                    () => _draft = _draft.copyWith(interval: interval)),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 12),
+                  // Alert style
+                  _Section(
+                    header: 'Alert style',
+                    children: SoundMode.values.map((mode) {
+                      final selected = _draft.soundMode == mode;
+                      return _SelectRow(
+                        label: '${mode.emoji}  ${mode.label}',
+                        selected: selected,
+                        onTap: () => setState(
+                          () => _draft = _draft.copyWith(soundMode: mode),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
 
-          // Quiet hours
-          _Section(
-            header: 'Quiet hours (no notifications)',
-            children: [
-              _TimePickerRow(
-                icon: Icons.bedtime_outlined,
-                label: 'From',
-                hour: _draft.quietStartHour,
-                onChanged: (h) => setState(
-                    () => _draft = _draft.copyWith(quietStartHour: h)),
+                  // Interval
+                  _Section(
+                    header: 'Remind me',
+                    children: ReminderInterval.values.map((interval) {
+                      final selected = _draft.interval == interval;
+                      return _SelectRow(
+                        label: interval.label,
+                        selected: selected,
+                        onTap: () => setState(
+                          () => _draft = _draft.copyWith(interval: interval),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Quiet hours
+                  _Section(
+                    header: 'Quiet hours (no notifications)',
+                    children: [
+                      _TimePickerRow(
+                        icon: Icons.bedtime_outlined,
+                        label: 'From',
+                        hour: _draft.quietStartHour,
+                        onChanged: (h) => setState(
+                          () => _draft = _draft.copyWith(quietStartHour: h),
+                        ),
+                      ),
+                      const Divider(color: Colors.white10, height: 1),
+                      _TimePickerRow(
+                        icon: Icons.wb_sunny_outlined,
+                        label: 'Until',
+                        hour: _draft.quietEndHour,
+                        onChanged: (h) => setState(
+                          () => _draft = _draft.copyWith(quietEndHour: h),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
-              const Divider(color: Colors.white10, height: 1),
-              _TimePickerRow(
-                icon: Icons.wb_sunny_outlined,
-                label: 'Until',
-                hour: _draft.quietEndHour,
-                onChanged: (h) =>
-                    setState(() => _draft = _draft.copyWith(quietEndHour: h)),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 8),
         ],
       ),
     );
@@ -190,12 +228,15 @@ class _Section extends StatelessWidget {
           if (header != null) ...[
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 6),
-              child: Text(header!,
-                  style: const TextStyle(
-                      color: Colors.white38,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.5)),
+              child: Text(
+                header!,
+                style: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.5,
+                ),
+              ),
             ),
           ],
           Container(
@@ -206,18 +247,13 @@ class _Section extends StatelessWidget {
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
-              children: children
-                  .asMap()
-                  .entries
-                  .expand((entry) {
-                    final isLast = entry.key == children.length - 1;
-                    return [
-                      entry.value,
-                      if (!isLast)
-                        const Divider(height: 1, color: Colors.white10),
-                    ];
-                  })
-                  .toList(),
+              children: children.asMap().entries.expand((entry) {
+                final isLast = entry.key == children.length - 1;
+                return [
+                  entry.value,
+                  if (!isLast) const Divider(height: 1, color: Colors.white10),
+                ];
+              }).toList(),
             ),
           ),
         ],
@@ -242,8 +278,11 @@ class _Row extends StatelessWidget {
           Icon(icon, color: Colors.white38, size: 18),
           const SizedBox(width: 12),
           Expanded(
-              child: Text(label,
-                  style: const TextStyle(color: Colors.white, fontSize: 15))),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+            ),
+          ),
           trailing,
         ],
       ),
@@ -251,14 +290,16 @@ class _Row extends StatelessWidget {
   }
 }
 
-
 // Selectable row for reminder interval options
 class _SelectRow extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _SelectRow(
-      {required this.label, required this.selected, required this.onTap});
+  const _SelectRow({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -269,16 +310,21 @@ class _SelectRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Text(label,
-                  style: TextStyle(
-                      color: selected ? Colors.white : Colors.white60,
-                      fontSize: 15,
-                      fontWeight:
-                          selected ? FontWeight.w500 : FontWeight.normal)),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : Colors.white60,
+                  fontSize: 15,
+                  fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+                ),
+              ),
             ),
             if (selected)
-              const Icon(Icons.check_rounded,
-                  color: Color(0xFF4CAF50), size: 18),
+              const Icon(
+                Icons.check_rounded,
+                color: Color(0xFF4CAF50),
+                size: 18,
+              ),
           ],
         ),
       ),
@@ -286,18 +332,18 @@ class _SelectRow extends StatelessWidget {
   }
 }
 
-
 // Time picker row for quiet hours
 class _TimePickerRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final int hour;
   final ValueChanged<int> onChanged;
-  const _TimePickerRow(
-      {required this.icon,
-      required this.label,
-      required this.hour,
-      required this.onChanged});
+  const _TimePickerRow({
+    required this.icon,
+    required this.label,
+    required this.hour,
+    required this.onChanged,
+  });
 
   String _fmt(int h) {
     final suffix = h < 12 ? 'AM' : 'PM';
@@ -332,12 +378,15 @@ class _TimePickerRow extends StatelessWidget {
             Icon(icon, color: Colors.white38, size: 18),
             const SizedBox(width: 12),
             Expanded(
-                child: Text(label,
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 15))),
-            Text(_fmt(hour),
-                style: const TextStyle(
-                    color: Color(0xFF4CAF50), fontSize: 14)),
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+              ),
+            ),
+            Text(
+              _fmt(hour),
+              style: const TextStyle(color: Color(0xFF4CAF50), fontSize: 14),
+            ),
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right, color: Colors.white24, size: 16),
           ],

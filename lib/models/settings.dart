@@ -29,17 +29,37 @@ enum ReminderInterval {
   }
 }
 
+enum SoundMode { silent, vibrate, ring, both }
+
+extension SoundModeX on SoundMode {
+  String get label => switch (this) {
+    SoundMode.silent  => 'Silent',
+    SoundMode.vibrate => 'Vibrate',
+    SoundMode.ring    => 'Ring',
+    SoundMode.both    => 'Vibrate & Ring',
+  };
+  String get emoji => switch (this) {
+    SoundMode.silent  => '🔇',
+    SoundMode.vibrate => '📳',
+    SoundMode.ring    => '🔔',
+    SoundMode.both    => '🔔',
+  };
+}
+
+
 class AppSettings {
+  final SoundMode soundMode;
   final bool notificationsEnabled;
   final ReminderInterval interval;
-  final int quietStartHour; // 0–23
-  final int quietEndHour;   // 0–23
+  final int quietStartHour;
+  final int quietEndHour;
 
   const AppSettings({
     this.notificationsEnabled = true,
     this.interval = ReminderInterval.oneHour,
     this.quietStartHour = 22,
     this.quietEndHour = 7,
+    this.soundMode = SoundMode.both,
   });
 
   AppSettings copyWith({
@@ -47,26 +67,31 @@ class AppSettings {
     ReminderInterval? interval,
     int? quietStartHour,
     int? quietEndHour,
+    SoundMode? soundMode,          // ← optional, not required
   }) =>
       AppSettings(
         notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
-        interval: interval ?? this.interval,
-        quietStartHour: quietStartHour ?? this.quietStartHour,
-        quietEndHour: quietEndHour ?? this.quietEndHour,
+        interval:             interval             ?? this.interval,
+        quietStartHour:       quietStartHour       ?? this.quietStartHour,
+        quietEndHour:         quietEndHour         ?? this.quietEndHour,
+        soundMode:            soundMode            ?? this.soundMode, // ← actually applied
       );
 
   Map<String, dynamic> toJson() => {
         'notificationsEnabled': notificationsEnabled,
-        'interval': interval.index,
-        'quietStartHour': quietStartHour,
-        'quietEndHour': quietEndHour,
+        'interval':             interval.index,
+        'quietStartHour':       quietStartHour,
+        'quietEndHour':         quietEndHour,
+        'soundMode':            soundMode.index,   // ← persisted
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
         notificationsEnabled: json['notificationsEnabled'] as bool? ?? true,
-        interval: ReminderInterval
-            .values[(json['interval'] as int?) ?? ReminderInterval.oneHour.index],
+        interval: ReminderInterval.values[
+            (json['interval'] as int?) ?? ReminderInterval.oneHour.index],
         quietStartHour: json['quietStartHour'] as int? ?? 22,
-        quietEndHour: json['quietEndHour'] as int? ?? 7,
+        quietEndHour:   json['quietEndHour']   as int? ?? 7,
+        soundMode: SoundMode.values[            // ← restored
+            (json['soundMode'] as int?) ?? SoundMode.both.index],
       );
 }

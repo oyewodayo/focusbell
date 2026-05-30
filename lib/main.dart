@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'services/app_controller.dart';
 import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
@@ -7,13 +8,11 @@ import 'screens/home_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock to portrait
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Boot services
   await NotificationService.instance.initialize();
   await AppController.instance.boot();
 
@@ -39,13 +38,28 @@ class FocusBellApp extends StatelessWidget {
         ),
         fontFamily: 'System',
       ),
-      home: const _Loader(),
+      home: WithForegroundTask(child: const _Loader()),
     );
   }
 }
 
-class _Loader extends StatelessWidget {
+class _Loader extends StatefulWidget {
   const _Loader();
+
+  @override
+  State<_Loader> createState() => _LoaderState();
+}
+
+class _LoaderState extends State<_Loader> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
