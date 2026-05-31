@@ -1,6 +1,4 @@
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'
-    as fln;
 
 import '../models/project.dart';
 import '../models/settings.dart';

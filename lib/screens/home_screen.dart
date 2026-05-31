@@ -3,6 +3,7 @@ import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../services/notification_service.dart';
 import '../utils/app_toast.dart';
+import '../widgets/project_view_sheet.dart';
 import '../widgets/projects_bottom_sheet.dart';
 import '../widgets/settings_bottom_sheet.dart';
 
@@ -26,9 +27,10 @@ class _HomeScreenState extends State<HomeScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
-    _pulse = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+    _pulse = Tween<double>(
+      begin: 0.95,
+      end: 1.05,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
     _requestPerms();
   }
 
@@ -78,7 +80,7 @@ class _HomeScreenState extends State<HomeScreen>
                   padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
                   child: Row(
                     children: [
-                        Text(
+                      const Text(
                         'FocusBell',
                         style: TextStyle(
                           color: Colors.white38,
@@ -100,10 +102,7 @@ class _HomeScreenState extends State<HomeScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: active == null
                           ? _EmptyState(onAdd: _openProjects)
-                          : _ActiveCard(
-                              project: active,
-                              pulseAnim: _pulse,
-                            ),
+                          : _ActiveCard(project: active, pulseAnim: _pulse),
                     ),
                   ),
                 ),
@@ -149,9 +148,22 @@ class _ActiveCard extends StatelessWidget {
 
   const _ActiveCard({required this.project, required this.pulseAnim});
 
+  void _openViewSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => ProjectViewSheet(project: project),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = project.priority;
+    final incompleteTasks = project.tasks
+        .where((t) => t.status != TaskStatus.completed)
+        .length;
+    final hasTasks = project.tasks.isNotEmpty;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -165,7 +177,9 @@ class _ActiveCard extends StatelessWidget {
               shape: BoxShape.circle,
               color: p.bgColor,
               border: Border.all(
-                  color: p.color.withValues(alpha: 0.5), width: 2),
+                color: p.color.withValues(alpha: 0.5),
+                width: 2,
+              ),
               boxShadow: [
                 BoxShadow(
                   color: p.color.withValues(alpha: 0.3),
@@ -220,10 +234,86 @@ class _ActiveCard extends StatelessWidget {
             fontSize: 14,
           ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 16),
 
+        // ── View + Task count row ─────────────────────────────
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // View button
+            _CardIconButton(
+              onTap: () => _openViewSheet(context),
+              icon: Icons.open_in_new_rounded,
+              label: 'View',
+              color: const Color(0xFF64D2FF),
+            ),
+
+            // Task count pill — only shown when there are tasks
+            if (hasTasks) ...[
+              const SizedBox(width: 10),
+              _CardIconButton(
+                onTap: () => _openViewSheet(context),
+                icon: Icons.checklist_rounded,
+                label: incompleteTasks == 0
+                    ? 'All done'
+                    : '$incompleteTasks left',
+                color: incompleteTasks == 0
+                    ? const Color(0xFF34C759)
+                    : const Color(0xFFFFD60A),
+              ),
+            ],
+          ],
+        ),
+
+        const SizedBox(height: 32),
         _PrioritySwitcher(project: project),
       ],
+    );
+  }
+}
+
+// ── Small icon+label pill used on the active card ─────────────────
+
+class _CardIconButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _CardIconButton({
+    required this.onTap,
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.28)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 13),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -254,8 +344,10 @@ class _PrioritySwitcher extends StatelessWidget {
             return GestureDetector(
               onTap: () async {
                 if (selected) return;
-                await AppController.instance
-                    .updateProjectPriority(project.id, p);
+                await AppController.instance.updateProjectPriority(
+                  project.id,
+                  p,
+                );
                 if (!context.mounted) return;
                 AppToast.show(
                   context,
@@ -280,8 +372,10 @@ class _PrioritySwitcher extends StatelessWidget {
                   ),
                 ),
                 child: Center(
-                  child: Text(p.emoji,
-                      style: TextStyle(fontSize: selected ? 18 : 14)),
+                  child: Text(
+                    p.emoji,
+                    style: TextStyle(fontSize: selected ? 18 : 14),
+                  ),
                 ),
               ),
             );
@@ -318,11 +412,7 @@ class _EmptyState extends StatelessWidget {
         const Text(
           'Add a project and set it active\nto start your focus reminders.',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white38,
-            fontSize: 14,
-            height: 1.6,
-          ),
+          style: TextStyle(color: Colors.white38, fontSize: 14, height: 1.6),
         ),
         const SizedBox(height: 28),
         GestureDetector(
@@ -380,27 +470,30 @@ class _ActionButton extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white54, size: 18),
             const SizedBox(width: 8),
-            Text(label,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                )),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             if (count != null && count! > 0) ...[
               const SizedBox(width: 6),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
                   color: Colors.white12,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text('$count',
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    )),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ],

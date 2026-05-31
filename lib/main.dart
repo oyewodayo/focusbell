@@ -66,7 +66,10 @@ class _LoaderState extends State<_Loader> {
     return ListenableBuilder(
       listenable: AppController.instance,
       builder: (context, _) {
-        if (AppController.instance.loading) {
+        final ctrl = AppController.instance;
+
+        // ── Still loading ────────────────────────────────────
+        if (ctrl.loading) {
           return const Scaffold(
             backgroundColor: Color(0xFF0A0A0A),
             body: Center(
@@ -77,6 +80,58 @@ class _LoaderState extends State<_Loader> {
             ),
           );
         }
+
+        // ── Boot failed — show error so we can diagnose ──────
+        if (ctrl.bootError != null) {
+          return Scaffold(
+            backgroundColor: const Color(0xFF0A0A0A),
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '⚠️ Startup failed',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A1A1A),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        ctrl.bootError.toString(),
+                        style: const TextStyle(
+                          color: Color(0xFFFF6B6B),
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Copy the error above and share it for debugging.',
+                      style: TextStyle(color: Colors.white38, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        // ── Ready ────────────────────────────────────────────
         return const HomeScreen();
       },
     );
