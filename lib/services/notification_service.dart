@@ -15,7 +15,6 @@ class NotificationService {
   final _plugin = fln.FlutterLocalNotificationsPlugin();
   bool _initialized = false;
 
-  // Exposed so the background task isolate can call show() directly.
   fln.FlutterLocalNotificationsPlugin get plugin => _plugin;
 
   static const _channelBoth    = 'focusbell_both';
@@ -23,7 +22,7 @@ class NotificationService {
   static const _channelVibrate = 'focusbell_vibrate';
   static const _channelSilent  = 'focusbell_silent';
 
-  // ── Init ─────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -42,7 +41,7 @@ class NotificationService {
     await _plugin.initialize(
       const fln.InitializationSettings(android: android, iOS: ios),
       onDidReceiveNotificationResponse: (details) {
-        debugPrint('Notification tapped: ${details.payload}');
+        debugPrint('[Notifications] Tapped: ${details.payload}');
       },
     );
 
@@ -50,49 +49,83 @@ class NotificationService {
         fln.AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin != null) {
-      final vibPattern = Int64List.fromList([0, 400, 200, 400]);
-
-      await androidPlugin.createNotificationChannel(
-        fln.AndroidNotificationChannel(
-          _channelBoth, 'Focus Reminders (Sound + Vibration)',
-          description: 'Reminders with sound and vibration.',
-          importance: fln.Importance.max,
-          playSound: true,
-          enableVibration: true,
-          vibrationPattern: vibPattern,
-        ),
-      );
-      await androidPlugin.createNotificationChannel(
-        fln.AndroidNotificationChannel(
-          _channelRing, 'Focus Reminders (Sound)',
-          description: 'Reminders with sound only.',
-          importance: fln.Importance.max,
-          playSound: true,
-          enableVibration: false,
-        ),
-      );
-      await androidPlugin.createNotificationChannel(
-        fln.AndroidNotificationChannel(
-          _channelVibrate, 'Focus Reminders (Vibration)',
-          description: 'Reminders with vibration only.',
-          importance: fln.Importance.max,
-          playSound: false,
-          enableVibration: true,
-          vibrationPattern: vibPattern,
-        ),
-      );
-      await androidPlugin.createNotificationChannel(
-        fln.AndroidNotificationChannel(
-          _channelSilent, 'Focus Reminders (Silent)',
-          description: 'Silent focus reminders.',
-          importance: fln.Importance.low,
-          playSound: false,
-          enableVibration: false,
-        ),
-      );
+      await _recreateChannels(androidPlugin);
     }
 
     _initialized = true;
+    debugPrint('[Notifications] Initialized.');
+  }
+
+  /// Deletes then recreates every channel so Android always picks up the
+  /// correct sound/vibration settings, even if the channel was previously
+  /// registered silently from an earlier build.
+  Future<void> _recreateChannels(
+    fln.AndroidFlutterLocalNotificationsPlugin androidPlugin,
+  ) async {
+    final vibPattern = Int64List.fromList([0, 400, 200, 400]);
+
+    // Delete stale channels first — no-op if they don't exist yet.
+    for (final id in [
+      _channelBoth,
+      _channelRing,
+      _channelVibrate,
+      _channelSilent,
+    ]) {
+      await androidPlugin.deleteNotificationChannel(id);
+      debugPrint('[Notifications] Deleted channel: $id');
+    }
+
+    // Sound + Vibration
+    await androidPlugin.createNotificationChannel(
+      fln.AndroidNotificationChannel(
+        _channelBoth,
+        'Focus Reminders (Sound + Vibration)',
+        description:      'Reminders with sound and vibration.',
+        importance:       fln.Importance.max,
+        playSound:        true,
+        enableVibration:  true,
+        vibrationPattern: vibPattern,
+      ),
+    );
+
+    // Sound only
+    await androidPlugin.createNotificationChannel(
+      fln.AndroidNotificationChannel(
+        _channelRing,
+        'Focus Reminders (Sound)',
+        description:     'Reminders with sound only.',
+        importance:      fln.Importance.max,
+        playSound:       true,
+        enableVibration: false,
+      ),
+    );
+
+    // Vibration only
+    await androidPlugin.createNotificationChannel(
+      fln.AndroidNotificationChannel(
+        _channelVibrate,
+        'Focus Reminders (Vibration)',
+        description:      'Reminders with vibration only.',
+        importance:       fln.Importance.max,
+        playSound:        false,
+        enableVibration:  true,
+        vibrationPattern: vibPattern,
+      ),
+    );
+
+    // Silent
+    await androidPlugin.createNotificationChannel(
+      fln.AndroidNotificationChannel(
+        _channelSilent,
+        'Focus Reminders (Silent)',
+        description:     'Silent focus reminders.',
+        importance:      fln.Importance.low,
+        playSound:       false,
+        enableVibration: false,
+      ),
+    );
+
+    debugPrint('[Notifications] All channels recreated.');
   }
 
   // ── Permissions ───────────────────────────────────────────────
@@ -103,6 +136,7 @@ class NotificationService {
     if (android != null) {
       await android.requestExactAlarmsPermission();
       final granted = await android.requestNotificationsPermission();
+      debugPrint('[Notifications] Android permission granted: $granted');
       return granted ?? false;
     }
 
@@ -110,8 +144,11 @@ class NotificationService {
         fln.IOSFlutterLocalNotificationsPlugin>();
     if (ios != null) {
       final granted = await ios.requestPermissions(
-        alert: true, badge: true, sound: true,
+        alert: true,
+        badge: true,
+        sound: true,
       );
+      debugPrint('[Notifications] iOS permission granted: $granted');
       return granted ?? false;
     }
 
@@ -124,6 +161,9 @@ class NotificationService {
     Project project, {
     SoundMode soundMode = SoundMode.both,
   }) async {
+    debugPrint(
+      '[Notifications] showInstant → ${project.name} | mode: $soundMode',
+    );
     await _plugin.show(
       0,
       '${project.priority.emoji} Now focused: ${project.name}',
@@ -133,15 +173,15 @@ class NotificationService {
     );
   }
 
-  // ── Cancel all scheduled (legacy exact alarms) ────────────────
+  // ── Cancel all ────────────────────────────────────────────────
 
   Future<void> cancelAll() => _plugin.cancelAll();
 
-  // ── Public so the background isolate can call it ──────────────
+  // ── Build NotificationDetails ─────────────────────────────────
 
-  fln.NotificationDetails buildDetails(SoundMode mode) {
-    final playSound  = mode == SoundMode.ring    || mode == SoundMode.both;
-    final doVibrate  = mode == SoundMode.vibrate || mode == SoundMode.both;
+  fln.NotificationDetails buildDetails(SoundMode mode, {String? bigBody}) {
+    final playSound = mode == SoundMode.ring  || mode == SoundMode.both;
+    final doVibrate = mode == SoundMode.vibrate || mode == SoundMode.both;
     final vibPattern = doVibrate
         ? Int64List.fromList([0, 400, 200, 400])
         : null;
@@ -159,6 +199,11 @@ class NotificationService {
       SoundMode.silent  => 'Focus Reminders (Silent)',
     };
 
+    debugPrint(
+      '[Notifications] buildDetails → channel: $channelId | '
+      'sound: $playSound | vibrate: $doVibrate',
+    );
+
     return fln.NotificationDetails(
       android: fln.AndroidNotificationDetails(
         channelId,
@@ -169,6 +214,13 @@ class NotificationService {
         vibrationPattern: vibPattern,
         playSound:        playSound,
         fullScreenIntent: false,
+        styleInformation: bigBody != null
+            ? fln.BigTextStyleInformation(
+                bigBody,
+                contentTitle: null,
+                summaryText:  null,
+              )
+            : null,
       ),
       iOS: fln.DarwinNotificationDetails(
         presentAlert: true,

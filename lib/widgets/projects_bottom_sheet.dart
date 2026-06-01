@@ -341,7 +341,7 @@ class _ProjectTileState extends State<_ProjectTile> {
           // ── Tile ───────────────────────────────────────────
           GestureDetector(
             onTap: () {
-              if (_actionTrayOpen) _closeTray();
+              setState(() => _actionTrayOpen = !_actionTrayOpen);
             },
             onDoubleTap: () async {
               if (isActive) return;

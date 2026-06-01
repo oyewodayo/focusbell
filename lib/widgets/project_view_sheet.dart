@@ -528,16 +528,20 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
           const SizedBox(height: 12),
 
           // Description
-         // Description — markdown rendered, links clickable, text selectable
+          // Description — markdown rendered, links clickable, text selectable
           if (liveProject.description.isEmpty)
             const Text(
               'No description provided.',
-              style: TextStyle(color: Colors.white30, fontSize: 14, height: 1.6),
+              style: TextStyle(
+                color: Colors.white30,
+                fontSize: 14,
+                height: 1.6,
+              ),
             )
           else
             MarkdownBody(
               data: liveProject.description,
-              selectable: true,           // ← enables text selection + copy
+              selectable: true, // ← enables text selection + copy
               extensionSet: md.ExtensionSet(
                 md.ExtensionSet.gitHubFlavored.blockSyntaxes,
                 <md.InlineSyntax>[
@@ -554,22 +558,39 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                 }
               },
               styleSheet: MarkdownStyleSheet(
-                p: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.6),
+                p: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                  height: 1.6,
+                ),
                 a: const TextStyle(
                   color: Color.fromARGB(255, 212, 219, 222),
                   fontSize: 14,
                   decoration: TextDecoration.none,
                 ),
                 h1: const TextStyle(
-                    color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
                 h2: const TextStyle(
-                    color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
                 h3: const TextStyle(
-                    color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w600),
+                  color: Colors.white70,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
                 strong: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700),
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
                 em: const TextStyle(
-                    color: Colors.white60, fontStyle: FontStyle.italic),
+                  color: Colors.white60,
+                  fontStyle: FontStyle.italic,
+                ),
                 code: const TextStyle(
                   color: Color(0xFF64D2FF),
                   backgroundColor: Color(0xFF252525),
@@ -588,7 +609,10 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                     left: BorderSide(color: Color(0xFF0A84FF), width: 3),
                   ),
                 ),
-                blockquote: const TextStyle(color: Colors.white54, fontSize: 14),
+                blockquote: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 14,
+                ),
                 listBullet: const TextStyle(color: Colors.white38),
               ),
             ),
@@ -671,7 +695,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
 
 // ── Single task row ───────────────────────────────────────────────
 
-class _TaskRow extends StatelessWidget {
+class _TaskRow extends StatefulWidget {
   final Task task;
   final VoidCallback onStatusTap;
   final VoidCallback onRename;
@@ -686,114 +710,170 @@ class _TaskRow extends StatelessWidget {
   });
 
   @override
+  State<_TaskRow> createState() => _TaskRowState();
+}
+
+class _TaskRowState extends State<_TaskRow> {
+  bool _expanded = false;
+
+  @override
   Widget build(BuildContext context) {
-    final s = task.status;
+    final s = widget.task.status;
     final done = s == TaskStatus.completed;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: onStatusTap,
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              child: Text(s.emoji, style: const TextStyle(fontSize: 16)),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              task.title,
-              style: TextStyle(
-                color: done ? Colors.white38 : Colors.white70,
-                fontSize: 14,
-                decoration: done
-                    ? TextDecoration.lineThrough
-                    : TextDecoration.none,
-                decorationColor: Colors.white38,
-                height: 1.3,
+    return GestureDetector(
+      onTap: () => setState(() => _expanded = !_expanded),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeInOut,
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status emoji tap
+            GestureDetector(
+              onTap: widget.onStatusTap,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                child: Text(s.emoji, style: const TextStyle(fontSize: 16)),
               ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          GestureDetector(
-            onTap: onStatusTap,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: s.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: s.color.withValues(alpha: 0.3)),
-              ),
-              child: Text(
-                s.label,
-                style: TextStyle(
-                  color: s.color,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
+
+            // Title — expands on tap
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 200),
+                  crossFadeState: _expanded
+                      ? CrossFadeState.showSecond
+                      : CrossFadeState.showFirst,
+                  firstChild: Text(
+                    widget.task.title,
+                    style: TextStyle(
+                      color: done ? Colors.white38 : Colors.white70,
+                      fontSize: 14,
+                      decoration: done
+                          ? TextDecoration.lineThrough
+                          : TextDecoration.none,
+                      decorationColor: Colors.white38,
+                      height: 1.3,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  secondChild: Text(
+                    widget.task.title,
+                    style: TextStyle(
+                      color: done ? Colors.white38 : Colors.white70,
+                      fontSize: 14,
+                      decoration: done
+                          ? TextDecoration.lineThrough
+                          : TextDecoration.none,
+                      decorationColor: Colors.white38,
+                      height: 1.3,
+                    ),
+                    // No maxLines — fully expanded
+                  ),
                 ),
               ),
             ),
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(
-              Icons.more_vert_rounded,
-              color: Colors.white30,
-              size: 18,
-            ),
-            color: const Color(0xFF222222),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            onSelected: (value) {
-              if (value == 'rename') onRename();
-              if (value == 'delete') onDelete();
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'rename',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.edit_outlined,
-                      color: Color(0xFFFFD60A),
-                      size: 16,
+
+            // Status chip + overflow menu column
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: widget.onStatusTap,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
                     ),
-                    SizedBox(width: 10),
-                    Text(
-                      'Rename',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    decoration: BoxDecoration(
+                      color: s.color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: s.color.withValues(alpha: 0.3)),
+                    ),
+                    child: Text(
+                      s.label,
+                      style: TextStyle(
+                        color: s.color,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(
+                    Icons.more_horiz_rounded,
+                    color: Colors.white30,
+                    size: 18,
+                  ),
+                  color: const Color(0xFF222222),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  onSelected: (value) {
+                    if (value == 'rename') widget.onRename();
+                    if (value == 'delete') widget.onDelete();
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.edit_outlined,
+                            color: Color(0xFFFFD60A),
+                            size: 16,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Rename',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline,
+                            color: Color(0xFFFF3B30),
+                            size: 16,
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Delete',
+                            style: TextStyle(
+                              color: Color(0xFFFF3B30),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.delete_outline,
-                      color: Color(0xFFFF3B30),
-                      size: 16,
-                    ),
-                    SizedBox(width: 10),
-                    Text(
-                      'Delete',
-                      style: TextStyle(color: Color(0xFFFF3B30), fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

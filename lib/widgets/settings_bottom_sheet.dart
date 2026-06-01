@@ -43,14 +43,13 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
-      // ── Fix: constrain height and make content scrollable ──────
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.88,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Non-scrollable header ───────────────────────────────
+          // ── Header ─────────────────────────────────────────────
           const SizedBox(height: 12),
           Container(
             width: 40,
@@ -161,10 +160,10 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                   ),
                   const SizedBox(height: 12),
 
-                  // Interval
+                  // Interval — uses displayOrder for ascending 5 min → 4 hr
                   _Section(
                     header: 'Remind me',
-                    children: ReminderInterval.values.map((interval) {
+                    children: ReminderInterval.displayOrder.map((interval) {
                       final selected = _draft.interval == interval;
                       return _SelectRow(
                         label: interval.label,
@@ -262,7 +261,8 @@ class _Section extends StatelessWidget {
   }
 }
 
-// ── Reusable row widget ─────────────────────────────────────────
+// ── _Row ──────────────────────────────────────────────────────────
+
 class _Row extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -290,7 +290,8 @@ class _Row extends StatelessWidget {
   }
 }
 
-// Selectable row for reminder interval options
+// ── _SelectRow ────────────────────────────────────────────────────
+
 class _SelectRow extends StatelessWidget {
   final String label;
   final bool selected;
@@ -332,7 +333,8 @@ class _SelectRow extends StatelessWidget {
   }
 }
 
-// Time picker row for quiet hours
+// ── _TimePickerRow ────────────────────────────────────────────────
+
 class _TimePickerRow extends StatelessWidget {
   final IconData icon;
   final String label;
