@@ -21,6 +21,8 @@ dependencies:
   url_launcher: ^6.3.0
   timezone: ^0.9.2
   uuid: ^4.5.3
+  intl: ^0.19.0   
+  audioplayers: ^6.7.0
  
 
 dev_dependencies:
@@ -29,4 +31,8 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  assets:
+    - assets/sounds/tick.mp3
+    - assets/sounds/complete.wav
   uses-material-design: true
+  

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:focusbell/services/focus_timer_service.dart';
 import 'services/app_controller.dart';
 import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
@@ -12,10 +13,10 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-
+  WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.instance.initialize();
   await AppController.instance.boot();
-
+   await FocusTimerService.instance.init(); 
   runApp(const FocusBellApp());
 }
 

@@ -77,9 +77,10 @@ class AppController extends ChangeNotifier {
     await _storage.saveProject(project);
   }
 
- Future<void> setActive(String id) async {
-  // Move newly active project to position 0 in sort_order.
-  final reordered = [
+
+Future<void> setActive(String id) async {
+  // ← explicit type annotation fixes the List<dynamic> inference error
+  final List<Project> reordered = [
     _projects.firstWhere((p) => p.id == id),
     ..._projects.where((p) => p.id != id),
   ];
@@ -91,11 +92,10 @@ class AppController extends ChangeNotifier {
             isActive: e.value.id == id,
             sortOrder: e.key,
           ))
-      .toList();
+      .toList().cast<Project>();
   notifyListeners();
 
   await _storage.setActiveProject(id);
-  // Persist the new order so it survives restarts.
   await _storage.reorderProjects(reordered.map((p) => p.id).toList());
 
   final active = activeProject;
@@ -105,7 +105,6 @@ class AppController extends ChangeNotifier {
     await ForegroundServiceManager.instance.startOrUpdate(active, _settings);
   }
 }
-
   Future<void> removeProject(String id) async {
     final wasActive = _projects.firstWhere((p) => p.id == id).isActive;
     _projects = _projects.where((p) => p.id != id).toList();
@@ -123,31 +122,53 @@ class AppController extends ChangeNotifier {
     await rescheduleIfNeeded();
   }
 
-  Future<void> updateProject(
-    String id, {
-    required String   name,
-    required String   description,
-    required Priority priority,
-  }) async {
-    _projects = _projects.map((p) {
-      if (p.id != id) return p;
-      return p.copyWith(name: name, description: description, priority: priority);
-    }).toList();
-    notifyListeners();
 
-    final updated = _projects.firstWhere((p) => p.id == id);
-    await _storage.updateProject(updated);
+// In app_controller.dart
 
-    if (activeProject?.id == id) {
-      await ForegroundServiceManager.instance
-          .updateData(activeProject!, _settings);
-    }
+Future<void> archiveProject(String id) async {
+  _projects = _projects.map((p) =>
+    p.id == id ? p.copyWith(isArchived: true, isActive: false) : p
+  ).toList().cast<Project>();
+  notifyListeners();
+  final updated = _projects.firstWhere((p) => p.id == id);
+  await _storage.updateProject(updated);
+  await rescheduleIfNeeded();
+}
+
+Future<void> unarchiveProject(String id) async {
+  _projects = _projects.map((p) =>
+    p.id == id ? p.copyWith(isArchived: false) : p
+  ).toList().cast<Project>();
+  notifyListeners();
+  final updated = _projects.firstWhere((p) => p.id == id);
+  await _storage.updateProject(updated);
+}
+
+Future<void> updateProject(
+  String id, {
+  required String   name,
+  required String   description,
+  required Priority priority,
+}) async {
+  _projects = _projects.map((p) {
+    if (p.id != id) return p;
+    return p.copyWith(name: name, description: description, priority: priority);
+  }).toList().cast<Project>();   // ← add .cast<Project>()
+  notifyListeners();
+
+  final updated = _projects.firstWhere((p) => p.id == id);
+  await _storage.updateProject(updated);
+
+  if (activeProject?.id == id) {
+    await ForegroundServiceManager.instance
+        .updateData(activeProject!, _settings);
   }
+}
 
   Future<void> updateProjectPriority(String id, Priority priority) async {
     _projects = _projects
         .map((p) => p.id == id ? p.copyWith(priority: priority) : p)
-        .toList();
+        .toList().cast<Project>();   // ← add .cast<Project>()
     notifyListeners();
 
     final updated = _projects.firstWhere((p) => p.id == id);
@@ -156,16 +177,16 @@ class AppController extends ChangeNotifier {
     if (activeProject?.id == id) await rescheduleIfNeeded();
   }
 
-  Future<void> reorderProjects(List<String> orderedIds) async {
-    // Reorder in-memory list to match.
-    final map = {for (final p in _projects) p.id: p};
-    _projects = orderedIds
-        .where(map.containsKey)
-        .map((id) => map[id]!.copyWith(sortOrder: orderedIds.indexOf(id)))
-        .toList();
-    notifyListeners();
-    await _storage.reorderProjects(orderedIds);
-  }
+Future<void> reorderProjects(List<String> orderedIds) async {
+  final map = {for (final p in _projects) p.id: p};
+  // ← cast the map result explicitly
+  _projects = orderedIds
+      .where(map.containsKey)
+      .map((id) => map[id]!.copyWith(sortOrder: orderedIds.indexOf(id)))
+      .toList().cast<Project>();        // toList() on Iterable<Project> is fine now
+  notifyListeners();
+  await _storage.reorderProjects(orderedIds);
+}
 
   // ── Tasks ─────────────────────────────────────────────────────
 
@@ -173,54 +194,63 @@ class AppController extends ChangeNotifier {
   Project? findProject(String projectId) =>
       _projects.where((p) => p.id == projectId).firstOrNull;
 
-  Future<void> addTask(String projectId, String title) async {
-    final task = Task(
-      id:        const Uuid().v4(),
-      title:     title,
-      status:    TaskStatus.todo,
-      createdAt: DateTime.now(),
+Future<void> addTask(
+  String projectId,
+  String title, {
+  DateTime? dueDate,
+}) async {
+  final task = Task(
+    id:        const Uuid().v4(),
+    title:     title,
+    status:    TaskStatus.todo,
+    createdAt: DateTime.now(),
+    dueDate:   dueDate,             // ← persisted
+  );
+
+  _projects = _projects.map((p) {
+    if (p.id != projectId) return p;
+    return p.copyWith(tasks: [...p.tasks, task]);
+  }).toList().cast<Project>();
+  notifyListeners();
+
+  await _storage.saveTask(task, projectId);
+}
+
+Future<void> updateTask(
+  String projectId,
+  String taskId, {
+  String?     title,
+  TaskStatus? status,
+  DateTime?   dueDate,
+  bool        clearDueDate = false,
+}) async {
+  Task? updated;
+
+  _projects = _projects.map((p) {
+    if (p.id != projectId) return p;
+    return p.copyWith(
+      tasks: p.tasks.map((t) {
+        if (t.id != taskId) return t;
+        updated = t.copyWith(
+          title:        title,
+          status:       status,
+          dueDate:      dueDate,
+          clearDueDate: clearDueDate,
+        );
+        return updated!;
+      }).toList(),
     );
+  }).toList().cast<Project>();
+  notifyListeners();
 
-    _projects = _projects.map((p) {
-      if (p.id != projectId) return p;
-      return p.copyWith(tasks: [...p.tasks, task]);
-    }).toList();
-    notifyListeners();
-
-    await _storage.saveTask(task, projectId);
-  }
-
-  Future<void> updateTask(
-    String projectId,
-    String taskId, {
-    String?     title,
-    TaskStatus? status,
-  }) async {
-    Task? updated;
-
-    _projects = _projects.map((p) {
-      if (p.id != projectId) return p;
-      return p.copyWith(
-        tasks: p.tasks.map((t) {
-          if (t.id != taskId) return t;
-          updated = t.copyWith(title: title, status: status);
-          return updated!;
-        }).toList(),
-      );
-    }).toList();
-    notifyListeners();
-
-    if (updated != null) {
-      await _storage.updateTask(updated!, projectId);
-    }
-  }
-
+  if (updated != null) await _storage.updateTask(updated!, projectId);
+}
   Future<void> removeTask(String projectId, String taskId) async {
     _projects = _projects.map((p) {
       if (p.id != projectId) return p;
       return p.copyWith(
           tasks: p.tasks.where((t) => t.id != taskId).toList());
-    }).toList();
+    }).toList().cast<Project>();
     notifyListeners();
 
     await _storage.deleteTask(taskId);
@@ -236,7 +266,6 @@ class AppController extends ChangeNotifier {
   }
 
   // ── Foreground service ─────────────────────────────────────────
-
   Future<void> rescheduleIfNeeded() async {
     final active = activeProject;
     if (active == null || !_settings.notificationsEnabled) {

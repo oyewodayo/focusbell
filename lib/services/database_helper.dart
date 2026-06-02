@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:focusbell/models/focus_session.dart';
 import 'package:path/path.dart' show join;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
@@ -14,8 +15,8 @@ class DatabaseHelper {
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
 
-  static const String _dbName          = 'focusbell.db';
-  static const int    _dbVersion       = 2;
+  static const String _dbName           = 'focusbell.db';
+  static const int    _dbVersion        = 5; // bumped: tasks.due_date column, projects.is_archived column
   static const String _legacyProjectsKey = 'projects';
 
   Database? _db;
@@ -44,23 +45,15 @@ class DatabaseHelper {
 
       debugPrint('[DB] Database opened successfully (version $_dbVersion).');
 
-      // Migration runs after openDatabase returns — full async support here.
       await _migrateFromSharedPreferences(db);
 
       return db;
     } catch (e, stack) {
       debugPrint('[DB] FATAL: Failed to open database.\n$e\n$stack');
-      rethrow; // Let AppController.boot() surface this to the error boundary.
+      rethrow;
     }
   }
 
-  /// Enable foreign-key support only.
-  ///
-  /// WAL journal mode is intentionally NOT set here — Android's SQLiteDatabase
-  /// wrapper blocks non-query PRAGMA statements executed via db.execute() inside
-  /// onConfigure, throwing SQLITE_OK code 0 despite being a valid PRAGMA.
-  /// sqflite's default singleInstance mode enables WAL natively at the platform
-  /// level via enableWriteAheadLogging(), so no manual PRAGMA is needed.
   Future<void> _onConfigure(Database db) async {
     await db.execute('PRAGMA foreign_keys = ON');
   }
@@ -88,15 +81,34 @@ class DatabaseHelper {
                            REFERENCES projects(id) ON DELETE CASCADE,
         title      TEXT    NOT NULL,
         status     INTEGER NOT NULL DEFAULT 0,
+        due_date   TEXT,
         created_at TEXT    NOT NULL
       )
     ''');
 
+    await db.execute('CREATE INDEX idx_tasks_project_id ON tasks(project_id)');
+    await db.execute('CREATE INDEX idx_projects_is_active ON projects(is_active)');
+
+    await db.execute('''
+      CREATE TABLE focus_sessions (
+        id              TEXT    PRIMARY KEY,
+        project_id      TEXT    NOT NULL
+                                REFERENCES projects(id) ON DELETE CASCADE,
+        type            INTEGER NOT NULL,
+        preset          INTEGER NOT NULL,
+        started_at      TEXT    NOT NULL,
+        ended_at        TEXT    NOT NULL,
+        planned_seconds INTEGER NOT NULL,
+        actual_seconds  INTEGER NOT NULL,
+        completed       INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+ 
     await db.execute(
-      'CREATE INDEX idx_tasks_project_id ON tasks(project_id)',
+      'CREATE INDEX idx_focus_sessions_project_id ON focus_sessions(project_id)',
     );
     await db.execute(
-      'CREATE INDEX idx_projects_is_active ON projects(is_active)',
+      'CREATE INDEX idx_focus_sessions_started_at ON focus_sessions(started_at)',
     );
 
     debugPrint('[DB] Schema created.');
@@ -104,21 +116,129 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     debugPrint('[DB] Upgrading schema from v$oldVersion to v$newVersion...');
+
     if (oldVersion < 2) {
       await db.execute(
         'ALTER TABLE projects ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0',
       );
-      // Seed sort_order from creation order so existing data isn't randomised.
-      final rows = await db.query('projects', columns: ['id'], orderBy: 'created_at ASC');
+      final rows = await db.query('projects',
+          columns: ['id'], orderBy: 'created_at ASC');
       for (int i = 0; i < rows.length; i++) {
         await db.update('projects', {'sort_order': i},
             where: 'id = ?', whereArgs: [rows[i]['id']]);
       }
-      debugPrint('[DB] Migration v2: sort_order column added and seeded.');
+      debugPrint('[DB] Migration v2: sort_order added and seeded.');
+    }
+
+    if (oldVersion < 3) {
+      // Add optional due_date column to tasks.
+      await db.execute('ALTER TABLE tasks ADD COLUMN due_date TEXT');
+      debugPrint('[DB] Migration v3: due_date column added to tasks.');
+    }
+
+    if (oldVersion < 4) {
+      await db.execute(
+        'ALTER TABLE projects ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0',
+      );
+      debugPrint('[DB] Migration v4: is_archived column added to projects.');
+    }
+
+    if (oldVersion < 5) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS focus_sessions (
+          id              TEXT    PRIMARY KEY,
+          project_id      TEXT    NOT NULL
+                                  REFERENCES projects(id) ON DELETE CASCADE,
+          type            INTEGER NOT NULL,
+          preset          INTEGER NOT NULL,
+          started_at      TEXT    NOT NULL,
+          ended_at        TEXT    NOT NULL,
+          planned_seconds INTEGER NOT NULL,
+          actual_seconds  INTEGER NOT NULL,
+          completed       INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_focus_sessions_project_id ON focus_sessions(project_id)',
+      );
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_focus_sessions_started_at ON focus_sessions(started_at)',
+      );
+      debugPrint('[DB] Migration v5: focus_sessions table created.');
     }
   }
 
-  // ── One-time migration from SharedPreferences ──────────────────
+
+  // ── Focus sessions ────────────────────────────────────────────
+ 
+  Future<void> insertFocusSession(FocusSession session) async {
+    final db = await database;
+    await db.insert(
+      'focus_sessions',
+      {
+        'id':              session.id,
+        'project_id':      session.projectId,
+        'type':            session.type.index,
+        'preset':          session.preset.index,
+        'started_at':      session.startedAt.toIso8601String(),
+        'ended_at':        session.endedAt.toIso8601String(),
+        'planned_seconds': session.plannedSeconds,
+        'actual_seconds':  session.actualSeconds,
+        'completed':       session.completed ? 1 : 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    debugPrint('[DB] insertFocusSession: ${session.id} (${session.actualSeconds}s)');
+  }
+ 
+  Future<List<FocusSession>> fetchSessionsForProject(String projectId) async {
+    final db   = await database;
+    final rows = await db.query(
+      'focus_sessions',
+      where:    'project_id = ?',
+      whereArgs: [projectId],
+      orderBy:  'started_at DESC',
+    );
+    return rows.map(_rowToSession).toList();
+  }
+ 
+  /// Fetches all sessions across projects whose [started_at] falls
+  /// within [from] (inclusive) and [to] (exclusive).
+  Future<List<FocusSession>> fetchSessionsInRange(
+      DateTime from, DateTime to) async {
+    final db   = await database;
+    final rows = await db.query(
+      'focus_sessions',
+      where:     'started_at >= ? AND started_at < ?',
+      whereArgs: [from.toIso8601String(), to.toIso8601String()],
+      orderBy:   'started_at ASC',
+    );
+    return rows.map(_rowToSession).toList();
+  }
+ 
+  Future<void> deleteSessionsForProject(String projectId) async {
+    final db    = await database;
+    final count = await db.delete(
+      'focus_sessions',
+      where:     'project_id = ?',
+      whereArgs: [projectId],
+    );
+    debugPrint('[DB] deleteSessionsForProject: $projectId — $count deleted.');
+  }
+ 
+  FocusSession _rowToSession(Map<String, dynamic> row) => FocusSession(
+        id:             row['id']              as String,
+        projectId:      row['project_id']      as String,
+        type:           SessionType.values[row['type']   as int],
+        preset:         TimerPreset.values[row['preset'] as int],
+        startedAt:      DateTime.parse(row['started_at'] as String),
+        endedAt:        DateTime.parse(row['ended_at']   as String),
+        plannedSeconds: row['planned_seconds'] as int,
+        actualSeconds:  row['actual_seconds']  as int,
+        completed:      (row['completed'] as int) == 1,
+      );
+
+  // ── SharedPreferences migration ────────────────────────────────
 
   Future<void> _migrateFromSharedPreferences(Database db) async {
     SharedPreferences prefs;
@@ -145,7 +265,6 @@ class DatabaseHelper {
 
       await db.transaction((txn) async {
         for (final project in projects) {
-          // Idempotent — safe if we crashed mid-migration last time.
           final existing = await txn.query(
             'projects',
             columns:   ['id'],
@@ -162,14 +281,13 @@ class DatabaseHelper {
           for (final task in project.tasks) {
             await txn.insert('tasks', _taskToRow(task, project.id));
           }
-          debugPrint('[DB] Migration: inserted project "${project.name}" with ${project.tasks.length} tasks.');
+          debugPrint('[DB] Migration: inserted "${project.name}" with ${project.tasks.length} tasks.');
         }
       });
 
       await prefs.remove(_legacyProjectsKey);
       debugPrint('[DB] Migration: completed and legacy key removed.');
     } catch (e, stack) {
-      // Leave the SP key intact — retry on next boot.
       debugPrint('[DB] Migration FAILED — will retry on next boot.\n$e\n$stack');
     }
   }
@@ -191,6 +309,7 @@ class DatabaseHelper {
         t.id          AS t_id,
         t.title       AS t_title,
         t.status      AS t_status,
+        t.due_date    AS t_due_date,
         t.created_at  AS t_created_at
       FROM projects p
       LEFT JOIN tasks t ON t.project_id = p.id
@@ -203,11 +322,8 @@ class DatabaseHelper {
 
   Future<void> insertProject(Project project) async {
     final db = await database;
-    await db.insert(
-      'projects',
-      _projectToRow(project),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('projects', _projectToRow(project),
+        conflictAlgorithm: ConflictAlgorithm.replace);
     debugPrint('[DB] insertProject: "${project.name}"');
   }
 
@@ -224,25 +340,17 @@ class DatabaseHelper {
 
   Future<void> deleteProject(String id) async {
     final db = await database;
-    final count = await db.delete(
-      'projects',
-      where:     'id = ?',
-      whereArgs: [id],
-    );
+    final count = await db.delete('projects',
+        where: 'id = ?', whereArgs: [id]);
     debugPrint('[DB] deleteProject: $id — $count row(s) deleted (cascade removes tasks).');
   }
 
-  /// Atomically clears is_active on all projects then sets exactly one.
   Future<void> setActiveProject(String id) async {
     final db = await database;
     await db.transaction((txn) async {
       await txn.update('projects', {'is_active': 0});
-      await txn.update(
-        'projects',
-        {'is_active': 1},
-        where:     'id = ?',
-        whereArgs: [id],
-      );
+      await txn.update('projects', {'is_active': 1},
+          where: 'id = ?', whereArgs: [id]);
     });
     debugPrint('[DB] setActiveProject: $id');
   }
@@ -251,11 +359,8 @@ class DatabaseHelper {
 
   Future<void> insertTask(Task task, String projectId) async {
     final db = await database;
-    await db.insert(
-      'tasks',
-      _taskToRow(task, projectId),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('tasks', _taskToRow(task, projectId),
+        conflictAlgorithm: ConflictAlgorithm.replace);
     debugPrint('[DB] insertTask: "${task.title}" → project $projectId');
   }
 
@@ -272,12 +377,20 @@ class DatabaseHelper {
 
   Future<void> deleteTask(String taskId) async {
     final db = await database;
-    final count = await db.delete(
-      'tasks',
-      where:     'id = ?',
-      whereArgs: [taskId],
-    );
+    final count = await db.delete('tasks',
+        where: 'id = ?', whereArgs: [taskId]);
     debugPrint('[DB] deleteTask: $taskId — $count row(s) deleted.');
+  }
+
+  Future<void> reorderProjects(List<String> orderedIds) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (int i = 0; i < orderedIds.length; i++) {
+        await txn.update('projects', {'sort_order': i},
+            where: 'id = ?', whereArgs: [orderedIds[i]]);
+      }
+    });
+    debugPrint('[DB] reorderProjects: ${orderedIds.length} projects reordered.');
   }
 
   // ── Row mappers ───────────────────────────────────────────────
@@ -288,7 +401,7 @@ class DatabaseHelper {
         'description': proj.description,
         'priority':    proj.priority.index,
         'is_active':   proj.isActive ? 1 : 0,
-        'sort_order':  proj.sortOrder, 
+        'sort_order':  proj.sortOrder,
         'created_at':  proj.createdAt.toIso8601String(),
       };
 
@@ -297,10 +410,10 @@ class DatabaseHelper {
         'project_id': projectId,
         'title':      t.title,
         'status':     t.status.index,
+        'due_date':   t.dueDate?.toIso8601String(),
         'created_at': t.createdAt.toIso8601String(),
       };
 
-  /// Collapses flat LEFT JOIN rows into a nested [Project] list.
   List<Project> _rowsToProjects(List<Map<String, dynamic>> rows) {
     final Map<String, _ProjectBuilder> projectMap = {};
 
@@ -315,41 +428,26 @@ class DatabaseHelper {
           description: row['p_description'] as String,
           priority:    Priority.values[row['p_priority'] as int],
           isActive:    (row['p_is_active']  as int) == 1,
-          sortOrder:   row['p_sort_order']  as int,  
+          sortOrder:   row['p_sort_order']  as int,
           createdAt:   DateTime.parse(row['p_created_at'] as String),
         ),
       );
 
-      // t_id is NULL when the project has no tasks (LEFT JOIN).
       final taskId = row['t_id'];
       if (taskId != null) {
+        final dueDateRaw = row['t_due_date'] as String?;
         projectMap[projectId]!.tasks.add(Task(
           id:        taskId           as String,
           title:     row['t_title']   as String,
           status:    TaskStatus.values[row['t_status'] as int],
           createdAt: DateTime.parse(row['t_created_at'] as String),
+          dueDate:   dueDateRaw == null ? null : DateTime.tryParse(dueDateRaw),
         ));
       }
     }
 
     return projectMap.values.map((b) => b.build()).toList();
   }
-
-  /// Updates sort_order for a batch of projects in a single transaction.
-Future<void> reorderProjects(List<String> orderedIds) async {
-  final db = await database;
-  await db.transaction((txn) async {
-    for (int i = 0; i < orderedIds.length; i++) {
-      await txn.update(
-        'projects',
-        {'sort_order': i},
-        where:     'id = ?',
-        whereArgs: [orderedIds[i]],
-      );
-    }
-  });
-  debugPrint('[DB] reorderProjects: ${orderedIds.length} projects reordered.');
-}
 
   // ── Dispose ───────────────────────────────────────────────────
 
@@ -368,7 +466,7 @@ class _ProjectBuilder {
   final String     description;
   final Priority   priority;
   final bool       isActive;
-  final int sortOrder; 
+  final int        sortOrder;
   final DateTime   createdAt;
   final List<Task> tasks = [];
 
@@ -388,7 +486,7 @@ class _ProjectBuilder {
         description: description,
         priority:    priority,
         isActive:    isActive,
-        sortOrder: sortOrder,
+        sortOrder:   sortOrder,
         createdAt:   createdAt,
         tasks:       List.unmodifiable(tasks),
       );

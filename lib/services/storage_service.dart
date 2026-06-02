@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:focusbell/models/focus_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/project.dart';
@@ -23,7 +24,7 @@ class StorageService {
 
   static Future<StorageService> getInstance() async {
     if (_instance == null) {
-      final svc  = StorageService._();
+      final svc = StorageService._();
       svc._prefs = await SharedPreferences.getInstance();
       // Touching `database` here ensures the DB is open (and the one-time
       // SharedPreferences migration runs) before the first caller needs it.
@@ -45,7 +46,7 @@ class StorageService {
   Future<void> updateProject(Project project) =>
       DatabaseHelper.instance.updateProject(project);
 
-      /// Persists the new display order for the full project list.
+  /// Persists the new display order for the full project list.
   Future<void> reorderProjects(List<String> orderedIds) =>
       DatabaseHelper.instance.reorderProjects(orderedIds);
 
@@ -77,5 +78,26 @@ class StorageService {
 
   Future<void> saveSettings(AppSettings settings) async {
     await _prefs.setString(_settingsKey, jsonEncode(settings.toJson()));
+  }
+
+  // ── Focus sessions ────────────────────────────────────────────
+
+  Future<void> saveFocusSession(FocusSession session) async {
+    await DatabaseHelper.instance.insertFocusSession(session);
+  }
+
+  Future<List<FocusSession>> fetchSessionsForProject(String projectId) async {
+    return DatabaseHelper.instance.fetchSessionsForProject(projectId);
+  }
+
+  /// Fetches sessions across all (or one) project within [from]..[to].
+  Future<List<FocusSession>> fetchSessionsInRange(
+    DateTime from,
+    DateTime to, {
+    String? projectId,
+  }) async {
+    final all = await DatabaseHelper.instance.fetchSessionsInRange(from, to);
+    if (projectId == null) return all;
+    return all.where((s) => s.projectId == projectId).toList();
   }
 }

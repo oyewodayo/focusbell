@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // add this import
 import '../models/project.dart';
@@ -14,52 +15,62 @@ class _FocusBellTaskHandler extends TaskHandler {
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    debugPrint('[FocusBell] Service started');
+
     await NotificationService.instance.initialize();
+
+    debugPrint('[FocusBell] Notifications initialized');
   }
 
   @override
   void onRepeatEvent(DateTime timestamp) async {
-    final projectName = await FlutterForegroundTask.getData<String>(
-      key: 'projectName',
-    );
-    final priorityLabel = await FlutterForegroundTask.getData<String>(
-      key: 'priorityLabel',
-    );
-    final priorityEmoji = await FlutterForegroundTask.getData<String>(
-      key: 'priorityEmoji',
-    );
-    final soundModeIdx = await FlutterForegroundTask.getData<int>(
-      key: 'soundModeIndex',
-    );
-    final taskSummary = await FlutterForegroundTask.getData<String>(
-      key: 'taskSummary',
-    );
+    try {
+        debugPrint('[FocusBell] Repeat fired: $timestamp');
+        final projectName = await FlutterForegroundTask.getData<String>(
+        key: 'projectName',
+        );
+        final priorityLabel = await FlutterForegroundTask.getData<String>(
+        key: 'priorityLabel',
+        );
+        final priorityEmoji = await FlutterForegroundTask.getData<String>(
+        key: 'priorityEmoji',
+        );
+        final soundModeIdx = await FlutterForegroundTask.getData<int>(
+        key: 'soundModeIndex',
+        );
+        final taskSummary = await FlutterForegroundTask.getData<String>(
+        key: 'taskSummary',
+        );
 
-    if (projectName == null) return;
+        if (projectName == null) return;
 
-    final soundMode = SoundMode.values[soundModeIdx ?? 0];
+        final soundMode = SoundMode.values[soundModeIdx ?? 0];
 
-    // Collapsed body (one line shown before user expands).
-    final collapsedBody =
-        'Priority: ${priorityLabel ?? 'Unknown'} — stay locked in.';
+        // Collapsed body (one line shown before user expands).
+        final collapsedBody =
+            'Priority: ${priorityLabel ?? 'Unknown'} — stay locked in.';
 
-    // Expanded body (shown when notification is pulled down).
-    // Two separate lines joined with a real newline.
-    final expandedBody = _buildExpandedBody(priorityLabel, taskSummary);
+        // Expanded body (shown when notification is pulled down).
+        // Two separate lines joined with a real newline.
+        final expandedBody = _buildExpandedBody(priorityLabel, taskSummary);
 
-    final details = NotificationService.instance.buildDetails(
-      soundMode,
-      bigBody: expandedBody, // ← passed into BigTextStyleInformation
-    );
+        final details = NotificationService.instance.buildDetails(
+        soundMode,
+        bigBody: expandedBody, // ← passed into BigTextStyleInformation
+        );
 
-    _notifId = (_notifId >= 299) ? 200 : _notifId + 1;
+        _notifId = (_notifId >= 299) ? 200 : _notifId + 1;
 
-    await NotificationService.instance.plugin.show(
-      _notifId,
-      '$priorityEmoji Focus: $projectName',
-      collapsedBody, // ← shown collapsed
-      details,
-    );
+        await NotificationService.instance.plugin.show(
+        _notifId,
+        '$priorityEmoji Focus: $projectName',
+        collapsedBody, // ← shown collapsed
+        details,
+        );
+    } catch (e, st) {
+        debugPrint('[FocusBell] Repeat failed: $e');
+        debugPrint('$st');
+    }
   }
 
   /// Collapsed line:  "Priority: Critical — stay locked in."
@@ -136,7 +147,7 @@ Future<void> startOrUpdate(Project project, AppSettings settings) async {
     await _requestBatteryOptimizationIfNeeded();
   }
 
-  
+
   Future<void> _requestBatteryOptimizationIfNeeded() async {
     const key = 'battery_optimization_prompted';
     final prefs = await SharedPreferences.getInstance();

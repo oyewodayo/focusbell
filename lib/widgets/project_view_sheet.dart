@@ -1,10 +1,12 @@
-// project_view_sheet.dart — full replacement
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:intl/intl.dart';
+
 import '../models/project.dart';
 import '../services/app_controller.dart';
+import '../services/notification_service.dart';
 
 /// Full-detail bottom sheet for a project, including its task list.
 class ProjectViewSheet extends StatefulWidget {
@@ -19,13 +21,13 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   final _ctrl = AppController.instance;
   final _listKey = GlobalKey<AnimatedListState>();
 
-  /// Mutable sorted snapshot that AnimatedList tracks.
   late List<Task> _sortedTasks;
 
   static const _statusOrder = {
     TaskStatus.ongoing: 0,
     TaskStatus.todo: 1,
-    TaskStatus.completed: 2,
+    TaskStatus.blocked: 2,
+    TaskStatus.completed: 3,
   };
 
   Project get _liveProject =>
@@ -50,11 +52,11 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
     super.dispose();
   }
 
-  /// Diffing engine: animates items that changed position.
+  // ── Diffing engine ────────────────────────────────────────────
+
   void _onControllerUpdate() {
     final newSorted = _sorted(_liveProject.tasks);
 
-    // Handle deletions first.
     for (int i = _sortedTasks.length - 1; i >= 0; i--) {
       final old = _sortedTasks[i];
       if (!newSorted.any((t) => t.id == old.id)) {
@@ -67,11 +69,9 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
       }
     }
 
-    // Handle insertions.
     for (int i = 0; i < newSorted.length; i++) {
       final newTask = newSorted[i];
-      final existingIdx = _sortedTasks.indexWhere((t) => t.id == newTask.id);
-      if (existingIdx == -1) {
+      if (_sortedTasks.indexWhere((t) => t.id == newTask.id) == -1) {
         _sortedTasks.insert(i, newTask);
         _listKey.currentState?.insertItem(
           i,
@@ -80,18 +80,14 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
       }
     }
 
-    // Handle moves (status changed → position changed).
-    // Strategy: remove from old index, insert at new index.
     for (int newIdx = 0; newIdx < newSorted.length; newIdx++) {
       final newTask = newSorted[newIdx];
       final oldIdx = _sortedTasks.indexWhere((t) => t.id == newTask.id);
-      if (oldIdx == -1) continue; // Already handled above.
+      if (oldIdx == -1) continue;
 
-      // Update the task data in place (title/status may have changed).
       _sortedTasks[oldIdx] = newTask;
 
       if (oldIdx != newIdx) {
-        // Remove from old position.
         final moving = _sortedTasks.removeAt(oldIdx);
         _listKey.currentState?.removeItem(
           oldIdx,
@@ -99,7 +95,6 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
           duration: const Duration(milliseconds: 200),
         );
 
-        // Insert at new position after a short delay so remove animates first.
         Future.delayed(const Duration(milliseconds: 160), () {
           if (!mounted) return;
           _sortedTasks.insert(newIdx, newTask);
@@ -108,158 +103,78 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
             duration: const Duration(milliseconds: 250),
           );
         });
-        // Only move one item per update cycle to avoid index drift.
         break;
       }
     }
 
-    // If nothing moved, just call setState to refresh chips/labels.
     if (mounted) setState(() {});
   }
 
-  // ── Add task ──────────────────────────────────────────────────
+  // ── Add / Edit task — bottom sheet ────────────────────────────
 
-  void _showAddTaskDialog() {
-    final titleCtrl = TextEditingController();
-    showDialog(
+  /// Shows a bottom sheet for adding a new task OR editing an existing one.
+  /// When [existing] is null, a new task is created.
+  void _showTaskSheet({Task? existing}) {
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text(
-          'New Task',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: TextField(
-          controller: titleCtrl,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: 'Task title…',
-            hintStyle: const TextStyle(color: Colors.white38),
-            filled: true,
-            fillColor: const Color(0xFF252525),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 12,
-            ),
-          ),
-          onSubmitted: (_) => _submitAddTask(ctx, titleCtrl),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white38),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2A2A2A),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () => _submitAddTask(ctx, titleCtrl),
-            child: const Text('Add'),
-          ),
-        ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _TaskFormSheet(
+        existing: existing,
+        onSave: (title, dueDate, clearDue) async {
+        final project = _liveProject;
+        if (existing == null) {
+            // Add
+            await _ctrl.addTask(project.id, title, dueDate: dueDate);
+
+            // ✅ Show immediate "task created" notification regardless of due date.
+            await NotificationService.instance.showTaskCreated(
+            taskTitle: title,
+            projectName: project.name,
+            soundMode: _ctrl.settings.soundMode,  // ← respect user's sound setting
+            );
+
+            // Schedule due-date alarm if set — fetch after DB write so notifId is populated.
+            if (dueDate != null) {
+            final fresh = _ctrl
+                .findProject(project.id)
+                ?.tasks
+                .lastWhere((t) => t.title == title, orElse: () => Task(
+                    id: '', title: title, createdAt: DateTime.now(), dueDate: dueDate,
+                ));
+            if (fresh != null && fresh.notifId != null) {
+                await NotificationService.instance.scheduleForTask(
+                task: fresh,
+                projectName: project.name,
+                );
+            }
+            }
+        } else {
+            // Edit — existing logic unchanged
+            await _ctrl.updateTask(
+            project.id,
+            existing.id,
+            title: title,
+            dueDate: dueDate,
+            clearDueDate: clearDue,
+            );
+            final updated = _ctrl.findProject(project.id)?.tasks
+                .firstWhere((t) => t.id == existing.id, orElse: () => existing.copyWith(
+                title: title, dueDate: clearDue ? null : dueDate, clearDueDate: clearDue,
+                ));
+            if (updated != null) {
+            if (clearDue || dueDate == null) {
+                await NotificationService.instance.cancelForTask(updated.notifId);
+            } else {
+                await NotificationService.instance.scheduleForTask(
+                task: updated, projectName: project.name,
+                );
+            }
+            }
+        }
+        },
       ),
     );
-  }
-
-  Future<void> _submitAddTask(
-    BuildContext ctx,
-    TextEditingController titleCtrl,
-  ) async {
-    final title = titleCtrl.text.trim();
-    if (title.isEmpty) return;
-    await _ctrl.addTask(_liveProject.id, title);
-    if (!ctx.mounted) return;
-    Navigator.pop(ctx);
-  }
-
-  // ── Rename task ───────────────────────────────────────────────
-
-  void _showRenameDialog(Task task) {
-    final titleCtrl = TextEditingController(text: task.title);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text(
-          'Rename Task',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: TextField(
-          controller: titleCtrl,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: 'Task title…',
-            hintStyle: const TextStyle(color: Colors.white38),
-            filled: true,
-            fillColor: const Color(0xFF252525),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14,
-              vertical: 12,
-            ),
-          ),
-          onSubmitted: (_) => _submitRename(ctx, task, titleCtrl),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white38),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2A2A2A),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () => _submitRename(ctx, task, titleCtrl),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _submitRename(
-    BuildContext ctx,
-    Task task,
-    TextEditingController c,
-  ) async {
-    final title = c.text.trim();
-    if (title.isEmpty) return;
-    await _ctrl.updateTask(_liveProject.id, task.id, title: title);
-    if (!ctx.mounted) return;
-    Navigator.pop(ctx);
   }
 
   // ── Status picker ─────────────────────────────────────────────
@@ -304,6 +219,12 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                 onTap: () async {
                   Navigator.pop(context);
                   await _ctrl.updateTask(_liveProject.id, task.id, status: s);
+                  // Cancel notification when task is marked complete.
+                  if (s == TaskStatus.completed) {
+                    await NotificationService.instance.cancelForTask(
+                      int.tryParse(task.id),
+                    );
+                  }
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
@@ -385,10 +306,11 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
       ),
     );
     if (confirmed != true) return;
+    await NotificationService.instance.cancelForTask(int.tryParse(task.id));
     await _ctrl.removeTask(_liveProject.id, task.id);
   }
 
-  // ── Animated row builder (used by AnimatedList for exit too) ──
+  // ── Animated row builder ──────────────────────────────────────
 
   Widget _buildAnimatedRow(Task task, Animation<double> animation) {
     return SizeTransition(
@@ -403,7 +325,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
           key: ValueKey(task.id),
           task: task,
           onStatusTap: () => _showStatusPicker(task),
-          onRename: () => _showRenameDialog(task),
+          onEdit: () => _showTaskSheet(existing: task),
           onDelete: () => _deleteTask(task),
         ),
       ),
@@ -476,7 +398,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: _showAddTaskDialog,
+                onTap: () => _showTaskSheet(),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -527,8 +449,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
           ),
           const SizedBox(height: 12),
 
-          // Description
-          // Description — markdown rendered, links clickable, text selectable
+          // Description — markdown, selectable, links open externally
           if (liveProject.description.isEmpty)
             const Text(
               'No description provided.',
@@ -541,12 +462,12 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
           else
             MarkdownBody(
               data: liveProject.description,
-              selectable: true, // ← enables text selection + copy
+              selectable: true,
               extensionSet: md.ExtensionSet(
                 md.ExtensionSet.gitHubFlavored.blockSyntaxes,
                 <md.InlineSyntax>[
                   md.EmojiSyntax(),
-                  md.AutolinkExtensionSyntax(), // ← auto-detects bare URLs
+                  md.AutolinkExtensionSyntax(),
                   ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
                 ],
               ),
@@ -617,7 +538,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
               ),
             ),
 
-          // ── Task list ────────────────────────────────────────
+          // ── Task list ─────────────────────────────────────────
           if (_sortedTasks.isNotEmpty) ...[
             const SizedBox(height: 20),
             Row(
@@ -649,8 +570,9 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                 padding: EdgeInsets.zero,
                 initialItemCount: _sortedTasks.length,
                 itemBuilder: (ctx, i, animation) {
-                  // Guard against index-out-of-range during animations.
-                  if (i >= _sortedTasks.length) return const SizedBox.shrink();
+                  if (i >= _sortedTasks.length) {
+                    return const SizedBox.shrink();
+                  }
                   return _buildAnimatedRow(_sortedTasks[i], animation);
                 },
               ),
@@ -693,19 +615,371 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   }
 }
 
-// ── Single task row ───────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
+// Task Form Bottom Sheet
+// ─────────────────────────────────────────────────────────────────
+
+/// Callback: title, nullable dueDate, clearDueDate flag.
+typedef TaskFormCallback =
+    Future<void> Function(String title, DateTime? dueDate, bool clearDue);
+
+class _TaskFormSheet extends StatefulWidget {
+  final Task? existing;
+  final TaskFormCallback onSave;
+
+  const _TaskFormSheet({this.existing, required this.onSave});
+
+  @override
+  State<_TaskFormSheet> createState() => _TaskFormSheetState();
+}
+
+class _TaskFormSheetState extends State<_TaskFormSheet> {
+  late final TextEditingController _titleCtrl;
+  DateTime? _dueDate;
+  bool _clearDue = false;
+  bool _saving = false;
+
+  bool get _isEdit => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: widget.existing?.title ?? '');
+    _dueDate = widget.existing?.dueDate;
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Due date picker ───────────────────────────────────────────
+
+  Future<void> _pickDueDate() async {
+    final now = DateTime.now();
+    final initialDate = (_dueDate != null && _dueDate!.isAfter(now))
+        ? _dueDate!
+        : now.add(const Duration(hours: 1));
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: now.subtract(const Duration(minutes: 1)),
+      lastDate: now.add(const Duration(days: 365 * 5)),
+      builder: (ctx, child) => _darkPickerTheme(ctx, child),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initialDate),
+      builder: (ctx, child) => _darkPickerTheme(ctx, child),
+    );
+    if (time == null || !mounted) return;
+
+    setState(() {
+      _dueDate = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+      _clearDue = false;
+    });
+  }
+
+  Widget _darkPickerTheme(BuildContext ctx, Widget? child) => Theme(
+    data: ThemeData.dark().copyWith(
+      colorScheme: const ColorScheme.dark(
+        primary: Color(0xFF0A84FF),
+        onPrimary: Colors.white,
+        surface: Color(0xFF1A1A1A),
+        onSurface: Colors.white,
+      ),
+      dialogBackgroundColor: const Color(0xFF1A1A1A),
+    ),
+    child: child!,
+  );
+
+  void _removeDueDate() => setState(() {
+    _dueDate = null;
+    _clearDue = _isEdit; // signal to controller to clear in DB
+  });
+
+  // ── Save ──────────────────────────────────────────────────────
+
+  Future<void> _save() async {
+    final title = _titleCtrl.text.trim();
+    if (title.isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await widget.onSave(title, _dueDate, _clearDue);
+      if (mounted) Navigator.pop(context);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final hasDue = _dueDate != null;
+    final overdue = hasDue && _dueDate!.isBefore(DateTime.now());
+
+    return Padding(
+      // Slide up above keyboard.
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Handle
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Title
+            Text(
+              _isEdit ? 'Edit Task' : 'New Task',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Task title field
+            TextField(
+              controller: _titleCtrl,
+              maxLines: 3,
+              autofocus: !_isEdit,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+              decoration: InputDecoration(
+                hintText: 'Task title…',
+                hintStyle: const TextStyle(color: Colors.white38, fontSize: 15),
+                filled: true,
+                fillColor: const Color(0xFF252525),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
+              ),
+              onSubmitted: (_) => _save(),
+            ),
+            const SizedBox(height: 16),
+
+            // Due date row
+            GestureDetector(
+              onTap: _pickDueDate,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: hasDue
+                      ? (overdue
+                            ? const Color(0xFF2E0A0A)
+                            : const Color(0xFF001A33))
+                      : const Color(0xFF252525),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: hasDue
+                        ? (overdue
+                              ? const Color(0xFFFF3B30).withValues(alpha: 0.5)
+                              : const Color(0xFF0A84FF).withValues(alpha: 0.5))
+                        : Colors.white10,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.schedule_rounded,
+                      size: 16,
+                      color: hasDue
+                          ? (overdue
+                                ? const Color(0xFFFF3B30)
+                                : const Color(0xFF0A84FF))
+                          : Colors.white38,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        hasDue
+                            ? _formatDue(_dueDate!)
+                            : 'Add due date (optional)',
+                        style: TextStyle(
+                          color: hasDue
+                              ? (overdue
+                                    ? const Color(0xFFFF3B30)
+                                    : Colors.white70)
+                              : Colors.white38,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    if (hasDue)
+                      GestureDetector(
+                        onTap: _removeDueDate,
+                        behavior: HitTestBehavior.opaque,
+                        child: const Padding(
+                          padding: EdgeInsets.only(left: 8),
+                          child: Icon(
+                            Icons.close_rounded,
+                            size: 16,
+                            color: Colors.white38,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            if (hasDue && !overdue) ...[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  '🔔 You\'ll be reminded at this time.',
+                  style: TextStyle(
+                    color: const Color(0xFF0A84FF).withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+
+            if (overdue) ...[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Text(
+                  '⚠️ This time is in the past — notification won\'t fire.',
+                  style: TextStyle(
+                    color: const Color(0xFFFF3B30).withValues(alpha: 0.8),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 22),
+
+            // Action buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white54,
+                      side: const BorderSide(color: Colors.white12),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _saving ? null : _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0A84FF),
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: const Color(
+                        0xFF0A84FF,
+                      ).withValues(alpha: 0.4),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: _saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            _isEdit ? 'Save Changes' : 'Add Task',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDue(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final dtDay = DateTime(dt.year, dt.month, dt.day);
+
+    final timeStr = DateFormat('h:mm a').format(dt);
+
+    if (dtDay == today) return 'Today at $timeStr';
+    if (dtDay == tomorrow) return 'Tomorrow at $timeStr';
+    return DateFormat('MMM d, yyyy').format(dt) + ' at $timeStr';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Single task row
+// ─────────────────────────────────────────────────────────────────
 
 class _TaskRow extends StatefulWidget {
   final Task task;
   final VoidCallback onStatusTap;
-  final VoidCallback onRename;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _TaskRow({
     super.key,
     required this.task,
     required this.onStatusTap,
-    required this.onRename,
+    required this.onEdit,
     required this.onDelete,
   });
 
@@ -720,6 +994,8 @@ class _TaskRowState extends State<_TaskRow> {
   Widget build(BuildContext context) {
     final s = widget.task.status;
     final done = s == TaskStatus.completed;
+    final overdue = widget.task.isOverdue;
+    final dueSoon = widget.task.isDueSoon;
 
     return GestureDetector(
       onTap: () => setState(() => _expanded = !_expanded),
@@ -728,153 +1004,233 @@ class _TaskRowState extends State<_TaskRow> {
         curve: Curves.easeInOut,
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
+          color: overdue ? const Color(0xFF200A0A) : const Color(0xFF1E1E1E),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(
+            color: overdue
+                ? const Color(0xFFFF3B30).withValues(alpha: 0.35)
+                : Colors.white10,
+          ),
         ),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Status emoji tap
-            GestureDetector(
-              onTap: widget.onStatusTap,
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                child: Text(s.emoji, style: const TextStyle(fontSize: 16)),
-              ),
-            ),
-
-            // Title — expands on tap
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 200),
-                  crossFadeState: _expanded
-                      ? CrossFadeState.showSecond
-                      : CrossFadeState.showFirst,
-                  firstChild: Text(
-                    widget.task.title,
-                    style: TextStyle(
-                      color: done ? Colors.white38 : Colors.white70,
-                      fontSize: 14,
-                      decoration: done
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
-                      decorationColor: Colors.white38,
-                      height: 1.3,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  secondChild: Text(
-                    widget.task.title,
-                    style: TextStyle(
-                      color: done ? Colors.white38 : Colors.white70,
-                      fontSize: 14,
-                      decoration: done
-                          ? TextDecoration.lineThrough
-                          : TextDecoration.none,
-                      decorationColor: Colors.white38,
-                      height: 1.3,
-                    ),
-                    // No maxLines — fully expanded
-                  ),
-                ),
-              ),
-            ),
-
-            // Status chip + overflow menu column
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 8),
+                // Status emoji tap
                 GestureDetector(
                   onTap: widget.onStatusTap,
+                  behavior: HitTestBehavior.opaque,
                   child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 6),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: s.color.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: s.color.withValues(alpha: 0.3)),
-                    ),
-                    child: Text(
-                      s.label,
-                      style: TextStyle(
-                        color: s.color,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                    padding: const EdgeInsets.all(12),
+                    child: Text(s.emoji, style: const TextStyle(fontSize: 16)),
+                  ),
+                ),
+
+                // Title
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: AnimatedCrossFade(
+                      duration: const Duration(milliseconds: 200),
+                      crossFadeState: _expanded
+                          ? CrossFadeState.showSecond
+                          : CrossFadeState.showFirst,
+                      firstChild: Text(
+                        widget.task.title,
+                        style: TextStyle(
+                          color: done ? Colors.white38 : Colors.white70,
+                          fontSize: 14,
+                          decoration: done
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
+                          decorationColor: Colors.white38,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      secondChild: Text(
+                        widget.task.title,
+                        style: TextStyle(
+                          color: done ? Colors.white38 : Colors.white70,
+                          fontSize: 14,
+                          decoration: done
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none,
+                          decorationColor: Colors.white38,
+                          height: 1.3,
+                        ),
                       ),
                     ),
                   ),
                 ),
-                PopupMenuButton<String>(
-                  icon: const Icon(
-                    Icons.more_horiz_rounded,
-                    color: Colors.white30,
-                    size: 18,
-                  ),
-                  color: const Color(0xFF222222),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  onSelected: (value) {
-                    if (value == 'rename') widget.onRename();
-                    if (value == 'delete') widget.onDelete();
-                  },
-                  itemBuilder: (_) => [
-                    const PopupMenuItem(
-                      value: 'rename',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.edit_outlined,
-                            color: Color(0xFFFFD60A),
-                            size: 16,
+
+                // Status chip + overflow menu
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: widget.onStatusTap,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: s.color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: s.color.withValues(alpha: 0.3),
                           ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Rename',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
+                        ),
+                        child: Text(
+                          s.label,
+                          style: TextStyle(
+                            color: s.color,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
+                        ),
                       ),
                     ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.delete_outline,
-                            color: Color(0xFFFF3B30),
-                            size: 16,
-                          ),
-                          SizedBox(width: 10),
-                          Text(
-                            'Delete',
-                            style: TextStyle(
-                              color: Color(0xFFFF3B30),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
+                    PopupMenuButton<String>(
+                      icon: const Icon(
+                        Icons.more_horiz_rounded,
+                        color: Colors.white30,
+                        size: 18,
                       ),
+                      color: const Color(0xFF222222),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      onSelected: (value) {
+                        if (value == 'edit') widget.onEdit();
+                        if (value == 'delete') widget.onDelete();
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.edit_outlined,
+                                color: Color(0xFFFFD60A),
+                                size: 16,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Edit',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.delete_outline,
+                                color: Color(0xFFFF3B30),
+                                size: 16,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Delete',
+                                style: TextStyle(
+                                  color: Color(0xFFFF3B30),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ],
             ),
+
+            // Due date pill — shown below the title row
+            if (widget.task.dueDate != null && !done) ...[
+              Padding(
+                padding: const EdgeInsets.only(left: 12, right: 12, bottom: 10),
+                child: _DuePill(
+                  dueDate: widget.task.dueDate!,
+                  overdue: overdue,
+                  dueSoon: dueSoon,
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+}
+
+// ── Due date pill ─────────────────────────────────────────────────
+
+class _DuePill extends StatelessWidget {
+  final DateTime dueDate;
+  final bool overdue;
+  final bool dueSoon;
+
+  const _DuePill({
+    required this.dueDate,
+    required this.overdue,
+    required this.dueSoon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final Color pillColor = overdue
+        ? const Color(0xFFFF3B30)
+        : dueSoon
+        ? const Color(0xFFFF8C00)
+        : const Color(0xFF8E8E93);
+
+    final String label = overdue
+        ? '⚠️ Overdue · ${_format(dueDate)}'
+        : dueSoon
+        ? '⏰ Due soon · ${_format(dueDate)}'
+        : '📅 ${_format(dueDate)}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: pillColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: pillColor.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: pillColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  String _format(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final dtDay = DateTime(dt.year, dt.month, dt.day);
+    final timeStr = DateFormat('h:mm a').format(dt);
+
+    if (dtDay == today) return 'Today $timeStr';
+    if (dtDay == tomorrow) return 'Tomorrow $timeStr';
+    return DateFormat('MMM d').format(dt) + ' $timeStr';
   }
 }
