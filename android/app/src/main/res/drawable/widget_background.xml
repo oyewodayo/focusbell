@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  android/app/src/main/res/drawable/widget_background.xml
+  Dark rounded pill that matches FocusBell's 0xFF111111 surface colour.
+  CC = ~80 % opacity so the wallpaper slightly shows through.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#CC111111" />
+    <corners android:radius="16dp" />
+</shape>

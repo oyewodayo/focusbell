@@ -19,7 +19,7 @@ void showFinishedBannerIfNeeded(BuildContext context) {
   svc.clearPendingFinished();
 
   // Show a brief snackbar so the user knows the next segment started.
-  final s = svc.state;
+  final s     = svc.state;
   final isBreak = !s.isWork;
   final color = isBreak ? const Color(0xFF32D74B) : const Color(0xFFFF453A);
   final label = isBreak
@@ -35,8 +35,8 @@ void showFinishedBannerIfNeeded(BuildContext context) {
           Text(
             label,
             style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
+              color:      Colors.white,
+              fontSize:   13,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -47,11 +47,11 @@ void showFinishedBannerIfNeeded(BuildContext context) {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: color.withValues(alpha: 0.35)),
       ),
-      behavior: SnackBarBehavior.floating,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-      duration: const Duration(seconds: 4),
+      behavior:        SnackBarBehavior.floating,
+      margin:          const EdgeInsets.fromLTRB(16, 0, 16, 20),
+      duration:        const Duration(seconds: 4),
       action: SnackBarAction(
-        label: 'Open',
+        label:     'Open',
         textColor: color,
         onPressed: () {
           // Re-open not possible here without project ref — banner handles it
@@ -73,7 +73,7 @@ class FocusSessionButton extends StatelessWidget {
     return ListenableBuilder(
       listenable: FocusTimerService.instance,
       builder: (context, _) {
-        final svc = FocusTimerService.instance;
+        final svc   = FocusTimerService.instance;
         final state = svc.state;
 
         // If a segment just completed and the sheet isn't open, fire a snackbar.
@@ -103,8 +103,8 @@ class FocusSessionButton extends StatelessWidget {
 // ── Live banner ───────────────────────────────────────────────────
 
 class _LiveBanner extends StatelessWidget {
-  final Project project;
-  final FocusTimerState state;
+  final Project          project;
+  final FocusTimerState  state;
   final FocusTimerService svc;
 
   const _LiveBanner({
@@ -114,14 +114,14 @@ class _LiveBanner extends StatelessWidget {
   });
 
   Color get _phaseColor => switch (state.sessionType) {
-    SessionType.work => const Color(0xFFFF453A),
-    SessionType.shortBreak => const Color(0xFF32D74B),
-    SessionType.longBreak => const Color(0xFF0A84FF),
-  };
+        SessionType.work       => const Color(0xFFFF453A),
+        SessionType.shortBreak => const Color(0xFF32D74B),
+        SessionType.longBreak  => const Color(0xFF0A84FF),
+      };
 
   @override
   Widget build(BuildContext context) {
-    final color = _phaseColor;
+    final color    = _phaseColor;
     final isPaused = state.phase == TimerPhase.paused;
 
     return GestureDetector(
@@ -130,7 +130,7 @@ class _LiveBanner extends StatelessWidget {
         duration: const Duration(milliseconds: 300),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.10),
+          color:        color.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: color.withValues(alpha: isPaused ? 0.20 : 0.40),
@@ -140,7 +140,7 @@ class _LiveBanner extends StatelessWidget {
               ? null
               : [
                   BoxShadow(
-                    color: color.withValues(alpha: 0.12),
+                    color:      color.withValues(alpha: 0.12),
                     blurRadius: 16,
                     spreadRadius: 2,
                   ),
@@ -164,29 +164,27 @@ class _LiveBanner extends StatelessWidget {
                     Text(
                       state.sessionType.label.toUpperCase(),
                       style: TextStyle(
-                        color: color,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.5,
+                        color:          color,
+                        fontSize:       10,
+                        fontWeight:     FontWeight.w700,
+                        letterSpacing:  1.5,
                       ),
                     ),
                     if (isPaused) ...[
                       const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.07),
+                          color:        Colors.white.withValues(alpha: 0.07),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
                           'PAUSED',
                           style: TextStyle(
-                            color: Colors.white38,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
+                            color:         Colors.white38,
+                            fontSize:      9,
+                            fontWeight:    FontWeight.w700,
                             letterSpacing: 1,
                           ),
                         ),
@@ -201,11 +199,11 @@ class _LiveBanner extends StatelessWidget {
                 Text(
                   state.mmss,
                   style: TextStyle(
-                    color: color,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w200,
+                    color:         color,
+                    fontSize:      26,
+                    fontWeight:    FontWeight.w200,
                     letterSpacing: -1,
-                    fontFeatures: const [FontFeature.tabularFigures()],
+                    fontFeatures:  const [FontFeature.tabularFigures()],
                   ),
                 ),
 
@@ -213,7 +211,7 @@ class _LiveBanner extends StatelessWidget {
 
                 // Quick controls (pause / resume)
                 _QuickControl(
-                  icon: isPaused
+                  icon:  isPaused
                       ? Icons.play_arrow_rounded
                       : Icons.pause_rounded,
                   color: color,
@@ -228,10 +226,10 @@ class _LiveBanner extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                value: state.progress,
-                minHeight: 3,
+                value:           state.progress,
+                minHeight:       3,
                 backgroundColor: Colors.white.withValues(alpha: 0.07),
-                valueColor: AlwaysStoppedAnimation(color),
+                valueColor:      AlwaysStoppedAnimation(color),
               ),
             ),
 
@@ -243,31 +241,35 @@ class _LiveBanner extends StatelessWidget {
                 // Sessions done
                 Text(
                   '${state.completedWork} session${state.completedWork == 1 ? '' : 's'} done',
-                  style: const TextStyle(color: Colors.white30, fontSize: 11),
+                  style: const TextStyle(
+                    color: Colors.white30, fontSize: 11),
                 ),
 
                 const Spacer(),
 
-                // Tick toggle
+                // Tick toggle — uses new settings API
                 GestureDetector(
-                  onTap: () => svc.setTickEnabled(!svc.tickSoundEnabled),
+                  onTap: () => svc.updateSettings(
+                    svc.settings.copyWith(
+                      tickEnabled: !svc.settings.tickEnabled),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        svc.tickSoundEnabled
+                        svc.settings.tickEnabled
                             ? Icons.volume_up_rounded
                             : Icons.volume_off_rounded,
-                        color: svc.tickSoundEnabled
+                        color: svc.settings.tickEnabled
                             ? Colors.white38
                             : Colors.white24,
                         size: 14,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        svc.tickSoundEnabled ? 'Tick on' : 'Tick off',
+                        svc.settings.tickEnabled ? 'Tick on' : 'Tick off',
                         style: TextStyle(
-                          color: svc.tickSoundEnabled
+                          color: svc.settings.tickEnabled
                               ? Colors.white38
                               : Colors.white24,
                           fontSize: 11,
@@ -283,16 +285,13 @@ class _LiveBanner extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.open_in_full_rounded,
-                      color: color.withValues(alpha: 0.5),
-                      size: 12,
-                    ),
+                    Icon(Icons.open_in_full_rounded,
+                        color: color.withValues(alpha: 0.5), size: 12),
                     const SizedBox(width: 4),
                     Text(
                       'Tap to open',
                       style: TextStyle(
-                        color: color.withValues(alpha: 0.5),
+                        color:    color.withValues(alpha: 0.5),
                         fontSize: 11,
                       ),
                     ),
@@ -318,7 +317,7 @@ class _OtherProjectBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
+        color:        Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white10),
       ),
@@ -362,13 +361,14 @@ class _StartButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.timer_rounded, color: project.priority.color, size: 18),
+            Icon(Icons.timer_rounded,
+                color: project.priority.color, size: 18),
             const SizedBox(width: 8),
             Text(
               'Start Focus Session',
               style: TextStyle(
-                color: project.priority.color,
-                fontSize: 14,
+                color:      project.priority.color,
+                fontSize:   14,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -382,8 +382,8 @@ class _StartButton extends StatelessWidget {
 // ── Quick control pill ────────────────────────────────────────────
 
 class _QuickControl extends StatelessWidget {
-  final IconData icon;
-  final Color color;
+  final IconData     icon;
+  final Color        color;
   final VoidCallback onTap;
 
   const _QuickControl({
@@ -397,11 +397,11 @@ class _QuickControl extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 36,
+        width:  36,
         height: 36,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          shape: BoxShape.circle,
+          color:  color.withValues(alpha: 0.12),
+          shape:  BoxShape.circle,
           border: Border.all(color: color.withValues(alpha: 0.30)),
         ),
         child: Icon(icon, color: color, size: 18),

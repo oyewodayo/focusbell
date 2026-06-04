@@ -15,8 +15,8 @@ class DatabaseHelper {
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
 
-  static const String _dbName           = 'focusbell.db';
-  static const int    _dbVersion        = 5; // bumped: tasks.due_date column, projects.is_archived column
+  static const String _dbName            = 'focusbell.db';
+  static const int    _dbVersion         = 7; // v7: project note columns
   static const String _legacyProjectsKey = 'projects';
 
   Database? _db;
@@ -32,7 +32,6 @@ class DatabaseHelper {
     try {
       final dbsPath = await getDatabasesPath();
       final dbPath  = join(dbsPath, _dbName);
-
       debugPrint('[DB] Opening database at: $dbPath');
 
       final db = await openDatabase(
@@ -44,9 +43,7 @@ class DatabaseHelper {
       );
 
       debugPrint('[DB] Database opened successfully (version $_dbVersion).');
-
       await _migrateFromSharedPreferences(db);
-
       return db;
     } catch (e, stack) {
       debugPrint('[DB] FATAL: Failed to open database.\n$e\n$stack');
@@ -58,31 +55,35 @@ class DatabaseHelper {
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
-  /// Full schema for a fresh install.
   Future<void> _onCreate(Database db, int version) async {
     debugPrint('[DB] Creating schema (v$version)...');
 
     await db.execute('''
       CREATE TABLE projects (
-        id          TEXT    PRIMARY KEY,
-        name        TEXT    NOT NULL,
-        description TEXT    NOT NULL DEFAULT '',
-        priority    INTEGER NOT NULL,
-        is_active   INTEGER NOT NULL DEFAULT 0,
-        sort_order  INTEGER NOT NULL DEFAULT 0,
-        created_at  TEXT    NOT NULL
+        id              TEXT    PRIMARY KEY,
+        name            TEXT    NOT NULL,
+        description     TEXT    NOT NULL DEFAULT '',
+        priority        INTEGER NOT NULL,
+        is_active       INTEGER NOT NULL DEFAULT 0,
+        sort_order      INTEGER NOT NULL DEFAULT 0,
+        is_archived     INTEGER NOT NULL DEFAULT 0,
+        note            TEXT,
+        note_updated_at TEXT,
+        created_at      TEXT    NOT NULL
       )
     ''');
 
     await db.execute('''
       CREATE TABLE tasks (
-        id         TEXT    PRIMARY KEY,
-        project_id TEXT    NOT NULL
-                           REFERENCES projects(id) ON DELETE CASCADE,
-        title      TEXT    NOT NULL,
-        status     INTEGER NOT NULL DEFAULT 0,
-        due_date   TEXT,
-        created_at TEXT    NOT NULL
+        id              TEXT    PRIMARY KEY,
+        project_id      TEXT    NOT NULL
+                                REFERENCES projects(id) ON DELETE CASCADE,
+        title           TEXT    NOT NULL,
+        status          INTEGER NOT NULL DEFAULT 0,
+        due_date        TEXT,
+        note            TEXT,
+        note_updated_at TEXT,
+        created_at      TEXT    NOT NULL
       )
     ''');
 
@@ -103,7 +104,7 @@ class DatabaseHelper {
         completed       INTEGER NOT NULL DEFAULT 0
       )
     ''');
- 
+
     await db.execute(
       'CREATE INDEX idx_focus_sessions_project_id ON focus_sessions(project_id)',
     );
@@ -131,7 +132,6 @@ class DatabaseHelper {
     }
 
     if (oldVersion < 3) {
-      // Add optional due_date column to tasks.
       await db.execute('ALTER TABLE tasks ADD COLUMN due_date TEXT');
       debugPrint('[DB] Migration v3: due_date column added to tasks.');
     }
@@ -166,11 +166,22 @@ class DatabaseHelper {
       );
       debugPrint('[DB] Migration v5: focus_sessions table created.');
     }
+
+    if (oldVersion < 6) {
+      await db.execute('ALTER TABLE tasks ADD COLUMN note TEXT');
+      await db.execute('ALTER TABLE tasks ADD COLUMN note_updated_at TEXT');
+      debugPrint('[DB] Migration v6: note columns added to tasks.');
+    }
+
+    if (oldVersion < 7) {
+      await db.execute('ALTER TABLE projects ADD COLUMN note TEXT');
+      await db.execute('ALTER TABLE projects ADD COLUMN note_updated_at TEXT');
+      debugPrint('[DB] Migration v7: note columns added to projects.');
+    }
   }
 
-
   // ── Focus sessions ────────────────────────────────────────────
- 
+
   Future<void> insertFocusSession(FocusSession session) async {
     final db = await database;
     await db.insert(
@@ -190,20 +201,18 @@ class DatabaseHelper {
     );
     debugPrint('[DB] insertFocusSession: ${session.id} (${session.actualSeconds}s)');
   }
- 
+
   Future<List<FocusSession>> fetchSessionsForProject(String projectId) async {
     final db   = await database;
     final rows = await db.query(
       'focus_sessions',
-      where:    'project_id = ?',
+      where:     'project_id = ?',
       whereArgs: [projectId],
-      orderBy:  'started_at DESC',
+      orderBy:   'started_at DESC',
     );
     return rows.map(_rowToSession).toList();
   }
- 
-  /// Fetches all sessions across projects whose [started_at] falls
-  /// within [from] (inclusive) and [to] (exclusive).
+
   Future<List<FocusSession>> fetchSessionsInRange(
       DateTime from, DateTime to) async {
     final db   = await database;
@@ -215,7 +224,7 @@ class DatabaseHelper {
     );
     return rows.map(_rowToSession).toList();
   }
- 
+
   Future<void> deleteSessionsForProject(String projectId) async {
     final db    = await database;
     final count = await db.delete(
@@ -225,7 +234,7 @@ class DatabaseHelper {
     );
     debugPrint('[DB] deleteSessionsForProject: $projectId — $count deleted.');
   }
- 
+
   FocusSession _rowToSession(Map<String, dynamic> row) => FocusSession(
         id:             row['id']              as String,
         projectId:      row['project_id']      as String,
@@ -238,7 +247,7 @@ class DatabaseHelper {
         completed:      (row['completed'] as int) == 1,
       );
 
-  // ── SharedPreferences migration ────────────────────────────────
+  // ── SharedPreferences migration ───────────────────────────────
 
   Future<void> _migrateFromSharedPreferences(Database db) async {
     SharedPreferences prefs;
@@ -299,18 +308,23 @@ class DatabaseHelper {
 
     final rows = await db.rawQuery('''
       SELECT
-        p.id          AS p_id,
-        p.name        AS p_name,
-        p.description AS p_description,
-        p.priority    AS p_priority,
-        p.is_active   AS p_is_active,
-        p.sort_order  AS p_sort_order,
-        p.created_at  AS p_created_at,
-        t.id          AS t_id,
-        t.title       AS t_title,
-        t.status      AS t_status,
-        t.due_date    AS t_due_date,
-        t.created_at  AS t_created_at
+        p.id              AS p_id,
+        p.name            AS p_name,
+        p.description     AS p_description,
+        p.priority        AS p_priority,
+        p.is_active       AS p_is_active,
+        p.sort_order      AS p_sort_order,
+        p.is_archived     AS p_is_archived,
+        p.note            AS p_note,
+        p.note_updated_at AS p_note_updated_at,
+        p.created_at      AS p_created_at,
+        t.id              AS t_id,
+        t.title           AS t_title,
+        t.status          AS t_status,
+        t.due_date        AS t_due_date,
+        t.note            AS t_note,
+        t.note_updated_at AS t_note_updated_at,
+        t.created_at      AS t_created_at
       FROM projects p
       LEFT JOIN tasks t ON t.project_id = p.id
       ORDER BY p.sort_order ASC, t.created_at ASC
@@ -328,7 +342,7 @@ class DatabaseHelper {
   }
 
   Future<void> updateProject(Project project) async {
-    final db = await database;
+    final db    = await database;
     final count = await db.update(
       'projects',
       _projectToRow(project),
@@ -339,7 +353,7 @@ class DatabaseHelper {
   }
 
   Future<void> deleteProject(String id) async {
-    final db = await database;
+    final db    = await database;
     final count = await db.delete('projects',
         where: 'id = ?', whereArgs: [id]);
     debugPrint('[DB] deleteProject: $id — $count row(s) deleted (cascade removes tasks).');
@@ -365,7 +379,7 @@ class DatabaseHelper {
   }
 
   Future<void> updateTask(Task task, String projectId) async {
-    final db = await database;
+    final db    = await database;
     final count = await db.update(
       'tasks',
       _taskToRow(task, projectId),
@@ -376,10 +390,27 @@ class DatabaseHelper {
   }
 
   Future<void> deleteTask(String taskId) async {
-    final db = await database;
+    final db    = await database;
     final count = await db.delete('tasks',
         where: 'id = ?', whereArgs: [taskId]);
     debugPrint('[DB] deleteTask: $taskId — $count row(s) deleted.');
+  }
+
+  /// Efficient note-only update — only touches the two note columns.
+  Future<void> updateTaskNote(String taskId, String? note) async {
+    final db = await database;
+    await db.update(
+      'tasks',
+      {
+        'note':            note,
+        'note_updated_at': note != null
+            ? DateTime.now().toUtc().toIso8601String()
+            : null,
+      },
+      where:     'id = ?',
+      whereArgs: [taskId],
+    );
+    debugPrint('[DB] updateTaskNote: $taskId — ${note == null ? "cleared" : "saved"}');
   }
 
   Future<void> reorderProjects(List<String> orderedIds) async {
@@ -396,22 +427,27 @@ class DatabaseHelper {
   // ── Row mappers ───────────────────────────────────────────────
 
   Map<String, dynamic> _projectToRow(Project proj) => {
-        'id':          proj.id,
-        'name':        proj.name,
-        'description': proj.description,
-        'priority':    proj.priority.index,
-        'is_active':   proj.isActive ? 1 : 0,
-        'sort_order':  proj.sortOrder,
-        'created_at':  proj.createdAt.toIso8601String(),
+        'id':              proj.id,
+        'name':            proj.name,
+        'description':     proj.description,
+        'priority':        proj.priority.index,
+        'is_active':       proj.isActive   ? 1 : 0,
+        'is_archived':     proj.isArchived ? 1 : 0,
+        'sort_order':      proj.sortOrder,
+        'created_at':      proj.createdAt.toIso8601String(),
+        'note':            proj.note,
+        'note_updated_at': proj.noteUpdatedAt?.toIso8601String(),
       };
 
   Map<String, dynamic> _taskToRow(Task t, String projectId) => {
-        'id':         t.id,
-        'project_id': projectId,
-        'title':      t.title,
-        'status':     t.status.index,
-        'due_date':   t.dueDate?.toIso8601String(),
-        'created_at': t.createdAt.toIso8601String(),
+        'id':              t.id,
+        'project_id':      projectId,
+        'title':           t.title,
+        'status':          t.status.index,
+        'due_date':        t.dueDate?.toIso8601String(),
+        'note':            t.note,
+        'note_updated_at': t.noteUpdatedAt?.toIso8601String(),
+        'created_at':      t.createdAt.toIso8601String(),
       };
 
   List<Project> _rowsToProjects(List<Map<String, dynamic>> rows) {
@@ -423,25 +459,35 @@ class DatabaseHelper {
       projectMap.putIfAbsent(
         projectId,
         () => _ProjectBuilder(
-          id:          projectId,
-          name:        row['p_name']        as String,
-          description: row['p_description'] as String,
-          priority:    Priority.values[row['p_priority'] as int],
-          isActive:    (row['p_is_active']  as int) == 1,
-          sortOrder:   row['p_sort_order']  as int,
-          createdAt:   DateTime.parse(row['p_created_at'] as String),
+          id:            projectId,
+          name:          row['p_name']        as String,
+          description:   row['p_description'] as String,
+          priority:      Priority.values[row['p_priority'] as int],
+          isActive:      (row['p_is_active']  as int) == 1,
+          isArchived:    (row['p_is_archived'] as int? ?? 0) == 1,
+          sortOrder:     row['p_sort_order']  as int,
+          createdAt:     DateTime.parse(row['p_created_at'] as String),
+          note:          row['p_note'] as String?,
+          noteUpdatedAt: (row['p_note_updated_at'] as String?) == null
+              ? null
+              : DateTime.tryParse(row['p_note_updated_at'] as String),
         ),
       );
 
       final taskId = row['t_id'];
       if (taskId != null) {
-        final dueDateRaw = row['t_due_date'] as String?;
         projectMap[projectId]!.tasks.add(Task(
-          id:        taskId           as String,
-          title:     row['t_title']   as String,
-          status:    TaskStatus.values[row['t_status'] as int],
-          createdAt: DateTime.parse(row['t_created_at'] as String),
-          dueDate:   dueDateRaw == null ? null : DateTime.tryParse(dueDateRaw),
+          id:            taskId as String,
+          title:         row['t_title']  as String,
+          status:        TaskStatus.values[row['t_status'] as int],
+          createdAt:     DateTime.parse(row['t_created_at'] as String),
+          dueDate:       (row['t_due_date'] as String?) == null
+              ? null
+              : DateTime.tryParse(row['t_due_date'] as String),
+          note:          row['t_note'] as String?,
+          noteUpdatedAt: (row['t_note_updated_at'] as String?) == null
+              ? null
+              : DateTime.tryParse(row['t_note_updated_at'] as String),
         ));
       }
     }
@@ -466,8 +512,11 @@ class _ProjectBuilder {
   final String     description;
   final Priority   priority;
   final bool       isActive;
+  final bool       isArchived;
   final int        sortOrder;
   final DateTime   createdAt;
+  final String?    note;
+  final DateTime?  noteUpdatedAt;
   final List<Task> tasks = [];
 
   _ProjectBuilder({
@@ -476,18 +525,24 @@ class _ProjectBuilder {
     required this.description,
     required this.priority,
     required this.isActive,
+    required this.isArchived,
     required this.sortOrder,
     required this.createdAt,
+    this.note,
+    this.noteUpdatedAt,
   });
 
   Project build() => Project(
-        id:          id,
-        name:        name,
-        description: description,
-        priority:    priority,
-        isActive:    isActive,
-        sortOrder:   sortOrder,
-        createdAt:   createdAt,
-        tasks:       List.unmodifiable(tasks),
+        id:            id,
+        name:          name,
+        description:   description,
+        priority:      priority,
+        isActive:      isActive,
+        isArchived:    isArchived,
+        sortOrder:     sortOrder,
+        createdAt:     createdAt,
+        tasks:         List.unmodifiable(tasks),
+        note:          note,
+        noteUpdatedAt: noteUpdatedAt,
       );
 }

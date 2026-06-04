@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  android/app/src/main/res/xml/focus_widget_info.xml
+
+  minWidth / minHeight — fits a 3×1 cell on most launchers (≈180 × 60 dp)
+  updatePeriodMillis   — 1 800 000 ms = 30 min (Android minimum is 30 min;
+                         we push imperatively from Flutter anyway, so this is
+                         only a fallback when the app hasn't run recently)
+  widgetCategory       — home_screen|keyguard enables lock-screen placement
+                         on Android 13+ without extra code
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="60dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="1"
+    android:updatePeriodMillis="1800000"
+    android:initialLayout="@layout/focus_widget_small"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen|keyguard"
+    android:description="@string/widget_description" />

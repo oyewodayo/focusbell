@@ -128,17 +128,20 @@ class Task {
   /// Stable notification ID stored in the DB so we can cancel reliably
   /// without hash collisions. Assigned by [StorageService] on insert.
   final int? notifId;
+  final String?   note;
+  final DateTime? noteUpdatedAt;
 
   const Task({
     required this.id,
     required this.title,
-    this.status = TaskStatus.todo,
+    this.status          = TaskStatus.todo,
     required this.createdAt,
     this.dueDate,
-    this.reminderOffset = ReminderOffset.atTime,
+    this.reminderOffset  = ReminderOffset.atTime,
     this.notifId,
+    this.note,            // ← NEW
+    this.noteUpdatedAt,   // ← NEW
   });
-
   // ── Derived helpers ──────────────────────────────────────────
 
   /// True when [dueDate] is in the past and the task is not completed.
@@ -163,47 +166,57 @@ class Task {
   // ── copyWith ─────────────────────────────────────────────────
 
   /// Pass [clearDueDate] = true to explicitly set [dueDate] to null.
-  Task copyWith({
-    String? title,
-    TaskStatus? status,
-    DateTime? dueDate,
-    bool clearDueDate = false,
+ Task copyWith({
+    String?        title,
+    TaskStatus?    status,
+    DateTime?      dueDate,
+    bool           clearDueDate   = false,
     ReminderOffset? reminderOffset,
-    int? notifId,
+    int?           notifId,
+    String?        note,
+    bool           clearNote      = false,
+    DateTime?      noteUpdatedAt,
   }) =>
       Task(
-        id: id,
-        title: title ?? this.title,
-        status: status ?? this.status,
-        createdAt: createdAt,
-        dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
+        id:             id,
+        title:          title          ?? this.title,
+        status:         status         ?? this.status,
+        createdAt:      createdAt,
+        dueDate:        clearDueDate ? null : (dueDate ?? this.dueDate),
         reminderOffset: reminderOffset ?? this.reminderOffset,
-        notifId: notifId ?? this.notifId,
+        notifId:        notifId        ?? this.notifId,
+        note:           clearNote ? null : (note ?? this.note),
+        noteUpdatedAt:  noteUpdatedAt  ?? this.noteUpdatedAt,
       );
-
   // ── Serialisation ─────────────────────────────────────────────
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'title': title,
-        'status': status.index,
-        'createdAt': createdAt.toIso8601String(),
-        'dueDate': dueDate?.toIso8601String(),
+ Map<String, dynamic> toJson() => {
+        'id':             id,
+        'title':          title,
+        'status':         status.index,
+        'createdAt':      createdAt.toIso8601String(),
+        'dueDate':        dueDate?.toIso8601String(),
         'reminderOffset': reminderOffset.index,
-        'notifId': notifId,
+        'notifId':        notifId,
+        'note':           note,
+        'noteUpdatedAt':  noteUpdatedAt?.toIso8601String(),
       };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
-        id: json['id'] as String,
-        title: json['title'] as String,
-        status: TaskStatus.values[json['status'] as int? ?? 0],
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        dueDate: json['dueDate'] == null
+        id:             json['id']    as String,
+        title:          json['title'] as String,
+        status:         TaskStatus.values[json['status'] as int? ?? 0],
+        createdAt:      DateTime.parse(json['createdAt'] as String),
+        dueDate:        json['dueDate'] == null
             ? null
             : DateTime.tryParse(json['dueDate'] as String),
         reminderOffset: ReminderOffset
             .values[json['reminderOffset'] as int? ?? 0],
-        notifId: json['notifId'] as int?,
+        notifId:        json['notifId'] as int?,
+        note:           json['note']          as String?,
+        noteUpdatedAt:  json['noteUpdatedAt'] == null
+            ? null
+            : DateTime.tryParse(json['noteUpdatedAt'] as String),
       );
 }
 
@@ -216,9 +229,11 @@ class Project {
   final Priority priority;
   final bool isActive;
   final int sortOrder;
-  final DateTime createdAt;
   final bool isArchived;
   final List<Task> tasks;
+  final String?   note;
+  final DateTime? noteUpdatedAt;
+  final DateTime createdAt;
 
   const Project({
     required this.id,
@@ -227,15 +242,19 @@ class Project {
     required this.priority,
     this.isActive = false,
     this.sortOrder = 0,
-    required this.createdAt,
     this.isArchived = false,
     this.tasks = const [],
+    this.note,            // ← NEW
+    this.noteUpdatedAt, 
+    required this.createdAt,
   });
 
   // ── Derived helpers ──────────────────────────────────────────
 
   /// True when any non-completed task is overdue.
   bool get hasOverdueTasks => tasks.any((t) => t.isOverdue);
+
+  bool get hasNote => note != null && note!.isNotEmpty;
 
   /// Number of non-completed tasks that are overdue.
   int get overdueCount => tasks.where((t) => t.isOverdue).length;
@@ -250,48 +269,60 @@ class Project {
     return overdue.isEmpty ? null : overdue.first.dueDate;
   }
 
-  Project copyWith({
-    String? name,
-    String? description,
-    Priority? priority,
-    bool? isActive,
-    int? sortOrder,
-    bool? isArchived,
+ Project copyWith({
+    String?     name,
+    String?     description,
+    Priority?   priority,
+    bool?       isActive,
+    int?        sortOrder,
+    bool?       isArchived,
     List<Task>? tasks,
+    String?     note,
+    bool        clearNote     = false,   // ← NEW: pass true to set note=null
+    DateTime?   noteUpdatedAt,
   }) =>
       Project(
-        id: id,
-        name: name ?? this.name,
-        description: description ?? this.description,
-        priority: priority ?? this.priority,
-        isActive: isActive ?? this.isActive,
-        sortOrder: sortOrder ?? this.sortOrder,
-        createdAt: createdAt,
-        isArchived: isArchived ?? this.isArchived,
-        tasks: tasks ?? this.tasks,
+        id:            id,
+        name:          name          ?? this.name,
+        description:   description   ?? this.description,
+        priority:      priority      ?? this.priority,
+        isActive:      isActive      ?? this.isActive,
+        sortOrder:     sortOrder     ?? this.sortOrder,
+        createdAt:     createdAt,
+        isArchived:    isArchived    ?? this.isArchived,
+        tasks:         tasks         ?? this.tasks,
+        note:          clearNote ? null : (note ?? this.note),
+        noteUpdatedAt: noteUpdatedAt ?? this.noteUpdatedAt,
       );
 
+
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'description': description,
-        'priority': priority.index,
-        'isActive': isActive,
-        'sortOrder': sortOrder,
-        'createdAt': createdAt.toIso8601String(),
-        'tasks': tasks.map((t) => t.toJson()).toList(),
+        'id':            id,
+        'name':          name,
+        'description':   description,
+        'priority':      priority.index,
+        'isActive':      isActive,
+        'sortOrder':     sortOrder,
+        'createdAt':     createdAt.toIso8601String(),
+        'tasks':         tasks.map((t) => t.toJson()).toList(),
+        'note':          note,
+        'noteUpdatedAt': noteUpdatedAt?.toIso8601String(),
       };
 
-  factory Project.fromJson(Map<String, dynamic> json) => Project(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        description: json['description'] as String? ?? '',
-        priority: Priority.values[json['priority'] as int],
-        isActive: json['isActive'] as bool? ?? false,
-        sortOrder: json['sort_order'] as int? ?? 0,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        tasks: (json['tasks'] as List<dynamic>? ?? [])
+   factory Project.fromJson(Map<String, dynamic> json) => Project(
+        id:            json['id']          as String,
+        name:          json['name']        as String,
+        description:   json['description'] as String? ?? '',
+        priority:      Priority.values[json['priority'] as int],
+        isActive:      json['isActive']    as bool? ?? false,
+        sortOrder:     json['sort_order']  as int?  ?? 0,
+        createdAt:     DateTime.parse(json['createdAt'] as String),
+        tasks:         (json['tasks'] as List<dynamic>? ?? [])
             .map((e) => Task.fromJson(e as Map<String, dynamic>))
             .toList(),
+        note:          json['note']          as String?,
+        noteUpdatedAt: json['noteUpdatedAt'] == null
+            ? null
+            : DateTime.tryParse(json['noteUpdatedAt'] as String),
       );
 }

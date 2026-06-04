@@ -23,6 +23,10 @@ dependencies:
   uuid: ^4.5.3
   intl: ^0.19.0   
   audioplayers: ^6.7.0
+  image_picker: ^1.2.2
+  record: ^7.0.0
+  home_widget: ^0.6.0
+  
  
 
 dev_dependencies:

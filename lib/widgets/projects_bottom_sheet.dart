@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:focusbell/widgets/project_note_sheet.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../utils/app_toast.dart';
@@ -789,43 +790,63 @@ class _ProjectTileState extends State<_ProjectTile> {
               ),
               child: Row(
                 children: [
-                  const Text('Actions',
-                      style: TextStyle(
-                          color: Colors.white30, fontSize: 11)),
-                  const Spacer(),
-                  // ── Archive action ──────────────────────
-                  _TrayButton(
-                    icon: Icons.inventory_2_outlined,
-                    label: 'Archive',
-                    color: const Color(0xFFFF9F0A),
-                    onTap: () async {
-                      _closeTray();
-                      await ctrl.archiveProject(p.id);
-                      if (context.mounted) {
-                        AppToast.show(context,
-                            msg: '"${p.name}" archived',
-                            backgroundColor:
-                                const Color(0xFF1A1200),
-                            textColor: const Color(0xFFFF9F0A));
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 8),
-                  _TrayButton(
-                    icon: Icons.visibility_outlined,
-                    label: 'View',
-                    color: const Color(0xFF64D2FF),
-                    onTap: () => _showViewSheet(context),
-                  ),
-                  const SizedBox(width: 8),
-                  _TrayButton(
-                    icon: Icons.edit_outlined,
-                    label: 'Edit',
-                    color: const Color(0xFFFFD60A),
-                    onTap: () => _showEditSheet(context),
-                  ),
+                    const Text('Actions',
+                        style: TextStyle(color: Colors.white30, fontSize: 11)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                    child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                        children: [
+                            // ── Note ──────────────────────────────────────────────
+                            _TrayButton(
+                            icon:  Icons.sticky_note_2_outlined,
+                            label: 'Note',
+                            color: const Color(0xFF0A84FF),
+                            onTap: () {
+                                _closeTray();
+                                showProjectNoteSheet(context, project: p);
+                            },
+                            ),
+                            const SizedBox(width: 8),
+                            // ── Archive ───────────────────────────────────────────
+                            _TrayButton(
+                            icon:  Icons.inventory_2_outlined,
+                            label: 'Archive',
+                            color: const Color(0xFFFF9F0A),
+                            onTap: () async {
+                                _closeTray();
+                                await ctrl.archiveProject(p.id);
+                                if (context.mounted) {
+                                AppToast.show(context,
+                                    msg: '"${p.name}" archived',
+                                    backgroundColor: const Color(0xFF1A1200),
+                                    textColor: const Color(0xFFFF9F0A));
+                                }
+                            },
+                            ),
+                            const SizedBox(width: 8),
+                            // ── View ──────────────────────────────────────────────
+                            _TrayButton(
+                            icon:  Icons.visibility_outlined,
+                            label: 'View',
+                            color: const Color(0xFF64D2FF),
+                            onTap: () => _showViewSheet(context),
+                            ),
+                            const SizedBox(width: 8),
+                            // ── Edit ──────────────────────────────────────────────
+                            _TrayButton(
+                            icon:  Icons.edit_outlined,
+                            label: 'Edit',
+                            color: const Color(0xFFFFD60A),
+                            onTap: () => _showEditSheet(context),
+                            ),
+                        ],
+                        ),
+                    ),
+                    ),
                 ],
-              ),
+                ),
             ),
           ),
         ],

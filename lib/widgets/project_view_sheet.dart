@@ -54,61 +54,56 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
 
   // ── Diffing engine ────────────────────────────────────────────
 
-  void _onControllerUpdate() {
-    final newSorted = _sorted(_liveProject.tasks);
+ void _onControllerUpdate() {
+  final newSorted = _sorted(_liveProject.tasks);
+  final oldIds = _sortedTasks.map((t) => t.id).toList();
+  final newIds = newSorted.map((t) => t.id).toSet();
+  final oldIdsSet = oldIds.toSet();
 
-    for (int i = _sortedTasks.length - 1; i >= 0; i--) {
-      final old = _sortedTasks[i];
-      if (!newSorted.any((t) => t.id == old.id)) {
-        final removed = _sortedTasks.removeAt(i);
-        _listKey.currentState?.removeItem(
-          i,
-          (ctx, animation) => _buildAnimatedRow(removed, animation),
-          duration: const Duration(milliseconds: 250),
-        );
-      }
+  // ── Pass 1: Remove deleted tasks (animated) ───────────────────
+  for (int i = _sortedTasks.length - 1; i >= 0; i--) {
+    final old = _sortedTasks[i];
+    if (!newIds.contains(old.id)) {
+      final removed = _sortedTasks.removeAt(i);
+      _listKey.currentState?.removeItem(
+        i,
+        (ctx, animation) => _buildAnimatedRow(removed, animation),
+        duration: const Duration(milliseconds: 250),
+      );
     }
-
-    for (int i = 0; i < newSorted.length; i++) {
-      final newTask = newSorted[i];
-      if (_sortedTasks.indexWhere((t) => t.id == newTask.id) == -1) {
-        _sortedTasks.insert(i, newTask);
-        _listKey.currentState?.insertItem(
-          i,
-          duration: const Duration(milliseconds: 250),
-        );
-      }
-    }
-
-    for (int newIdx = 0; newIdx < newSorted.length; newIdx++) {
-      final newTask = newSorted[newIdx];
-      final oldIdx = _sortedTasks.indexWhere((t) => t.id == newTask.id);
-      if (oldIdx == -1) continue;
-
-      _sortedTasks[oldIdx] = newTask;
-
-      if (oldIdx != newIdx) {
-        final moving = _sortedTasks.removeAt(oldIdx);
-        _listKey.currentState?.removeItem(
-          oldIdx,
-          (ctx, animation) => _buildAnimatedRow(moving, animation),
-          duration: const Duration(milliseconds: 200),
-        );
-
-        Future.delayed(const Duration(milliseconds: 160), () {
-          if (!mounted) return;
-          _sortedTasks.insert(newIdx, newTask);
-          _listKey.currentState?.insertItem(
-            newIdx,
-            duration: const Duration(milliseconds: 250),
-          );
-        });
-        break;
-      }
-    }
-
-    if (mounted) setState(() {});
   }
+
+  // ── Pass 2: Insert brand-new tasks (animated) ─────────────────
+  for (int i = 0; i < newSorted.length; i++) {
+    final newTask = newSorted[i];
+    if (!oldIdsSet.contains(newTask.id)) {
+      _sortedTasks.insert(i, newTask);
+      _listKey.currentState?.insertItem(
+        i,
+        duration: const Duration(milliseconds: 250),
+      );
+    }
+  }
+
+  // ── Pass 3: Update data + silently reorder (no animation) ─────
+  // Tasks already exist in both old and new — just rebuild in-place.
+  // AnimatedList doesn't support reorder; we replace _sortedTasks wholesale
+  // and let setState re-render each existing item with updated data.
+  for (int i = 0; i < newSorted.length; i++) {
+    final newTask = newSorted[i];
+    final oldIdx = _sortedTasks.indexWhere((t) => t.id == newTask.id);
+    if (oldIdx != -1 && oldIdx != i) {
+      // Silently move in the backing list to match new sort order
+      final moving = _sortedTasks.removeAt(oldIdx);
+      _sortedTasks.insert(i, moving);
+    }
+    // Update data
+    final idx = _sortedTasks.indexWhere((t) => t.id == newTask.id);
+    if (idx != -1) _sortedTasks[idx] = newTask;
+  }
+
+  if (mounted) setState(() {});
+}
 
   // ── Add / Edit task — bottom sheet ────────────────────────────
 

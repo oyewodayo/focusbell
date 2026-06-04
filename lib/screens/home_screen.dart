@@ -10,6 +10,7 @@
 //     fired while app was fully killed and relaunched
 
 import 'package:flutter/material.dart';
+import 'package:focusbell/widgets/project_note_sheet.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../services/focus_timer_service.dart';
@@ -113,7 +114,7 @@ class _HomeScreenState extends State<HomeScreen>
                       const Text(
                         'FocusBell',
                         style: TextStyle(
-                          color:         Colors.white38,
+                          color:         Colors.white30,
                           fontSize:      13,
                           fontWeight:    FontWeight.w600,
                           letterSpacing: 1.5,
@@ -121,6 +122,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       const Spacer(),
                       _NotifBadge(enabled: settings.notificationsEnabled),
+
                     ],
                   ),
                 ),
@@ -149,9 +151,9 @@ class _HomeScreenState extends State<HomeScreen>
                         child: _ActionButton(
                           icon:  Icons.layers_outlined,
                           label: 'Projects',
-                          count: _ctrl.projects
-                              .where((p) => !p.isArchived)
-                              .length,
+                        //   count: _ctrl.projects
+                        //       .where((p) => !p.isArchived)
+                        //       .length,
                           onTap: _openProjects,
                         ),
                       ),
@@ -290,6 +292,15 @@ class _ActiveCard extends StatelessWidget {
               label:  'View',
               color:  const Color(0xFF64D2FF),
             ),
+            _TrayButton(
+            icon:  Icons.sticky_note_2_outlined,
+            label: 'Note',
+            color: const Color(0xFF0A84FF),
+            onTap: () {               
+                showProjectNoteSheet(context, project: project);   // Option A
+                // OR: pick a task and call showTaskNoteSheet(...)  // Option B
+            },
+            ),
             if (hasTasks) ...[
               const SizedBox(width: 10),
               _CardIconButton(
@@ -328,6 +339,50 @@ class _ActiveCard extends StatelessWidget {
     );
   }
 }
+
+
+class _TrayButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _TrayButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 5),
+            Text(label,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 
 // ── Small icon+label pill ─────────────────────────────────────────
 
@@ -605,4 +660,11 @@ class _NotifBadge extends StatelessWidget {
       ),
     );
   }
+}
+
+void showProjectNoteSheet(BuildContext context, {required Project project}) {
+  Navigator.of(context).push(MaterialPageRoute(
+    fullscreenDialog: true,
+    builder: (_) => ProjectNoteSheet(project: project),
+  ));
 }

@@ -68,6 +68,9 @@ class StorageService {
   Future<void> deleteTask(String taskId) =>
       DatabaseHelper.instance.deleteTask(taskId);
 
+  Future<void> updateTaskNote(String taskId, String? note) =>
+      DatabaseHelper.instance.updateTaskNote(taskId, note);
+
   // ── Settings ──────────────────────────────────────────────────
 
   AppSettings loadSettings() {
@@ -100,4 +103,6 @@ class StorageService {
     if (projectId == null) return all;
     return all.where((s) => s.projectId == projectId).toList();
   }
+
+  
 }
