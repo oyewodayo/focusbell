@@ -808,23 +808,7 @@ class _ProjectTileState extends State<_ProjectTile> {
                                 showProjectNoteSheet(context, project: p);
                             },
                             ),
-                            const SizedBox(width: 8),
-                            // ── Archive ───────────────────────────────────────────
-                            _TrayButton(
-                            icon:  Icons.inventory_2_outlined,
-                            label: 'Archive',
-                            color: const Color(0xFFFF9F0A),
-                            onTap: () async {
-                                _closeTray();
-                                await ctrl.archiveProject(p.id);
-                                if (context.mounted) {
-                                AppToast.show(context,
-                                    msg: '"${p.name}" archived',
-                                    backgroundColor: const Color(0xFF1A1200),
-                                    textColor: const Color(0xFFFF9F0A));
-                                }
-                            },
-                            ),
+                           
                             const SizedBox(width: 8),
                             // ── View ──────────────────────────────────────────────
                             _TrayButton(
@@ -840,6 +824,23 @@ class _ProjectTileState extends State<_ProjectTile> {
                             label: 'Edit',
                             color: const Color(0xFFFFD60A),
                             onTap: () => _showEditSheet(context),
+                            ),
+                             const SizedBox(width: 8),
+                            // ── Archive ───────────────────────────────────────────
+                            _TrayButton(
+                            icon:  Icons.inventory_2_outlined,
+                            label: 'Archive',
+                            color: const Color(0xFFFF9F0A),
+                            onTap: () async {
+                                _closeTray();
+                                await ctrl.archiveProject(p.id);
+                                if (context.mounted) {
+                                AppToast.show(context,
+                                    msg: '"${p.name}" archived',
+                                    backgroundColor: const Color(0xFF1A1200),
+                                    textColor: const Color(0xFFFF9F0A));
+                                }
+                            },
                             ),
                         ],
                         ),

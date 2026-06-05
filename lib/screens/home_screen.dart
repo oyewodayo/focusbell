@@ -283,47 +283,51 @@ class _ActiveCard extends StatelessWidget {
         const SizedBox(height: 16),
 
         // ── View / task / overdue pills ───────────────────
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+        SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
             _CardIconButton(
-              onTap:  () => _openViewSheet(context),
-              icon:   Icons.open_in_new_rounded,
-              label:  'View',
-              color:  const Color(0xFF64D2FF),
+                onTap: () => _openViewSheet(context),
+                icon: Icons.open_in_new_rounded,
+                label: 'View',
+                color: const Color(0xFF64D2FF),
             ),
+            SizedBox(width: 5),
             _TrayButton(
-            icon:  Icons.sticky_note_2_outlined,
-            label: 'Note',
-            color: const Color(0xFF0A84FF),
-            onTap: () {               
-                showProjectNoteSheet(context, project: project);   // Option A
-                // OR: pick a task and call showTaskNoteSheet(...)  // Option B
-            },
+                icon: Icons.sticky_note_2_outlined,
+                label: 'Note',
+                color: const Color(0xFF0A84FF),
+                onTap: () {
+                showProjectNoteSheet(context, project: project);
+                },
             ),
+            
             if (hasTasks) ...[
-              const SizedBox(width: 10),
-              _CardIconButton(
-                onTap:  () => _openViewSheet(context),
-                icon:   Icons.checklist_rounded,
-                label:  incompleteTasks == 0
+                const SizedBox(width: 5),
+                _CardIconButton(
+                onTap: () => _openViewSheet(context),
+                icon: Icons.checklist_rounded,
+                label: incompleteTasks == 0
                     ? 'All done'
                     : '$incompleteTasks left',
-                color:  incompleteTasks == 0
+                color: incompleteTasks == 0
                     ? const Color(0xFF34C759)
                     : const Color(0xFFFFD60A),
-              ),
+                ),
             ],
             if (overdueTasks > 0) ...[
-              const SizedBox(width: 10),
-              _CardIconButton(
-                onTap:  () => _openViewSheet(context),
-                icon:   Icons.warning_amber_rounded,
-                label:  '$overdueTasks overdue',
-                color:  const Color(0xFFFF3B30),
-              ),
+                const SizedBox(width: 5),
+                _CardIconButton(
+                onTap: () => _openViewSheet(context),
+                icon: Icons.warning_amber_rounded,
+                label: '$overdueTasks overdue',
+                color: const Color(0xFFFF3B30),
+                ),
             ],
-          ],
+            ],
+        ),
         ),
 
         const SizedBox(height: 16),

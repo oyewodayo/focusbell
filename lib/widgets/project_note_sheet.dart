@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../models/project.dart';
 import '../services/app_controller.dart';
@@ -321,7 +323,7 @@ void handleTextChange(String newText) {
 // Block types
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum NoteBlockType { text, image, audio, checkbox }
+enum NoteBlockType { text, image, audio, checkbox, pdf }
 
 enum NoteAlign { left, center, right }
 
@@ -347,6 +349,12 @@ class NoteBlock {
   String? audioPath;
   Duration audioDuration;
 
+  // pdf
+    String? pdfPath;
+    String? pdfName;
+    int     pdfSizeBytes;
+    int     pdfPageCount;
+
   // checkbox
   bool checked;
 
@@ -365,6 +373,10 @@ class NoteBlock {
     this.audioPath,
     this.audioDuration = Duration.zero,
     this.checked = false,
+    this.pdfPath,
+    this.pdfName,
+    this.pdfSizeBytes = 0,
+    this.pdfPageCount = 0,
   }) : segs = segs ?? [];
 
   String get plainText => segs.map((s) => s.text).join();
@@ -399,7 +411,11 @@ class NoteBlock {
         if (isH4) 'h4': true,
         if (imagePath != null) 'img': imagePath,
         if (audioPath != null) 'aud': audioPath,
-        'dur': audioDuration.inMilliseconds,
+        if (pdfPath != null) 'pdf': pdfPath,
+        if (pdfName != null) 'pdfn': pdfName,
+        if (pdfSizeBytes > 0) 'pdfsz': pdfSizeBytes,
+        if (pdfPageCount > 0) 'pdfpg': pdfPageCount,
+                'dur': audioDuration.inMilliseconds,
         'chk': checked,
         // Legacy plain-text field for backward compat
         'tx': plainText,
@@ -408,6 +424,7 @@ class NoteBlock {
   factory NoteBlock.fromJson(Map<String, dynamic> j) {
     // Support both new segs format and old span/plain-text format.
     final segsRaw = j['segs'] as List<dynamic>?;
+    
     List<_Seg> segs;
     if (segsRaw != null && segsRaw.isNotEmpty) {
       segs = segsRaw
@@ -448,6 +465,10 @@ class NoteBlock {
       audioPath: j['aud'] as String?,
       audioDuration: Duration(milliseconds: j['dur'] as int? ?? 0),
       checked: j['chk'] as bool? ?? false,
+      pdfPath:      j['pdf']   as String?,
+        pdfName:      j['pdfn']  as String?,
+        pdfSizeBytes: j['pdfsz'] as int? ?? 0,
+        pdfPageCount: j['pdfpg'] as int? ?? 0,
     );
   }
 
@@ -683,46 +704,51 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
         (_) => _fn[nb.id]?.requestFocus());
   }
 
-  void _removeBlock(String id) {
+    void _removeBlock(String id) {
     final idx = _blocks.indexWhere((b) => b.id == id);
     if (idx == -1) return;
+
+    final block = _blocks[idx]; // ← capture before any mutation
 
     // If this is the only text block, just clear it.
     final textBlocks = _blocks.where(
         (b) => b.type == NoteBlockType.text || b.type == NoteBlockType.checkbox);
     if (_blocks.length <= 1 ||
         (textBlocks.length == 1 && textBlocks.first.id == id)) {
-      final ctrl = _ctrl[id];
-      if (ctrl != null) {
+        final ctrl = _ctrl[id];
+        if (ctrl != null) {
         ctrl.segs = [];
         ctrl.text = '';
         _blocks[idx].segs = [];
-      }
-      setState(() => _dirty = true);
-      return;
+        }
+        setState(() => _dirty = true);
+        return;
+    }
+
+    // Clean up copied PDF file before removing the block.
+    if (block.type == NoteBlockType.pdf && block.pdfPath != null) {
+        File(block.pdfPath!).delete().catchError((_) {});
     }
 
     setState(() {
-      _ctrl[id]?.dispose();
-      _fn[id]?.dispose();
-      _ctrl.remove(id);
-      _fn.remove(id);
-      _blocks.removeAt(idx);
+        _ctrl[id]?.dispose();
+        _fn[id]?.dispose();
+        _ctrl.remove(id);
+        _fn.remove(id);
+        _blocks.removeAt(idx);
     });
 
     // Focus the nearest preceding text/checkbox block, or the next one.
     final focusIdx = (idx - 1).clamp(0, _blocks.length - 1);
     final targetId = _blocks[focusIdx].id;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fn[targetId]?.requestFocus();
-      final c = _ctrl[targetId];
-      if (c != null) {
-        c.selection =
-            TextSelection.collapsed(offset: c.text.length);
-      }
+        _fn[targetId]?.requestFocus();
+        final c = _ctrl[targetId];
+        if (c != null) {
+        c.selection = TextSelection.collapsed(offset: c.text.length);
+        }
     });
-  }
-
+    }
   // ─────────────────────────────────────────────────────────────
   // Image picker
   // ─────────────────────────────────────────────────────────────
@@ -749,6 +775,58 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     WidgetsBinding.instance.addPostFrameCallback(
         (_) => _fn[textAfter.id]?.requestFocus());
   }
+
+  Future<void> _pickPdf() async {
+  final result = await FilePicker.platform.pickFiles(
+    type: FileType.custom,
+    allowedExtensions: ['pdf'],
+    withData: false,
+    withReadStream: false,
+  );
+  if (result == null || result.files.isEmpty) return;
+
+  final picked = result.files.first;
+  if (picked.path == null) return;
+
+  // Copy into app documents so it survives external moves/deletions.
+  final docsDir = await getApplicationDocumentsDirectory();
+  final destName =
+      '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+  final destPath = '${docsDir.path}/$destName';
+  await File(picked.path!).copy(destPath);
+
+  // Best-effort page count via byte scan (fast, no heavy dependency).
+  int pageCount = 0;
+  try {
+    final bytes = await File(destPath).readAsBytes();
+    final content = String.fromCharCodes(bytes);
+    final matches = RegExp(r'/Type\s*/Page[^s]').allMatches(content);
+    pageCount = matches.length;
+  } catch (_) {}
+
+  final pdfBlock = NoteBlock(
+    id:           _uid(),
+    type:         NoteBlockType.pdf,
+    pdfPath:      destPath,
+    pdfName:      picked.name,
+    pdfSizeBytes: picked.size,
+    pdfPageCount: pageCount,
+  );
+  final textAfter = NoteBlock(id: _uid(), type: NoteBlockType.text);
+
+  final idx = _activeId == null
+      ? _blocks.length
+      : _blocks.indexWhere((b) => b.id == _activeId) + 1;
+
+  setState(() {
+    _blocks.insert(idx, pdfBlock);
+    _blocks.insert(idx + 1, textAfter);
+    _dirty = true;
+  });
+  _initBlock(textAfter);
+  WidgetsBinding.instance
+      .addPostFrameCallback((_) => _fn[textAfter.id]?.requestFocus());
+}
 
   void _showImageOptions() {
     showModalBottomSheet(
@@ -1093,6 +1171,7 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
       NoteBlockType.checkbox => _buildCheckboxBlock(b, index),
       NoteBlockType.image => _buildImageBlock(b),
       NoteBlockType.audio => _buildAudioBlock(b),
+      NoteBlockType.pdf      => _buildPdfBlock(b),
     };
   }
 
@@ -1428,6 +1507,133 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     );
   }
 
+
+    Widget _buildPdfBlock(NoteBlock b) {
+        final name      = b.pdfName ?? 'document.pdf';
+        final sizeLabel = _fmtBytes(b.pdfSizeBytes);
+        final pageLabel = b.pdfPageCount > 0
+            ? '${b.pdfPageCount} page${b.pdfPageCount == 1 ? '' : 's'}'
+            : 'PDF';
+
+        return GestureDetector(
+        onTap: () async {
+        if (b.pdfPath != null) await OpenFilex.open(b.pdfPath!);
+        },
+        child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+            color: const Color(0xFF1A1A1A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFFF6B9D).withValues(alpha: 0.25)),
+        ),
+        child: Row(
+            children: [
+            // PDF icon badge
+            Container(
+                width: 42,
+                height: 50,
+                decoration: BoxDecoration(
+                color: const Color(0xFF2E0A18),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: const Color(0xFFFF6B9D).withValues(alpha: 0.4)),
+                ),
+                child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                    Icon(Icons.picture_as_pdf_rounded,
+                        color: Color(0xFFFF6B9D), size: 20),
+                    SizedBox(height: 2),
+                    Text('PDF',
+                        style: TextStyle(
+                            color: Color(0xFFFF6B9D),
+                            fontSize: 8,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5)),
+                ],
+                ),
+            ),
+            const SizedBox(width: 12),
+
+            // File info
+            Expanded(
+                child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                    Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.3),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                    children: [
+                        Text(pageLabel,
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11)),
+                        const Text(' · ',
+                            style: TextStyle(color: Colors.white24, fontSize: 11)),
+                        Text(sizeLabel,
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 11)),
+                    ],
+                    ),
+                ],
+                ),
+            ),
+            const SizedBox(width: 8),
+
+            // Open hint
+            Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                color: const Color(0xFFFF6B9D).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                    color: const Color(0xFFFF6B9D).withValues(alpha: 0.3)),
+                ),
+                child: const Text('Open',
+                    style: TextStyle(
+                        color: Color(0xFFFF6B9D),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(width: 8),
+
+            // Delete
+            GestureDetector(
+                onTap: () => _confirmRemoveBlock(b),
+                child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.07),
+                    shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close_rounded,
+                    size: 14, color: Colors.white38),
+                ),
+            ),
+            ],
+        ),
+        ),
+    );
+    }
+
+    String _fmtBytes(int bytes) {
+    if (bytes <= 0) return '';
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+    }
+
   Future<void> _confirmRemoveBlock(NoteBlock b) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -1606,10 +1812,13 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _BarBtn(icon: Icons.image_outlined, onTap: _showImageOptions),
+          _BarBtn( icon: Icons.image_outlined, onTap: _showImageOptions),
+          _BarBtn(
+            icon: Icons.picture_as_pdf_rounded,
+            onTap: _pickPdf,
+            ),
           _BarBtn(
             icon: Icons.text_fields_rounded,
-            label: 'Aa',
             active: _showFormatBar,
             activeColor: const Color(0xFFFFD60A),
             onTap: () => setState(() => _showFormatBar = !_showFormatBar),
@@ -1624,13 +1833,13 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
           ),
           _BarBtn(
               icon: Icons.check_box_outlined, onTap: _addCheckboxBlock),
-          _BarBtn(
-            icon: Icons.keyboard_hide_rounded,
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              setState(() => _showFormatBar = false);
-            },
-          ),
+        //   _BarBtn(
+        //     icon: Icons.keyboard_hide_rounded,
+        //     onTap: () {
+        //       FocusScope.of(context).unfocus();
+        //       setState(() => _showFormatBar = false);
+        //     },
+        //   ),
         ],
       ),
     );
@@ -1875,13 +2084,16 @@ class _Sep extends StatelessWidget {
 class _BarBtn extends StatelessWidget {
   final IconData icon;
   final String? label;
+final double? size;
   final bool active;
   final Color activeColor;
   final VoidCallback onTap;
+ 
 
   const _BarBtn(
       {required this.icon,
       this.label,
+        this.size,
       this.active = false,
       this.activeColor = const Color(0xFF0A84FF),
       required this.onTap});
