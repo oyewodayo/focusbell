@@ -18,15 +18,16 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'
     hide Priority;
+import 'package:focusbell/services/database_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/focus_session.dart';
 import '../models/focus_settings.dart';
 import '../models/project.dart';
-import 'app_controller.dart';   // ← NEW
+import 'app_controller.dart'; // ← NEW
 import 'storage_service.dart';
-import 'widget_service.dart';   // ← NEW
+import 'widget_service.dart'; // ← NEW
 
 // ── Timer phase ───────────────────────────────────────────────────
 
@@ -55,10 +56,11 @@ class FocusTimerState {
     this.projectName,
   });
 
-  bool get isRunning  => phase == TimerPhase.running;
-  bool get isActive   => phase == TimerPhase.running || phase == TimerPhase.paused;
-  bool get isWork     => sessionType == SessionType.work;
-  bool get isIdle     => phase == TimerPhase.idle;
+  bool get isRunning => phase == TimerPhase.running;
+  bool get isActive =>
+      phase == TimerPhase.running || phase == TimerPhase.paused;
+  bool get isWork => sessionType == SessionType.work;
+  bool get isIdle => phase == TimerPhase.idle;
   bool get isFinished => phase == TimerPhase.finished;
 
   double get progress =>
@@ -71,54 +73,54 @@ class FocusTimerState {
   }
 
   FocusTimerState copyWith({
-    TimerPhase?   phase,
-    SessionType?  sessionType,
-    TimerPreset?  preset,
-    int?          totalSeconds,
-    int?          remainingSeconds,
-    int?          completedWork,
-    String?       projectId,
-    String?       projectName,
+    TimerPhase? phase,
+    SessionType? sessionType,
+    TimerPreset? preset,
+    int? totalSeconds,
+    int? remainingSeconds,
+    int? completedWork,
+    String? projectId,
+    String? projectName,
   }) => FocusTimerState(
-    phase:            phase            ?? this.phase,
-    sessionType:      sessionType      ?? this.sessionType,
-    preset:           preset           ?? this.preset,
-    totalSeconds:     totalSeconds     ?? this.totalSeconds,
+    phase: phase ?? this.phase,
+    sessionType: sessionType ?? this.sessionType,
+    preset: preset ?? this.preset,
+    totalSeconds: totalSeconds ?? this.totalSeconds,
     remainingSeconds: remainingSeconds ?? this.remainingSeconds,
-    completedWork:    completedWork    ?? this.completedWork,
-    projectId:        projectId        ?? this.projectId,
-    projectName:      projectName      ?? this.projectName,
+    completedWork: completedWork ?? this.completedWork,
+    projectId: projectId ?? this.projectId,
+    projectName: projectName ?? this.projectName,
   );
 
   static FocusTimerState initial(TimerPreset preset) => FocusTimerState(
-    phase:            TimerPhase.idle,
-    sessionType:      SessionType.work,
-    preset:           preset,
-    totalSeconds:     preset.workMinutes * 60,
+    phase: TimerPhase.idle,
+    sessionType: SessionType.work,
+    preset: preset,
+    totalSeconds: preset.workMinutes * 60,
     remainingSeconds: preset.workMinutes * 60,
-    completedWork:    0,
+    completedWork: 0,
   );
 
   Map<String, dynamic> toJson() => {
-    'phase':            phase.index,
-    'sessionType':      sessionType.index,
-    'preset':           preset.index,
-    'totalSeconds':     totalSeconds,
+    'phase': phase.index,
+    'sessionType': sessionType.index,
+    'preset': preset.index,
+    'totalSeconds': totalSeconds,
     'remainingSeconds': remainingSeconds,
-    'completedWork':    completedWork,
-    'projectId':        projectId,
-    'projectName':      projectName,
+    'completedWork': completedWork,
+    'projectId': projectId,
+    'projectName': projectName,
   };
 
   factory FocusTimerState.fromJson(Map<String, dynamic> j) => FocusTimerState(
-    phase:            TimerPhase.values[j['phase'] as int],
-    sessionType:      SessionType.values[j['sessionType'] as int],
-    preset:           TimerPreset.values[j['preset'] as int],
-    totalSeconds:     j['totalSeconds']     as int,
+    phase: TimerPhase.values[j['phase'] as int],
+    sessionType: SessionType.values[j['sessionType'] as int],
+    preset: TimerPreset.values[j['preset'] as int],
+    totalSeconds: j['totalSeconds'] as int,
     remainingSeconds: j['remainingSeconds'] as int,
-    completedWork:    j['completedWork']    as int,
-    projectId:        j['projectId']        as String?,
-    projectName:      j['projectName']      as String?,
+    completedWork: j['completedWork'] as int,
+    projectId: j['projectId'] as String?,
+    projectName: j['projectName'] as String?,
   );
 }
 
@@ -130,27 +132,28 @@ class FocusTimerService extends ChangeNotifier {
 
   // ── Prefs keys ────────────────────────────────────────────────
 
-  static const _kStateKey  = 'focus_timer_state';
+  static const _kStateKey = 'focus_timer_state';
   static const _kStartedAt = 'focus_timer_started_at';
-  static const _kSettings  = 'focus_settings';
+  static const _kSettings = 'focus_settings';
 
   // ── State ─────────────────────────────────────────────────────
 
-  FocusTimerState _state    = FocusTimerState.initial(TimerPreset.pomodoro);
-  FocusSettings   _settings = const FocusSettings();
+  FocusTimerState _state = FocusTimerState.initial(TimerPreset.pomodoro);
+  FocusSettings _settings = const FocusSettings();
 
-  FocusTimerState get state    => _state;
-  FocusSettings   get settings => _settings;
+  FocusTimerState get state => _state;
+  FocusSettings get settings => _settings;
 
   /// True when the segment just finished — UI reads this to show the dialog.
-  bool _pendingFinished = false;
-  bool get pendingFinished => _pendingFinished;
+  SessionType? _completedSegmentType;
+  bool get pendingFinished => _completedSegmentType != null;
+  SessionType? get completedSegmentType => _completedSegmentType;
   void clearPendingFinished() {
-    _pendingFinished = false;
+    _completedSegmentType = null;
   }
 
-  Timer?    _ticker;
-  Timer?    _alarmStopTimer; // stops alarm after ~5 s if not manually dismissed
+  Timer? _ticker;
+  Timer? _alarmStopTimer; // stops alarm after ~5 s if not manually dismissed
   DateTime? _segmentStart;
 
   // ── Widget throttle ───────────────────────────────────────────  ← NEW
@@ -158,22 +161,59 @@ class FocusTimerService extends ChangeNotifier {
   /// Guards against pushing the widget on every single 1-second tick.
   /// We allow one push per [_kWidgetThrottle] while the timer is running.
   static const _kWidgetThrottle = Duration(seconds: 30);
-  DateTime? _lastWidgetPush;                                        // ← NEW
+  DateTime? _lastWidgetPush; // ← NEW
 
   // ── Audio ─────────────────────────────────────────────────────
 
-  final _tickPlayer  = AudioPlayer();
-  final _alarmPlayer = AudioPlayer();
+  // ── Audio ─────────────────────────────────────────────────────────
+
+  final _tickPlayer  = AudioPlayer();   // looping focus sound
+  final _alarmPlayer = AudioPlayer();   // one-shot completion chime
+
+  // ── Audio init (called inside init()) ────────────────────────
+
+  Future<void> _initAudio() async {
+    await _tickPlayer.setVolume(0.5);
+    await _tickPlayer.setReleaseMode(ReleaseMode.loop);
+
+    await _alarmPlayer.setVolume(1.0);
+    await _alarmPlayer.setReleaseMode(ReleaseMode.stop);
+    await _alarmPlayer.setSource(AssetSource('sounds/complete.wav'));
+  }
+
+  /// Applies the correct audio source for the current [FocusSound] setting.
+  Future<void> _applyFocusSound() async {
+    await _tickPlayer.stop();
+    final sound = _settings.focusSound;
+    if (sound == FocusSound.silent) return;
+
+    final asset = switch (sound) {
+      FocusSound.tick          => 'sounds/tick.mp3',
+      FocusSound.binauralBeats => 'sounds/binaural_40hz.mp3',
+      FocusSound.brownNoise    => 'sounds/brown_noise.mp3',
+      FocusSound.rain          => 'sounds/rain.wav',
+      FocusSound.silent        => '',   // unreachable
+    };
+
+    await _tickPlayer.setSource(AssetSource(asset));
+  }
+
+  void _startTick() {
+    if (_settings.focusSound == FocusSound.silent) return;
+    _tickPlayer.resume();
+  }
+
+  void _stopTick() => _tickPlayer.stop();
 
   // ── Notifications ─────────────────────────────────────────────
 
-  final _notif    = FlutterLocalNotificationsPlugin();
-  bool  _notifReady = false;
+  final _notif = FlutterLocalNotificationsPlugin();
+  bool _notifReady = false;
 
   // ── Storage ───────────────────────────────────────────────────
 
   SharedPreferences? _prefs;
-  StorageService?    _storage;
+  StorageService? _storage;
   Future<StorageService> get _store async =>
       _storage ??= await StorageService.getInstance();
 
@@ -182,23 +222,18 @@ class FocusTimerService extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────
 
   Future<void> init() async {
-    _prefs    = await SharedPreferences.getInstance();
+    _prefs = await SharedPreferences.getInstance();
     _settings = FocusSettings.fromPrefs(_prefs!.getString(_kSettings));
 
     // ── Audio setup ──────────────────────────────────────────
 
-    await _tickPlayer.setVolume(0.5);
-    await _tickPlayer.setReleaseMode(ReleaseMode.loop);
-    await _tickPlayer.setSource(AssetSource('sounds/tick.mp3'));
-
-    await _alarmPlayer.setVolume(1.0);
-    await _alarmPlayer.setReleaseMode(ReleaseMode.stop);
-    await _alarmPlayer.setSource(AssetSource('sounds/complete.wav'));
+    await _initAudio();
+    await _applyFocusSound();
 
     // ── Notifications setup ──────────────────────────────────
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios     = DarwinInitializationSettings(
+    const ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
@@ -221,19 +256,22 @@ class FocusTimerService extends ChangeNotifier {
           final startRaw = _prefs!.getString(_kStartedAt);
           if (startRaw != null) {
             _segmentStart = DateTime.parse(startRaw);
-            final elapsed   = DateTime.now().difference(_segmentStart!).inSeconds;
-            final remaining = (saved.remainingSeconds - elapsed)
-                .clamp(0, saved.totalSeconds);
+            final elapsed = DateTime.now().difference(_segmentStart!).inSeconds;
+            final remaining = (saved.remainingSeconds - elapsed).clamp(
+              0,
+              saved.totalSeconds,
+            );
 
             if (remaining <= 0) {
               // Completed while backgrounded — advance, wait for user tap.
               _state = saved.copyWith(remainingSeconds: 0);
+              final completedType = _state.sessionType;
               await _endSegment(completed: true, stateOverride: _state);
               _advanceToNextSegment();
-              _pendingFinished = true;
+              _completedSegmentType = completedType; 
               _saveState();
               // Push widget so it shows "No active session" after bg completion.
-              _pushWidgetThrottled(force: true);                    // ← NEW
+              _pushWidgetThrottled(force: true); // ← NEW
             } else {
               _state = saved.copyWith(remainingSeconds: remaining);
               _resumeTicker();
@@ -252,23 +290,46 @@ class FocusTimerService extends ChangeNotifier {
     }
   }
 
+  Future<List<FocusSession>> fetchSessionsInRange(
+    DateTime from,
+    DateTime to, {
+    String? projectId,
+  }) async {
+    final store = await _store;
+    return store.fetchSessionsInRange(from, to, projectId: projectId);
+  }
+
   // ─────────────────────────────────────────────────────────────
   // PUBLIC API
   // ─────────────────────────────────────────────────────────────
 
   void configure({
-    required TimerPreset preset,
-    required String      projectId,
-    required String      projectName,
-  }) {
-    if (_state.isActive && _state.projectId != null) return;
-    _cancelTicker();
-    _stopTick();
-    _state = FocusTimerState.initial(preset)
-        .copyWith(projectId: projectId, projectName: projectName);
-    _saveState();
-    notifyListeners();
-  }
+  required TimerPreset preset,
+  required String projectId,
+  required String projectName,
+  int? customWorkMinutes,           // ← NEW
+}) {
+  if (_state.isActive && _state.projectId != null) return;
+  _cancelTicker();
+  _stopTick();
+
+  final workSeconds = preset == TimerPreset.custom && customWorkMinutes != null
+      ? customWorkMinutes * 60          // ← NEW
+      : preset.workMinutes * 60;
+
+  _state = FocusTimerState(
+    phase:            TimerPhase.idle,
+    sessionType:      SessionType.work,
+    preset:           preset,
+    totalSeconds:     workSeconds,       // ← NEW (was always preset.workMinutes * 60)
+    remainingSeconds: workSeconds,
+    completedWork:    0,
+    projectId:        projectId,
+    projectName:      projectName,
+  );
+  _saveState();
+  notifyListeners();
+}
 
   void start() {
     if (_state.phase == TimerPhase.running) return;
@@ -279,18 +340,18 @@ class FocusTimerService extends ChangeNotifier {
 
     // Reset throttle so the widget updates immediately on the first tick
     // after any (re)start rather than waiting up to 30 s.             ← NEW
-    _lastWidgetPush = null;                                            // ← NEW
+    _lastWidgetPush = null; // ← NEW
 
     _resumeTicker();
     if (_settings.tickEnabled) _startTick();
     notifyListeners();
 
     _fireNotif(
-      id:      1,
-      title:   _state.isWork
+      id: 1,
+      title: _state.isWork
           ? '🔴 Focus session started'
           : '${_state.sessionType.emoji} ${_state.sessionType.label} started',
-      body:    '${_state.totalSeconds ~/ 60} min · ${_state.projectName ?? ''}',
+      body: '${_state.totalSeconds ~/ 60} min · ${_state.projectName ?? ''}',
       ongoing: _state.isWork && _settings.strictMode,
     );
   }
@@ -304,7 +365,7 @@ class FocusTimerService extends ChangeNotifier {
     notifyListeners();
     _cancelNotif(1);
     // Paused — push widget so timer text freezes at current value.    ← NEW
-    _pushWidgetThrottled(force: true);                                 // ← NEW
+    _pushWidgetThrottled(force: true); // ← NEW
   }
 
   void resume() => start();
@@ -313,73 +374,92 @@ class FocusTimerService extends ChangeNotifier {
     _cancelTicker();
     _stopTick();
     _stopAlarm();
-    _state = FocusTimerState.initial(_state.preset)
-        .copyWith(projectId: _state.projectId, projectName: _state.projectName);
-    _pendingFinished = false;
-    _segmentStart    = null;
+    _state = FocusTimerState.initial(
+      _state.preset,
+    ).copyWith(projectId: _state.projectId, projectName: _state.projectName);
+    _completedSegmentType = null;
+    _segmentStart = null;
     _prefs?.remove(_kStartedAt);
     _saveState();
     _cancelNotif(1);
     notifyListeners();
     // Session ended — push "No active session" to widget immediately. ← NEW
-    WidgetService.instance.pushSessionEnded(                           // ← NEW
-      activeProject: AppController.instance.activeProject,            // ← NEW
-    );                                                                 // ← NEW
+    WidgetService.instance.pushSessionEnded(
+      // ← NEW
+      activeProject: AppController.instance.activeProject, // ← NEW
+    ); // ← NEW
   }
 
   Future<void> skip() async {
+    _completedSegmentType = null;
     _cancelTicker();
     _stopTick();
     await _endSegment(completed: false);
     _advanceToNextSegment();
     _cancelNotif(1);
     // Skipped segment — widget shows idle state of the next segment.  ← NEW
-    WidgetService.instance.pushSessionEnded(                           // ← NEW
-      activeProject: AppController.instance.activeProject,            // ← NEW
-    );                                                                 // ← NEW
+    WidgetService.instance.pushSessionEnded(
+      // ← NEW
+      activeProject: AppController.instance.activeProject, // ← NEW
+    ); // ← NEW
   }
 
   void stop() {
     _cancelTicker();
     _stopTick();
     _stopAlarm();
-    _state = FocusTimerState.initial(_state.preset)
-        .copyWith(projectId: _state.projectId, projectName: _state.projectName);
-    _pendingFinished = false;
-    _segmentStart    = null;
+    _state = FocusTimerState.initial(
+      _state.preset,
+    ).copyWith(projectId: _state.projectId, projectName: _state.projectName);
+    _completedSegmentType = null;
+    _segmentStart = null;
     _prefs?.remove(_kStartedAt);
     _saveState();
     _cancelNotif(1);
     notifyListeners();
     // Session stopped — push "No active session" to widget immediately. ← NEW
-    WidgetService.instance.pushSessionEnded(                            // ← NEW
-      activeProject: AppController.instance.activeProject,             // ← NEW
-    );                                                                  // ← NEW
+    WidgetService.instance.pushSessionEnded(
+      // ← NEW
+      activeProject: AppController.instance.activeProject, // ← NEW
+    ); // ← NEW
+  }
+  Future<List<FocusSession>> fetchSessionsForProject({
+    required String projectId,
+    required int    days,
+  }) async {
+    final store = await _store;
+    final to    = _todayMidnight().add(const Duration(days: 1));
+    final from  = to.subtract(Duration(days: days));
+    return store.fetchSessionsInRange(from, to, projectId: projectId);
   }
 
   void stopAlarmManually() => _stopAlarm();
 
   // ── Settings API ──────────────────────────────────────────────
 
-  void updateSettings(FocusSettings updated) {
-    _settings = updated;
-    _prefs?.setString(_kSettings, updated.toPrefs());
-    if (_state.isRunning) {
-      if (updated.tickEnabled) {
-        _startTick();
-      } else {
-        _stopTick();
-      }
+ void updateSettings(FocusSettings updated) {
+  final soundChanged = updated.focusSound != _settings.focusSound;  // ← NEW
+  _settings = updated;
+  _prefs?.setString(_kSettings, updated.toPrefs());
+
+  if (_state.isRunning) {
+    if (soundChanged) {                       // ← NEW
+      _applyFocusSound().then((_) {           // ← NEW
+        if (_state.isRunning) _startTick();   // ← NEW
+      });                                     // ← NEW
+    } else if (updated.focusSound == FocusSound.silent) {
+      _stopTick();
+    } else {
+      _startTick();
     }
-    notifyListeners();
   }
+  notifyListeners();
+}
 
   // ─────────────────────────────────────────────────────────────
   // AUDIO
   // ─────────────────────────────────────────────────────────────
 
-  void _startTick() => _tickPlayer.resume();
-  void _stopTick()  => _tickPlayer.stop();
 
   Future<void> _ringAlarm() async {
     await _alarmPlayer.seek(Duration.zero);
@@ -408,7 +488,7 @@ class FocusTimerService extends ChangeNotifier {
     notifyListeners();
 
     // Push the running timer text to the widget (throttled).          ← NEW
-    _pushWidgetThrottled();                                            // ← NEW
+    _pushWidgetThrottled(); // ← NEW
 
     if (next <= 0) {
       _cancelTicker();
@@ -447,7 +527,7 @@ class FocusTimerService extends ChangeNotifier {
     // fire-and-forget — must not await inside a 1-second ticker
     WidgetService.instance.push(
       activeProject: AppController.instance.activeProject,
-      fromTimer:     true,
+      fromTimer: true,
     );
   }
 
@@ -460,11 +540,13 @@ class FocusTimerService extends ChangeNotifier {
     _state = _state.copyWith(remainingSeconds: 0);
     notifyListeners();
 
+
     // 2. Push widget immediately — "00:00" should appear before alarm rings.
-    _pushWidgetThrottled(force: true);                                 // ← NEW
+    _pushWidgetThrottled(force: true); // ← NEW
 
     // 3. Save record.
     final wasWork = _state.isWork;
+    final completedType = _state.sessionType;  // ← capture BEFORE advance
     await _endSegment(completed: true);
 
     // 4. Ring alarm LOUDLY — always, regardless of autostart.
@@ -478,23 +560,24 @@ class FocusTimerService extends ChangeNotifier {
 
     // 7. Fire the "segment complete" notification.
     _fireNotif(
-      id:    2,
+      id: 2,
       title: wasWork ? '✅ Focus session complete!' : '⚡ Break time is over!',
-      body:  wasWork
+      body: wasWork
           ? 'Great work on "${_state.projectName ?? 'your project'}"! Time for a break.'
           : 'Ready to lock in again? Tap to start your next session.',
       ongoing: false,
     );
 
     // 8. Mark pending so UI shows the transition dialog.
-    _pendingFinished = true;
+    _completedSegmentType = completedType;   // ← NEW (replaces _pendingFinished = true)
     _saveState();
     notifyListeners();
 
     // 9. Push widget — segment ended, show idle state of next segment. ← NEW
-    WidgetService.instance.pushSessionEnded(                           // ← NEW
-      activeProject: AppController.instance.activeProject,            // ← NEW
-    );                                                                 // ← NEW
+    WidgetService.instance.pushSessionEnded(
+      // ← NEW
+      activeProject: AppController.instance.activeProject, // ← NEW
+    ); // ← NEW
 
     // 10. Autostart? Apply only if the relevant setting is on.
     //     Add a 2-second grace delay so the alarm finishes audibly.
@@ -512,28 +595,28 @@ class FocusTimerService extends ChangeNotifier {
     required bool completed,
     FocusTimerState? stateOverride,
   }) async {
-    final s         = stateOverride ?? _state;
+    final s = stateOverride ?? _state;
     final projectId = s.projectId;
-    final start     = _segmentStart;
+    final start = _segmentStart;
     if (projectId == null || start == null) return;
 
     final wallElapsed = DateTime.now().difference(start).inSeconds;
-    final actual      = completed
+    final actual = completed
         ? s.totalSeconds
         : wallElapsed.clamp(0, s.totalSeconds);
 
-    if (actual < 30) return;
+    final recordedActual = actual < 1 ? 1 : actual;
 
     final session = FocusSession(
-      id:             const Uuid().v4(),
-      projectId:      projectId,
-      type:           s.sessionType,
-      preset:         s.preset,
-      startedAt:      start,
-      endedAt:        DateTime.now(),
+      id: const Uuid().v4(),
+      projectId: projectId,
+      type: s.sessionType,
+      preset: s.preset,
+      startedAt: start,
+      endedAt: DateTime.now(),
       plannedSeconds: s.totalSeconds,
-      actualSeconds:  actual,
-      completed:      completed,
+      actualSeconds: recordedActual,
+      completed: completed,
     );
 
     try {
@@ -548,31 +631,31 @@ class FocusTimerService extends ChangeNotifier {
   }
 
   void _advanceToNextSegment() {
-    final preset  = _state.preset;
+    final preset = _state.preset;
     final wasWork = _state.isWork;
     final newWork = _state.completedWork + (wasWork ? 1 : 0);
 
     final SessionType nextType;
-    final int         nextSeconds;
+    final int nextSeconds;
 
     if (wasWork) {
       final longDue = newWork % preset.sessionsUntilLongBreak == 0;
-      nextType    = longDue ? SessionType.longBreak : SessionType.shortBreak;
+      nextType = longDue ? SessionType.longBreak : SessionType.shortBreak;
       nextSeconds = longDue
           ? preset.longBreakMinutes * 60
           : preset.shortBreakMinutes * 60;
     } else {
-      nextType    = SessionType.work;
+      nextType = SessionType.work;
       nextSeconds = preset.workMinutes * 60;
     }
 
     _segmentStart = null;
     _state = _state.copyWith(
-      phase:            TimerPhase.idle,
-      sessionType:      nextType,
-      totalSeconds:     nextSeconds,
+      phase: TimerPhase.idle,
+      sessionType: nextType,
+      totalSeconds: nextSeconds,
       remainingSeconds: nextSeconds,
-      completedWork:    newWork,
+      completedWork: newWork,
     );
     _saveState();
     notifyListeners();
@@ -583,10 +666,10 @@ class FocusTimerService extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────
 
   Future<void> _fireNotif({
-    required int    id,
+    required int id,
     required String title,
     required String body,
-    bool            ongoing = false,
+    bool ongoing = false,
   }) async {
     if (!_notifReady) return;
     try {
@@ -599,12 +682,12 @@ class FocusTimerService extends ChangeNotifier {
             'focusbell_timer',
             'FocusBell Timer',
             channelDescription: 'Focus session progress and alerts',
-            importance:         Importance.high,
-            ongoing:            ongoing,
-            autoCancel:         !ongoing,
-            sound:              null,
-            enableVibration:    true,
-            styleInformation:   const DefaultStyleInformation(true, true),
+            importance: Importance.high,
+            ongoing: ongoing,
+            autoCancel: !ongoing,
+            sound: null,
+            enableVibration: true,
+            styleInformation: const DefaultStyleInformation(true, true),
           ),
           iOS: const DarwinNotificationDetails(
             presentAlert: true,
@@ -644,8 +727,8 @@ class FocusTimerService extends ChangeNotifier {
     int days = 30,
   }) async {
     final store = await _store;
-    final to    = _todayMidnight().add(const Duration(days: 1));
-    final from  = to.subtract(Duration(days: days));
+    final to = _todayMidnight().add(const Duration(days: 1));
+    final from = to.subtract(Duration(days: days));
     final sessions = await store.fetchSessionsInRange(
       from,
       to,
@@ -659,9 +742,9 @@ class FocusTimerService extends ChangeNotifier {
     int days = 7,
   }) async {
     final store = await _store;
-    final to    = _todayMidnight().add(const Duration(days: 1));
-    final from  = to.subtract(Duration(days: days));
-    final all   = await store.fetchSessionsInRange(from, to);
+    final to = _todayMidnight().add(const Duration(days: 1));
+    final from = to.subtract(Duration(days: days));
+    final all = await store.fetchSessionsInRange(from, to);
 
     final byProject = <String, List<FocusSession>>{};
     for (final s in all) {
@@ -677,33 +760,33 @@ class FocusTimerService extends ChangeNotifier {
   }
 
   ProjectFocusSummary _buildSummary(
-    Project              project,
-    List<FocusSession>   sessions,
-    DateTime             from,
-    DateTime             to,
+    Project project,
+    List<FocusSession> sessions,
+    DateTime from,
+    DateTime to,
   ) {
-    final work         = sessions.where((s) => s.type == SessionType.work).toList();
+    final work = sessions.where((s) => s.type == SessionType.work).toList();
     final totalSeconds = work.fold(0, (s, e) => s + e.actualSeconds);
     final completedCount = work.where((s) => s.completed).length;
 
     final Map<String, DailyFocusStat> dayMap = {};
     for (final s in work) {
       final key = _dayKey(s.startedAt);
-      final ex  = dayMap[key];
+      final ex = dayMap[key];
       dayMap[key] = ex == null
           ? DailyFocusStat(
-              date:               _dayMidnight(s.startedAt),
-              projectId:          project.id,
-              totalSeconds:       s.actualSeconds,
-              completedSessions:  s.completed ? 1 : 0,
-              totalSessions:      1,
+              date: _dayMidnight(s.startedAt),
+              projectId: project.id,
+              totalSeconds: s.actualSeconds,
+              completedSessions: s.completed ? 1 : 0,
+              totalSessions: 1,
             )
           : DailyFocusStat(
-              date:               ex.date,
-              projectId:          project.id,
-              totalSeconds:       ex.totalSeconds + s.actualSeconds,
-              completedSessions:  ex.completedSessions + (s.completed ? 1 : 0),
-              totalSessions:      ex.totalSessions + 1,
+              date: ex.date,
+              projectId: project.id,
+              totalSeconds: ex.totalSeconds + s.actualSeconds,
+              completedSessions: ex.completedSessions + (s.completed ? 1 : 0),
+              totalSessions: ex.totalSessions + 1,
             );
     }
 
@@ -714,11 +797,11 @@ class FocusTimerService extends ChangeNotifier {
       allDays.add(
         dayMap[key] ??
             DailyFocusStat(
-              date:              cursor,
-              projectId:         project.id,
-              totalSeconds:      0,
+              date: cursor,
+              projectId: project.id,
+              totalSeconds: 0,
               completedSessions: 0,
-              totalSessions:     0,
+              totalSessions: 0,
             ),
       );
       cursor = cursor.add(const Duration(days: 1));
@@ -737,14 +820,14 @@ class FocusTimerService extends ChangeNotifier {
     }
 
     return ProjectFocusSummary(
-      projectId:         project.id,
-      projectName:       project.name,
+      projectId: project.id,
+      projectName: project.name,
       totalFocusSeconds: totalSeconds,
       completedSessions: completedCount,
-      totalSessions:     work.length,
-      currentStreak:     current,
-      longestStreak:     longest,
-      dailyStats:        allDays,
+      totalSessions: work.length,
+      currentStreak: current,
+      longestStreak: longest,
+      dailyStats: allDays,
     );
   }
 

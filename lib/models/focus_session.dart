@@ -11,16 +11,16 @@ enum SessionType {
   longBreak;
 
   String get label => switch (this) {
-        SessionType.work       => 'Focus',
-        SessionType.shortBreak => 'Short Break',
-        SessionType.longBreak  => 'Long Break',
-      };
+    SessionType.work => 'Focus',
+    SessionType.shortBreak => 'Short Break',
+    SessionType.longBreak => 'Long Break',
+  };
 
   String get emoji => switch (this) {
-        SessionType.work       => '🔴',
-        SessionType.shortBreak => '🟢',
-        SessionType.longBreak  => '🔵',
-      };
+    SessionType.work => '🔴',
+    SessionType.shortBreak => '🟢',
+    SessionType.longBreak => '🔵',
+  };
 }
 
 // ── Timer preset ──────────────────────────────────────────────────
@@ -28,52 +28,59 @@ enum SessionType {
 enum TimerPreset {
   pomodoro,
   deepWork,
-  ultraFocus;
+  ultraFocus,
+  custom;
 
   String get label => switch (this) {
-        TimerPreset.pomodoro   => 'Pomodoro',
-        TimerPreset.deepWork   => 'Deep Work',
-        TimerPreset.ultraFocus => 'Ultra Focus',
-      };
+    TimerPreset.pomodoro => 'Pomodoro',
+    TimerPreset.deepWork => 'Deep Work',
+    TimerPreset.ultraFocus => 'Ultra Focus',
+    TimerPreset.custom => 'Custom',
+  };
 
   String get subtitle => switch (this) {
-        TimerPreset.pomodoro   => '25 min work · 5 min break',
-        TimerPreset.deepWork   => '50 min work · 10 min break',
-        TimerPreset.ultraFocus => '90 min work · 20 min break',
-      };
+    TimerPreset.pomodoro => '25 min work · 5 min break',
+    TimerPreset.deepWork => '50 min work · 10 min break',
+    TimerPreset.ultraFocus => '90 min work · 20 min break',
+    TimerPreset.custom => 'Custom',
+  };
 
   int get workMinutes => switch (this) {
-        TimerPreset.pomodoro   => 25,
-        TimerPreset.deepWork   => 50,
-        TimerPreset.ultraFocus => 90,
-      };
+    TimerPreset.pomodoro => 25,
+    TimerPreset.deepWork => 50,
+    TimerPreset.ultraFocus => 90,
+    TimerPreset.custom => 25,
+  };
 
   int get shortBreakMinutes => switch (this) {
-        TimerPreset.pomodoro   => 5,
-        TimerPreset.deepWork   => 10,
-        TimerPreset.ultraFocus => 20,
-      };
+    TimerPreset.pomodoro => 5,
+    TimerPreset.deepWork => 10,
+    TimerPreset.ultraFocus => 20,
+    TimerPreset.custom => 5,
+  };
 
   int get longBreakMinutes => switch (this) {
-        TimerPreset.pomodoro   => 15,
-        TimerPreset.deepWork   => 30,
-        TimerPreset.ultraFocus => 45,
-      };
+    TimerPreset.pomodoro => 15,
+    TimerPreset.deepWork => 30,
+    TimerPreset.ultraFocus => 45,
+    TimerPreset.custom => 15,
+  };
 
   /// Sessions before a long break kicks in.
   int get sessionsUntilLongBreak => switch (this) {
-        TimerPreset.pomodoro   => 4,
-        TimerPreset.deepWork   => 3,
-        TimerPreset.ultraFocus => 2,
-      };
+    TimerPreset.pomodoro => 4,
+    TimerPreset.deepWork => 3,
+    TimerPreset.ultraFocus => 2,
+    TimerPreset.custom => 4,
+  };
 }
 
 // ── Focus session record ──────────────────────────────────────────
 
 /// A single completed (or interrupted) timer session.
 class FocusSession {
-  final String      id;
-  final String      projectId;
+  final String id;
+  final String projectId;
   final SessionType type;
   final TimerPreset preset;
 
@@ -115,39 +122,39 @@ class FocusSession {
   // ── Serialisation ─────────────────────────────────────────────
 
   Map<String, dynamic> toJson() => {
-        'id':             id,
-        'projectId':      projectId,
-        'type':           type.index,
-        'preset':         preset.index,
-        'startedAt':      startedAt.toIso8601String(),
-        'endedAt':        endedAt.toIso8601String(),
-        'plannedSeconds': plannedSeconds,
-        'actualSeconds':  actualSeconds,
-        'completed':      completed ? 1 : 0,
-      };
+    'id': id,
+    'projectId': projectId,
+    'type': type.index,
+    'preset': preset.index,
+    'startedAt': startedAt.toIso8601String(),
+    'endedAt': endedAt.toIso8601String(),
+    'plannedSeconds': plannedSeconds,
+    'actualSeconds': actualSeconds,
+    'completed': completed ? 1 : 0,
+  };
 
   factory FocusSession.fromJson(Map<String, dynamic> json) => FocusSession(
-        id:             json['id']             as String,
-        projectId:      json['projectId']      as String,
-        type:           SessionType.values[json['type'] as int],
-        preset:         TimerPreset.values[json['preset'] as int],
-        startedAt:      DateTime.parse(json['startedAt'] as String),
-        endedAt:        DateTime.parse(json['endedAt']   as String),
-        plannedSeconds: json['plannedSeconds'] as int,
-        actualSeconds:  json['actualSeconds']  as int,
-        completed:      (json['completed'] as int) == 1,
-      );
+    id: json['id'] as String,
+    projectId: json['projectId'] as String,
+    type: SessionType.values[json['type'] as int],
+    preset: TimerPreset.values[json['preset'] as int],
+    startedAt: DateTime.parse(json['startedAt'] as String),
+    endedAt: DateTime.parse(json['endedAt'] as String),
+    plannedSeconds: json['plannedSeconds'] as int,
+    actualSeconds: json['actualSeconds'] as int,
+    completed: (json['completed'] as int) == 1,
+  );
 }
 
 // ── Analytics aggregates ──────────────────────────────────────────
 
 /// Daily roll-up of focus time for one project.
 class DailyFocusStat {
-  final DateTime date;           // midnight-normalised
-  final String   projectId;
-  final int      totalSeconds;
-  final int      completedSessions;
-  final int      totalSessions;
+  final DateTime date; // midnight-normalised
+  final String projectId;
+  final int totalSeconds;
+  final int completedSessions;
+  final int totalSessions;
 
   const DailyFocusStat({
     required this.date,
@@ -158,7 +165,7 @@ class DailyFocusStat {
   });
 
   Duration get totalDuration => Duration(seconds: totalSeconds);
-  double   get completionRate =>
+  double get completionRate =>
       totalSessions == 0 ? 0 : completedSessions / totalSessions;
 }
 
@@ -166,11 +173,11 @@ class DailyFocusStat {
 class ProjectFocusSummary {
   final String projectId;
   final String projectName;
-  final int    totalFocusSeconds;
-  final int    completedSessions;
-  final int    totalSessions;
-  final int    currentStreak;     // consecutive days with ≥1 completed session
-  final int    longestStreak;
+  final int totalFocusSeconds;
+  final int completedSessions;
+  final int totalSessions;
+  final int currentStreak; // consecutive days with ≥1 completed session
+  final int longestStreak;
   final List<DailyFocusStat> dailyStats;
 
   const ProjectFocusSummary({
@@ -185,6 +192,6 @@ class ProjectFocusSummary {
   });
 
   Duration get totalDuration => Duration(seconds: totalFocusSeconds);
-  double   get completionRate =>
+  double get completionRate =>
       totalSessions == 0 ? 0 : completedSessions / totalSessions;
 }

@@ -83,12 +83,14 @@ class AppController extends ChangeNotifier {
     String name,
     Priority priority,
     String description,
+    ProjectCategory category,
   ) async {
     final project = Project(
       id:          const Uuid().v4(),
       name:        name,
       description: description,
       priority:    priority,
+      category:    category,
       createdAt:   DateTime.now(),
     );
     _projects = [..._projects, project];
@@ -179,10 +181,11 @@ class AppController extends ChangeNotifier {
     required String   name,
     required String   description,
     required Priority priority,
+    required ProjectCategory category,
   }) async {
     _projects = _projects.map((p) {
       if (p.id != id) return p;
-      return p.copyWith(name: name, description: description, priority: priority);
+      return p.copyWith(name: name, description: description, priority: priority, category: category);
     }).toList().cast<Project>();
     notifyListeners();
     _pushWidget(); // ← NEW — name / priority shown in widget may have changed

@@ -25,13 +25,15 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
   late final TextEditingController _nameCtrl;
   late final TextEditingController _descCtrl;
   late Priority _priority;
+  late ProjectCategory _category;
 
   @override
   void initState() {
     super.initState();
-    _nameCtrl = TextEditingController(text: widget.project.name);
-    _descCtrl = TextEditingController(text: widget.project.description);
-    _priority = widget.project.priority;
+    _nameCtrl  = TextEditingController(text: widget.project.name);
+    _descCtrl  = TextEditingController(text: widget.project.description);
+    _priority  = widget.project.priority;
+    _category  = widget.project.category;
   }
 
   @override
@@ -44,7 +46,7 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
   @override
   Widget build(BuildContext context) {
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-    final bottomPadding = keyboardHeight > 0
+    final bottomPadding  = keyboardHeight > 0
         ? keyboardHeight + 24
         : MediaQuery.of(context).padding.bottom + 24;
 
@@ -131,6 +133,57 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                     vertical: 12,
                   ),
                 ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Category label ────────────────────────────────
+              const Text(
+                'Category',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+
+              // ── Category chips ────────────────────────────────
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: ProjectCategory.values.map((c) {
+                  final selected = c == _category;
+                  return GestureDetector(
+                    onTap: () => setState(() => _category = c),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? const Color(0xFF0A84FF).withValues(alpha: 0.15)
+                            : const Color(0xFF252525),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: selected
+                              ? const Color(0xFF0A84FF).withValues(alpha: 0.6)
+                              : Colors.white10,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        '${c.emoji} ${c.label}',
+                        style: TextStyle(
+                          color: selected
+                              ? const Color(0xFF0A84FF)
+                              : Colors.white38,
+                          fontSize: 13,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 20),
 
@@ -227,17 +280,18 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                         if (!context.mounted) return;
                         await AppController.instance.updateProject(
                           widget.project.id,
-                          name: name,
+                          name:        name,
                           description: _descCtrl.text.trim(),
-                          priority: _priority,
+                          priority:    _priority,
+                          category:    _category,
                         );
                         if (!context.mounted) return;
                         Navigator.pop(context);
                         AppToast.show(
                           context,
-                          msg: '${_priority.emoji} "$name" updated',
+                          msg:             '${_priority.emoji} "$name" updated',
                           backgroundColor: _priority.bgColor,
-                          textColor: _priority.color,
+                          textColor:       _priority.color,
                         );
                       },
                       child: const Text(

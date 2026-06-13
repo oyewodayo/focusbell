@@ -1,16 +1,15 @@
 // home_screen.dart  — FULL REPLACEMENT
 //
-// Changes from original:
-//   • Imports focus_live_banner.dart and analytics_sheet.dart
-//   • FocusTimerService.instance.init() called on boot (see main_patch note)
-//   • "Start Focus Session" replaced with FocusSessionButton (live banner)
-//   • Bottom bar: Projects | Analytics | Settings  (3 buttons)
-//   • _openAnalytics() added
-//   • pendingFinished check on resume — shows completion dialog if timer
-//     fired while app was fully killed and relaunched
+// Changes from previous version:
+//   • Settings icon moved to top bar (beside the ON/OFF notif badge)
+//   • Bottom bar: Notes | Projects | Analytics | Reminders  (4 items)
+//   • _openReminders() added → opens RemindersScreen as a full-screen route
 
 import 'package:flutter/material.dart';
+import 'package:focusbell/screens/notes_screen.dart';
+import 'package:focusbell/screens/reminders_screen.dart';
 import 'package:focusbell/widgets/project_note_sheet.dart';
+import 'package:flutter/cupertino.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../services/focus_timer_service.dart';
@@ -32,7 +31,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
-  final _ctrl = AppController.instance;
+  final _ctrl     = AppController.instance;
   final _timerSvc = FocusTimerService.instance;
   late AnimationController _pulseCtrl;
   late Animation<double>   _pulse;
@@ -49,8 +48,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
     _requestPerms();
 
-    // If a session completed while the app was dead, show the dialog
-    // as soon as the home screen is ready.
     if (_timerSvc.pendingFinished) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -93,6 +90,19 @@ class _HomeScreenState extends State<HomeScreen>
     showAnalyticsSheet(context, _ctrl.projects);
   }
 
+  void _openNotes() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotesScreen()),
+    );
+  }
+
+  /// Opens the new Reminders screen.
+  void _openReminders() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RemindersScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -122,7 +132,24 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       const Spacer(),
                       _NotifBadge(enabled: settings.notificationsEnabled),
-
+                      const SizedBox(width: 8),
+                      // Settings icon now lives here ↓
+                      GestureDetector(
+                        onTap: _openSettings,
+                        child: Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color:        const Color(0xFF1C1C1C),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: const Icon(
+                            CupertinoIcons.settings,
+                            color: Colors.white38,
+                            size:  16,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -147,31 +174,33 @@ class _HomeScreenState extends State<HomeScreen>
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
                   child: Row(
                     children: [
+                      _IconOnlyButton(
+                        icon:  CupertinoIcons.square_pencil,
+                        size:  28,
+                        onTap: _openNotes,
+                      ),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: _ActionButton(
-                          icon:  Icons.layers_outlined,
+                          icon:  CupertinoIcons.layers,
                           label: 'Projects',
-                        //   count: _ctrl.projects
-                        //       .where((p) => !p.isArchived)
-                        //       .length,
                           onTap: _openProjects,
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: _ActionButton(
-                          icon:  Icons.bar_chart_rounded,
+                          icon:  CupertinoIcons.chart_bar,
                           label: 'Analytics',
                           onTap: _openAnalytics,
                         ),
                       ),
                       const SizedBox(width: 10),
-                      Expanded(
-                        child: _ActionButton(
-                          icon:  Icons.tune_rounded,
-                          label: 'Settings',
-                          onTap: _openSettings,
-                        ),
+                      // Reminders replaces the old Settings button ↓
+                      _IconOnlyButton(
+                        icon:  CupertinoIcons.bell,
+                        size:  28,
+                        onTap: _openReminders,
                       ),
                     ],
                   ),
@@ -208,7 +237,7 @@ class _ActiveCard extends StatelessWidget {
     final incompleteTasks = project.tasks
         .where((t) => t.status != TaskStatus.completed)
         .length;
-    final hasTasks    = project.tasks.isNotEmpty;
+    final hasTasks     = project.tasks.isNotEmpty;
     final overdueTasks = project.tasks.where((t) => t.isOverdue).length;
 
     return Column(
@@ -227,8 +256,8 @@ class _ActiveCard extends StatelessWidget {
                   color: p.color.withValues(alpha: 0.5), width: 2),
               boxShadow: [
                 BoxShadow(
-                  color:       p.color.withValues(alpha: 0.3),
-                  blurRadius:  24,
+                  color:        p.color.withValues(alpha: 0.3),
+                  blurRadius:   24,
                   spreadRadius: 4,
                 ),
               ],
@@ -278,56 +307,55 @@ class _ActiveCard extends StatelessWidget {
         Text(
           "Stay locked in. You've got this.",
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.3), fontSize: 14),
+              color: Colors.white.withValues(alpha: 0.3), fontSize: 14),
         ),
         const SizedBox(height: 16),
 
         // ── View / task / overdue pills ───────────────────
         SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
+          scrollDirection: Axis.horizontal,
+          child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-            _CardIconButton(
+              _CardIconButton(
                 onTap: () => _openViewSheet(context),
-                icon: Icons.open_in_new_rounded,
+                icon:  Icons.open_in_new_rounded,
                 label: 'View',
                 color: const Color(0xFF64D2FF),
-            ),
-            SizedBox(width: 5),
-            _TrayButton(
-                icon: Icons.sticky_note_2_outlined,
+              ),
+              const SizedBox(width: 5),
+              _TrayButton(
+                icon:  Icons.sticky_note_2_outlined,
                 label: 'Note',
                 color: const Color(0xFF0A84FF),
                 onTap: () {
-                showProjectNoteSheet(context, project: project);
+                  showProjectNoteSheet(context, project: project);
                 },
-            ),
-            
-            if (hasTasks) ...[
+              ),
+              if (hasTasks) ...[
                 const SizedBox(width: 5),
                 _CardIconButton(
-                onTap: () => _openViewSheet(context),
-                icon: Icons.checklist_rounded,
-                label: incompleteTasks == 0
-                    ? 'All done'
-                    : '$incompleteTasks left',
-                color: incompleteTasks == 0
-                    ? const Color(0xFF34C759)
-                    : const Color(0xFFFFD60A),
+                  onTap: () => _openViewSheet(context),
+                  icon:  Icons.checklist_rounded,
+                  label: incompleteTasks == 0
+                      ? 'All done'
+                      : '$incompleteTasks left',
+                  color: incompleteTasks == 0
+                      ? const Color(0xFF34C759)
+                      : const Color(0xFFFFD60A),
                 ),
-            ],
-            if (overdueTasks > 0) ...[
+              ],
+              if (overdueTasks > 0) ...[
                 const SizedBox(width: 5),
                 _CardIconButton(
-                onTap: () => _openViewSheet(context),
-                icon: Icons.warning_amber_rounded,
-                label: '$overdueTasks overdue',
-                color: const Color(0xFFFF3B30),
+                  onTap: () => _openViewSheet(context),
+                  icon:  Icons.warning_amber_rounded,
+                  label: '$overdueTasks overdue',
+                  color: const Color(0xFFFF3B30),
                 ),
+              ],
             ],
-            ],
-        ),
+          ),
         ),
 
         const SizedBox(height: 16),
@@ -344,11 +372,10 @@ class _ActiveCard extends StatelessWidget {
   }
 }
 
-
 class _TrayButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
+  final IconData     icon;
+  final String       label;
+  final Color        color;
   final VoidCallback onTap;
 
   const _TrayButton({
@@ -363,10 +390,9 @@ class _TrayButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
+          color:        color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
@@ -377,8 +403,8 @@ class _TrayButton extends StatelessWidget {
             const SizedBox(width: 5),
             Text(label,
                 style: TextStyle(
-                    color: color,
-                    fontSize: 12,
+                    color:      color,
+                    fontSize:   12,
                     fontWeight: FontWeight.w600)),
           ],
         ),
@@ -386,9 +412,6 @@ class _TrayButton extends StatelessWidget {
     );
   }
 }
-
-
-// ── Small icon+label pill ─────────────────────────────────────────
 
 class _CardIconButton extends StatelessWidget {
   final VoidCallback onTap;
@@ -419,19 +442,17 @@ class _CardIconButton extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 13),
             const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                  color: color, fontSize: 12, fontWeight: FontWeight.w600),
-            ),
+            Text(label,
+                style: TextStyle(
+                    color:      color,
+                    fontSize:   12,
+                    fontWeight: FontWeight.w600)),
           ],
         ),
       ),
     );
   }
 }
-
-// ── Priority switcher ─────────────────────────────────────────────
 
 class _PrioritySwitcher extends StatelessWidget {
   final Project project;
@@ -469,11 +490,13 @@ class _PrioritySwitcher extends StatelessWidget {
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
-                margin:  const EdgeInsets.symmetric(horizontal: 4),
-                width:   selected ? 48 : 36,
-                height:  36,
+                margin:   const EdgeInsets.symmetric(horizontal: 4),
+                width:    selected ? 48 : 36,
+                height:   36,
                 decoration: BoxDecoration(
-                  color: selected ? p.bgColor : const Color(0xFF1C1C1C),
+                  color:        selected
+                      ? p.bgColor
+                      : const Color(0xFF1C1C1C),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: selected
@@ -495,8 +518,6 @@ class _PrioritySwitcher extends StatelessWidget {
   }
 }
 
-// ── Empty state ───────────────────────────────────────────────────
-
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
   const _EmptyState({required this.onAdd});
@@ -511,9 +532,9 @@ class _EmptyState extends StatelessWidget {
         const Text(
           'No active project',
           style: TextStyle(
-            color:      Colors.white,
-            fontSize:   22,
-            fontWeight: FontWeight.w700,
+            color:         Colors.white,
+            fontSize:      22,
+            fontWeight:    FontWeight.w700,
             letterSpacing: -0.5,
           ),
         ),
@@ -521,8 +542,7 @@ class _EmptyState extends StatelessWidget {
         const Text(
           'Add a project and set it active\nto start your focus reminders.',
           textAlign: TextAlign.center,
-          style: TextStyle(
-              color: Colors.white38, fontSize: 14, height: 1.6),
+          style: TextStyle(color: Colors.white38, fontSize: 14, height: 1.6),
         ),
         const SizedBox(height: 28),
         GestureDetector(
@@ -549,8 +569,6 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
-
-// ── Bottom action button ──────────────────────────────────────────
 
 class _ActionButton extends StatelessWidget {
   final IconData     icon;
@@ -610,6 +628,29 @@ class _ActionButton extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _IconOnlyButton extends StatelessWidget {
+  final IconData     icon;
+  final VoidCallback onTap;
+  final double       size;
+
+  const _IconOnlyButton({
+    required this.icon,
+    this.size = 22.0,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child:   Icon(icon, color: Colors.white38, size: size),
       ),
     );
   }

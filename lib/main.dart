@@ -1,23 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:focusbell/services/alarm_service.dart';
 import 'package:focusbell/services/focus_timer_service.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
 import 'services/app_controller.dart';
+import 'services/standalone_note_controller.dart';
 import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'services/reminder_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  tz.initializeTimeZones();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  WidgetsFlutterBinding.ensureInitialized();
+
   await NotificationService.instance.initialize();
-  await AppController.instance.boot();
-   await FocusTimerService.instance.init(); 
+  await ReminderService.instance.init();
+  await AppController.instance.boot().timeout(
+    const Duration(seconds: 10),
+    onTimeout: () {
+      debugPrint('[main] AppController.boot() timed out after 10s');
+    },
+  );
+
+  try {
+    await StandaloneNoteController.instance.boot();
+  } catch (e, stack) {
+    debugPrint('[StandaloneNoteController] boot() failed:\n$e\n$stack');
+  }
+
+  await FocusTimerService.instance.init();
+
   runApp(const FocusBellApp());
+
+  // Init alarm AFTER runApp so the navigator is mounted and ready.
+  // AlarmScreen pushes via navigatorKey — which only works once
+  // MaterialApp has built.
+  AlarmService.instance.init().catchError((e, st) {
+    debugPrint('[AlarmService] init failed: $e\n$st');
+  });
 }
 
 class FocusBellApp extends StatelessWidget {
@@ -26,6 +52,7 @@ class FocusBellApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: AlarmService.navigatorKey, // required for AlarmScreen push
       title: 'FocusBell',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -37,7 +64,7 @@ class FocusBellApp extends StatelessWidget {
           surface: Color(0xFF111111),
           onSurface: Colors.white,
         ),
-        fontFamily: 'System',
+        textTheme: GoogleFonts.dmSansTextTheme(ThemeData.dark().textTheme),
       ),
       home: WithForegroundTask(child: const _Loader()),
     );
@@ -108,7 +135,8 @@ class _LoaderState extends State<_Loader> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF1A1A1A),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+                        border: Border.all(
+                            color: Colors.red.withValues(alpha: 0.3)),
                       ),
                       child: Text(
                         ctrl.bootError.toString(),

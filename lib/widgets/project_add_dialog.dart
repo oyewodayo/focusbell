@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:focusbell/widgets/finance_info_dialog.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../utils/app_toast.dart';
@@ -28,12 +29,24 @@ class _ProjectAddSheetState extends State<_ProjectAddSheet> {
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   Priority _priority = Priority.medium;
+  ProjectCategory _category = ProjectCategory.general;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _descCtrl.dispose();
     super.dispose();
+  }
+
+    // ── Info dialog ───────────────────────────────────────────────
+
+  void _showInfoDialog() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      useRootNavigator: true,  
+      builder: (_) => const InfoDialog(),
+    );
   }
 
   @override
@@ -130,6 +143,72 @@ class _ProjectAddSheetState extends State<_ProjectAddSheet> {
               ),
               const SizedBox(height: 20),
 
+           
+
+            // ── Category label ────────────────────────────────────────────
+            Row(
+              children: [
+                const Text(
+                'Category',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                SizedBox(width: 4),
+                GestureDetector(
+              onTap: () {
+                // Stop the tap propagating to the breakdown dialog.
+                _showInfoDialog();
+              },
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  size: 15,
+                  color: const Color(0xFF30D158).withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+              ],
+            ),
+             
+            const SizedBox(height: 8),
+
+
+            // ── Category chips ────────────────────────────────────────────
+            Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: ProjectCategory.values.map((c) {
+                final selected = c == _category;
+                return GestureDetector(
+                onTap: () => setState(() => _category = c),
+                child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                    color: selected
+                        ? const Color(0xFF0A84FF).withValues(alpha: 0.15)
+                        : const Color(0xFF252525),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: selected
+                            ? const Color(0xFF0A84FF).withValues(alpha: 0.6)
+                            : Colors.white10,
+                        width: 1.5,
+                    ),
+                    ),
+                    child: Text(
+                    '${c.emoji} ${c.label}',
+                    style: TextStyle(
+                        color: selected ? const Color(0xFF0A84FF) : Colors.white38,
+                        fontSize: 13,
+                        fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                    ),
+                ),
+                );
+            }).toList(),
+            ),
               // ── Priority label ────────────────────────────────
               const Text(
                 'Priority',
@@ -217,9 +296,10 @@ class _ProjectAddSheetState extends State<_ProjectAddSheet> {
                         await Future.delayed(const Duration(milliseconds: 150));
                         if (!context.mounted) return;
                         await AppController.instance.addProject(
-                          name,
+                          name,                         
                           _priority,
                           _descCtrl.text.trim(),
+                           _category
                         );
                         if (!context.mounted) return;
                         Navigator.pop(context);

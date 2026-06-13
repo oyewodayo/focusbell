@@ -1,493 +1,31 @@
-import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show FontFeature;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:focusbell/models/note_models.dart';
+import 'package:focusbell/services/note_rich_controller.dart';
+import 'package:focusbell/services/standalone_note_controller.dart';
+import 'package:focusbell/widgets/note_waveform_bars.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
-
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/cupertino.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../utils/app_toast.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Inline segment — one contiguous run of text with uniform formatting
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _Seg {
-  String text;
-  bool bold;
-  bool italic;
-  bool underline;
-  bool strikethrough;
-  Color? color;
-  Color? highlight; // background highlight colour
-
-  _Seg({
-    required this.text,
-    this.bold = false,
-    this.italic = false,
-    this.underline = false,
-    this.strikethrough = false,
-    this.color,
-    this.highlight,
-  });
-
-  bool sameStyle(_Seg o) =>
-      bold == o.bold &&
-      italic == o.italic &&
-      underline == o.underline &&
-      strikethrough == o.strikethrough &&
-      color == o.color &&
-      highlight == o.highlight;
-
-  _Seg copyWith({
-    String? text,
-    bool? bold,
-    bool? italic,
-    bool? underline,
-    bool? strikethrough,
-    Color? color,
-    bool clearColor = false,
-    Color? highlight,
-    bool clearHighlight = false,
-  }) =>
-      _Seg(
-        text: text ?? this.text,
-        bold: bold ?? this.bold,
-        italic: italic ?? this.italic,
-        underline: underline ?? this.underline,
-        strikethrough: strikethrough ?? this.strikethrough,
-        color: clearColor ? null : (color ?? this.color),
-        highlight: clearHighlight ? null : (highlight ?? this.highlight),
-      );
-
-  Map<String, dynamic> toJson() => {
-        'tx': text,
-        if (bold) 'b': true,
-        if (italic) 'i': true,
-        if (underline) 'u': true,
-        if (strikethrough) 's': true,
-        if (color != null) 'c': color!.value,
-        if (highlight != null) 'hl': highlight!.value,
-      };
-
-  factory _Seg.fromJson(Map<String, dynamic> j) => _Seg(
-        text: j['tx'] as String? ?? '',
-        bold: j['b'] as bool? ?? false,
-        italic: j['i'] as bool? ?? false,
-        underline: j['u'] as bool? ?? false,
-        strikethrough: j['s'] as bool? ?? false,
-        color: j['c'] != null ? Color(j['c'] as int) : null,
-        highlight: j['hl'] != null ? Color(j['hl'] as int) : null,
-      );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// RichTextController
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// Design: segs is the ONE source of truth for both text content and styling.
-// The base TextEditingController.text is kept equal to segs.join() at all
-// times via _rebuildText().  The TextField's onChanged callback is the ONLY
-// place where we reconcile a user edit back into segs; we never override
-// set value because Flutter calls that for cursor moves, selection, composing
-// etc. — not just text changes.
-
-class _RichController extends TextEditingController {
-  List<_Seg> segs;
-
-  _RichController({List<_Seg>? segs})
-      : segs = segs ?? [] {
-    // Seed base text from segs without triggering listeners.
-    super.text = this.segs.map((s) => s.text).join();
-  }
-
-  // ── Called from TextField.onChanged ─────────────────────────
-  // newText is exactly what the user typed / deleted / pasted.
-  // We compute the minimal diff against the current segs plain-text and
-  // update segs accordingly, preserving formatting outside the edit region.
-void handleTextChange(String newText) {
-  final oldText = segs.map((s) => s.text).join();
-  if (newText == oldText) return;
-
-  int pre = 0;
-  while (pre < oldText.length &&
-      pre < newText.length &&
-      oldText[pre] == newText[pre]) {
-    pre++;
-  }
-
-  int oldSuf = 0;
-  final oldAvail = oldText.length - pre;
-  final newAvail = newText.length - pre;
-  final maxSuf = oldAvail < newAvail ? oldAvail : newAvail;
-  while (oldSuf < maxSuf &&
-      oldText[oldText.length - 1 - oldSuf] ==
-          newText[newText.length - 1 - oldSuf]) {
-    oldSuf++;
-  }
-
-  final delFrom = pre;
-  final delTo = oldText.length - oldSuf;
-  final inserted = newText.substring(pre, newText.length - oldSuf);
-
-  _Seg inherit = segs.isNotEmpty ? segs.last : _Seg(text: '');
-  int pos = 0;
-  for (final s in segs) {
-    final end = pos + s.text.length;
-    if (pre >= pos && pre <= end) {
-      inherit = s;
-      break;
-    }
-    pos = end;
-  }
-
-  if (delFrom < delTo) segs = _del(segs, delFrom, delTo);
-  if (inserted.isNotEmpty) segs = _ins(segs, delFrom, inserted, inherit);
-  segs = _merge(segs);
-
-  final plain = segs.map((s) => s.text).join();
-  if (plain != newText) {
-    segs = [_Seg(text: newText)];
-  }
-
-  rebuildText();
-}
-  // ── Called after applyToRange / external segs mutations ──────
-  // Pushes the current segs plain-text back into the base controller
-  // so the TextField re-renders the new spans.
-  void rebuildText() {
-    final plain = segs.map((s) => s.text).join();
-    // Preserve cursor position — don't move it.
-    final sel = selection;
-    super.value = TextEditingValue(
-      text: plain,
-      selection: sel.isValid
-          ? TextSelection.collapsed(
-              offset: sel.baseOffset.clamp(0, plain.length))
-          : TextSelection.collapsed(offset: plain.length),
-    );
-  }
-
-  // ── Segment list operations ──────────────────────────────────
-
-  static List<_Seg> _del(List<_Seg> segs, int from, int to) {
-    final out = <_Seg>[];
-    int pos = 0;
-    for (final s in segs) {
-      final end = pos + s.text.length;
-      if (end <= from || pos >= to) {
-        out.add(s);
-      } else {
-        final bLen = (from - pos).clamp(0, s.text.length);
-        final aStart = (to - pos).clamp(0, s.text.length);
-        if (bLen > 0) out.add(s.copyWith(text: s.text.substring(0, bLen)));
-        if (aStart < s.text.length) out.add(s.copyWith(text: s.text.substring(aStart)));
-      }
-      pos = end;
-    }
-    return out;
-  }
-
-  static List<_Seg> _ins(List<_Seg> segs, int at, String text, _Seg style) {
-    if (segs.isEmpty) return [style.copyWith(text: text)];
-    final out = <_Seg>[];
-    int pos = 0;
-    bool done = false;
-    for (final s in segs) {
-      final end = pos + s.text.length;
-      if (!done && at >= pos && at <= end) {
-        final split = at - pos;
-        if (split > 0) out.add(s.copyWith(text: s.text.substring(0, split)));
-        // Inherit surrounding segment style for new chars
-        final newSeg = s.sameStyle(style) ? s.copyWith(text: text) : style.copyWith(text: text);
-        out.add(newSeg);
-        if (split < s.text.length) out.add(s.copyWith(text: s.text.substring(split)));
-        done = true;
-      } else {
-        out.add(s);
-      }
-      pos = end;
-    }
-    if (!done) out.add(style.copyWith(text: text));
-    return out;
-  }
-
-  static List<_Seg> _merge(List<_Seg> segs) {
-    final out = <_Seg>[];
-    for (final s in segs) {
-      if (s.text.isEmpty) continue;
-      if (out.isNotEmpty && out.last.sameStyle(s)) {
-        final prev = out.removeLast();
-        out.add(prev.copyWith(text: prev.text + s.text));
-      } else {
-        out.add(s);
-      }
-    }
-    return out;
-  }
-
-  // ── Apply formatting to a character range ────────────────────
-
-  void applyToRange(int start, int end, void Function(_Seg s) fn) {
-    if (start >= end) return;
-    segs = _splitAt(_splitAt(segs, start), end);
-    int pos = 0;
-    for (final s in segs) {
-      final sEnd = pos + s.text.length;
-      if (pos >= start && sEnd <= end) fn(s);
-      pos = sEnd;
-    }
-    segs = _merge(segs);
-    if (segs.isEmpty) segs = [_Seg(text: '')];
-  }
-
-  static List<_Seg> _splitAt(List<_Seg> segs, int at) {
-    final out = <_Seg>[];
-    int pos = 0;
-    for (final s in segs) {
-      final end = pos + s.text.length;
-      if (at > pos && at < end) {
-        final split = at - pos;
-        out.add(s.copyWith(text: s.text.substring(0, split)));
-        out.add(s.copyWith(text: s.text.substring(split)));
-      } else {
-        out.add(s);
-      }
-      pos = end;
-    }
-    return out;
-  }
-
-  // ── Formatting state at cursor / selection ────────────────────
-
-  Map<String, dynamic> styleAt(TextSelection sel) {
-    final start = sel.isCollapsed ? sel.baseOffset     : sel.start;
-    final end   = sel.isCollapsed ? sel.baseOffset + 1 : sel.end;
-    bool bold = false, italic = false, under = false, strike = false;
-    Color? color, highlight;
-    int pos = 0;
-    for (final s in segs) {
-      final sEnd = pos + s.text.length;
-      if (sEnd > start && pos < end) {
-        bold      = bold      || s.bold;
-        italic    = italic    || s.italic;
-        under     = under     || s.underline;
-        strike    = strike    || s.strikethrough;
-        color     ??= s.color;
-        highlight ??= s.highlight;
-      }
-      pos = sEnd;
-    }
-    return {
-      'bold': bold, 'italic': italic, 'underline': under,
-      'strikethrough': strike, 'color': color, 'highlight': highlight,
-    };
-  }
-
-  // ── Render ────────────────────────────────────────────────────
-
-  @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
-    if (segs.isEmpty) return TextSpan(text: '', style: style);
-    return TextSpan(
-      style: style,
-      children: segs.map((s) => TextSpan(
-        text: s.text,
-        style: TextStyle(
-          fontWeight:  s.bold          ? FontWeight.w700  : FontWeight.w400,
-          fontStyle:   s.italic        ? FontStyle.italic : FontStyle.normal,
-          color:       s.color,
-          backgroundColor: s.highlight,
-          decoration: TextDecoration.combine([
-            if (s.underline)      TextDecoration.underline,
-            if (s.strikethrough)  TextDecoration.lineThrough,
-          ]),
-        ),
-      )).toList(),
-    );
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Block types
-// ─────────────────────────────────────────────────────────────────────────────
-
-enum NoteBlockType { text, image, audio, checkbox, pdf }
-
-enum NoteAlign { left, center, right }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NoteBlock
-// ─────────────────────────────────────────────────────────────────────────────
-
-class NoteBlock {
-  final String id;
-  final NoteBlockType type;
-
-  // text / checkbox
-  List<_Seg> segs; // rich segments
-  NoteAlign align;
-  bool orderedList;
-  bool bulletList;
-  bool isH1, isH2, isH3, isH4; // paragraph-level heading style
-
-  // image
-  String? imagePath;
-
-  // audio
-  String? audioPath;
-  Duration audioDuration;
-
-  // pdf
-    String? pdfPath;
-    String? pdfName;
-    int     pdfSizeBytes;
-    int     pdfPageCount;
-
-  // checkbox
-  bool checked;
-
-  NoteBlock({
-    required this.id,
-    this.type = NoteBlockType.text,
-    List<_Seg>? segs,
-    this.align = NoteAlign.left,
-    this.orderedList = false,
-    this.bulletList = false,
-    this.isH1 = false,
-    this.isH2 = false,
-    this.isH3 = false,
-    this.isH4 = false,
-    this.imagePath,
-    this.audioPath,
-    this.audioDuration = Duration.zero,
-    this.checked = false,
-    this.pdfPath,
-    this.pdfName,
-    this.pdfSizeBytes = 0,
-    this.pdfPageCount = 0,
-  }) : segs = segs ?? [];
-
-  String get plainText => segs.map((s) => s.text).join();
-
-  double get fontSize {
-    if (isH1) return 26;
-    if (isH2) return 22;
-    if (isH3) return 18;
-    if (isH4) return 15;
-    return 14;
-  }
-
-  TextStyle get baseStyle => TextStyle(
-        color: Colors.white.withValues(alpha: 0.88),
-        fontSize: fontSize,
-        fontWeight: (isH1 || isH2 || isH3 || isH4) ? FontWeight.w700 : FontWeight.w400,
-        height: 1.5,
-      );
-
-  // ── Serialisation ─────────────────────────────────────────────
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'type': type.index,
-        'segs': segs.map((s) => s.toJson()).toList(),
-        'al': align.index,
-        'ol': orderedList,
-        'bl': bulletList,
-        if (isH1) 'h1': true,
-        if (isH2) 'h2': true,
-        if (isH3) 'h3': true,
-        if (isH4) 'h4': true,
-        if (imagePath != null) 'img': imagePath,
-        if (audioPath != null) 'aud': audioPath,
-        if (pdfPath != null) 'pdf': pdfPath,
-        if (pdfName != null) 'pdfn': pdfName,
-        if (pdfSizeBytes > 0) 'pdfsz': pdfSizeBytes,
-        if (pdfPageCount > 0) 'pdfpg': pdfPageCount,
-                'dur': audioDuration.inMilliseconds,
-        'chk': checked,
-        // Legacy plain-text field for backward compat
-        'tx': plainText,
-      };
-
-  factory NoteBlock.fromJson(Map<String, dynamic> j) {
-    // Support both new segs format and old span/plain-text format.
-    final segsRaw = j['segs'] as List<dynamic>?;
-    
-    List<_Seg> segs;
-    if (segsRaw != null && segsRaw.isNotEmpty) {
-      segs = segsRaw
-          .map((e) => _Seg.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } else {
-      // Migrate from old NoteSpan format.
-      final spansRaw = j['sp'] as List<dynamic>?;
-      if (spansRaw != null && spansRaw.isNotEmpty) {
-        segs = spansRaw.map((e) {
-          final m = e as Map<String, dynamic>;
-          return _Seg(
-            text: m['tx'] as String? ?? '',
-            bold: m['b'] as bool? ?? false,
-            italic: m['i'] as bool? ?? false,
-            underline: m['u'] as bool? ?? false,
-            strikethrough: m['s'] as bool? ?? false,
-            color: m['c'] != null ? Color(m['c'] as int) : null,
-          );
-        }).toList();
-      } else {
-        final plain = j['tx'] as String? ?? '';
-        segs = plain.isNotEmpty ? [_Seg(text: plain)] : [];
-      }
-    }
-    return NoteBlock(
-      id: j['id'] as String,
-      type: NoteBlockType.values[j['type'] as int? ?? 0],
-      segs: segs,
-      align: NoteAlign.values[j['al'] as int? ?? 0],
-      orderedList: j['ol'] as bool? ?? false,
-      bulletList: j['bl'] as bool? ?? false,
-      isH1: j['h1'] as bool? ?? false,
-      isH2: j['h2'] as bool? ?? false,
-      isH3: j['h3'] as bool? ?? false,
-      isH4: j['h4'] as bool? ?? false,
-      imagePath: j['img'] as String?,
-      audioPath: j['aud'] as String?,
-      audioDuration: Duration(milliseconds: j['dur'] as int? ?? 0),
-      checked: j['chk'] as bool? ?? false,
-      pdfPath:      j['pdf']   as String?,
-        pdfName:      j['pdfn']  as String?,
-        pdfSizeBytes: j['pdfsz'] as int? ?? 0,
-        pdfPageCount: j['pdfpg'] as int? ?? 0,
-    );
-  }
-
-  static String encodeList(List<NoteBlock> blocks) =>
-      jsonEncode(blocks.map((b) => b.toJson()).toList());
-
-  static List<NoteBlock> decodeList(String? raw) {
-    if (raw == null || raw.isEmpty) return [NoteBlock(id: _uid())];
-    try {
-      final list = jsonDecode(raw) as List<dynamic>;
-      return list.map((e) => NoteBlock.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (_) {
-      return [NoteBlock(id: _uid())];
-    }
-  }
-}
-
-int _c = 0;
-String _uid() => '${DateTime.now().millisecondsSinceEpoch}_${_c++}';
+import 'note_fullscreen_image.dart';
+import 'note_toolbar_widgets.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ProjectNoteSheet
@@ -495,7 +33,15 @@ String _uid() => '${DateTime.now().millisecondsSinceEpoch}_${_c++}';
 
 class ProjectNoteSheet extends StatefulWidget {
   final Project project;
-  const ProjectNoteSheet({super.key, required this.project});
+  final Future<void> Function(String title, String? note)? onSaveNote;
+  final Future<void> Function()? onClearNote;
+
+  const ProjectNoteSheet({
+    super.key,
+    required this.project,
+    this.onSaveNote,
+    this.onClearNote,
+  });
 
   @override
   State<ProjectNoteSheet> createState() => _ProjectNoteSheetState();
@@ -503,12 +49,23 @@ class ProjectNoteSheet extends StatefulWidget {
 
 class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     with TickerProviderStateMixin {
-  // ── Document ────────────────────────────────────────────────
-  late List<NoteBlock> _blocks;
-  final Map<String, _RichController> _ctrl = {};
-  final Map<String, FocusNode> _fn = {};
-  String? _activeId;
-  bool _dirty = false;
+    final Map<String, GlobalKey> _textKeys = {};
+    // ── Checkbox total guard ──────────────────────────────────────
+    bool _suppressTotalRecompute = false;
+    Timer? _totalDebounce;
+    // ── Document ─────────────────────────────────────────────────
+    late List<NoteBlock> _blocks;
+    final Map<String, NoteRichController> _ctrl = {};
+    final Map<String, FocusNode> _fn = {};
+    String? _activeId;
+    bool _dirty = false;
+    String? _fmtUrl;
+    bool _readOnly = false;
+
+  static final _urlRegex = RegExp(
+    r'(?:https?://|www\.)\S+',
+    caseSensitive: false,
+  );
 
   // ── Title ────────────────────────────────────────────────────
   late TextEditingController _titleCtrl;
@@ -517,7 +74,6 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   // ── Format bar state ─────────────────────────────────────────
   bool _showFormatBar = false;
 
-  // Mirrors the selection-based formatting state for toolbar UI.
   bool _fmtBold = false;
   bool _fmtItalic = false;
   bool _fmtUnder = false;
@@ -530,17 +86,24 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   bool _fmtBL = false;
 
   // ── Colour palettes ──────────────────────────────────────────
+  static const _kCustomColor = Color(0x00000001); // sentinel for "pick custom"
+
   static const _textColors = <Color?>[
-    null,
-    Color(0xFFFFFFFF),
-    Color(0xFFFF3B30),
-    Color(0xFFFF9F0A),
-    Color(0xFFFFD60A),
-    Color(0xFF34C759),
-    Color(0xFF0A84FF),
-    Color(0xFFBF5AF2),
-    Color(0xFFFF6B9D),
-    Color(0xFF64D2FF),
+    null, // clear / default
+    Color(0xFFFFFFFF), // pure white
+    Color(0xFFE8E8E8), // soft white
+    Color(0xFFCCCCCC), // light gray
+    Color(0xFFAAAAAA), // mid gray
+    Color(0xFF888888), // dim gray
+    Color(0xFFFF3B30), // red
+    Color(0xFFFF9F0A), // orange
+    Color(0xFFFFD60A), // yellow
+    Color(0xFF34C759), // green
+    Color(0xFF0A84FF), // blue
+    Color(0xFFBF5AF2), // purple
+    Color(0xFFFF6B9D), // pink
+    Color(0xFF64D2FF), // sky
+    _kCustomColor, // custom picker
   ];
 
   static const _highlights = <Color?>[
@@ -557,8 +120,20 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
   bool _recording = false;
+  String? _currentlyPlayingId;  // ← here
+    Timer? _positionPoller;
   final Map<String, bool> _playing = {};
   final Map<String, Duration> _playPos = {};
+  final Map<String, Duration> _playDur = {}; // runtime duration (from player)
+
+  // Recording elapsed timer
+  Ticker? _recTicker;
+  Duration _recElapsed = Duration.zero;
+  DateTime? _recStart;
+
+  // Pulse animation for recording indicator
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulseAnim;
 
   // ── Fullscreen image ─────────────────────────────────────────
   String? _fullscreenImage;
@@ -572,19 +147,58 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     super.initState();
     _blocks = NoteBlock.decodeList(widget.project.note);
     for (final b in _blocks) _initBlock(b);
+    _ensureTrailingTextBlock();
 
     _titleCtrl = TextEditingController(text: widget.project.name);
     _titleFn = FocusNode();
 
+    // Pulse animation for recording dot
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(
+      begin: 0.4,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+
     _player.onPlayerStateChanged.listen((s) {
-      if (s == PlayerState.completed && mounted) {
+    if (!mounted) return;
+    if (s == PlayerState.completed) {
         setState(() {
-          for (final k in _playing.keys.toList()) _playing[k] = false;
+        if (_currentlyPlayingId != null) {
+            _playing[_currentlyPlayingId!] = false;
+            _playPos[_currentlyPlayingId!] = Duration.zero;
+            _currentlyPlayingId = null;
+        }
         });
-      }
+    }
     });
+
     _player.onPositionChanged.listen((pos) {
-      if (_activeId != null && mounted) setState(() => _playPos[_activeId!] = pos);
+    if (!mounted || _currentlyPlayingId == null) return;
+    // Only rebuild if position actually moved by at least 100ms
+    final prev = _playPos[_currentlyPlayingId!] ?? Duration.zero;
+    if ((pos - prev).abs() >= const Duration(milliseconds: 100)) {
+        setState(() => _playPos[_currentlyPlayingId!] = pos);
+    }
+    });
+
+    _player.onDurationChanged.listen((dur) {
+    if (!mounted || _currentlyPlayingId == null) return;
+    setState(() => _playDur[_currentlyPlayingId!] = dur);
+    });
+
+    _player.onPlayerStateChanged.listen((s) {
+    if (s == PlayerState.completed && mounted) {
+        setState(() {
+        if (_currentlyPlayingId != null) {
+            _playing[_currentlyPlayingId!] = false;
+            _playPos[_currentlyPlayingId!] = Duration.zero;
+            _currentlyPlayingId = null;
+        }
+        });
+    }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -592,32 +206,222 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     });
   }
 
+
+    String _segsToMarkdown(NoteBlock b) {
+        final ctrl = _ctrl[b.id];
+        final segs = ctrl?.segs ?? b.segs;
+        final buf = StringBuffer();
+        for (final s in segs) {
+            var text = s.text;
+            // Wrap in markdown inline styles
+            if (s.bold) text = '**$text**';
+            if (s.italic) text = '_${text}_';
+            if (s.strikethrough) text = '~~$text~~';
+            // Link takes priority over underline
+            if (s.url != null && s.url!.isNotEmpty) {
+            text = '[$text](${s.url})';
+            }
+            buf.write(text);
+        }
+        return buf.toString();
+    }
+
+
+  Future<void> _showColorPicker({required bool isHighlight}) async {
+    Color current = isHighlight
+        ? (_fmtHighlight ?? const Color(0xFFFFD60A))
+        : (_fmtColor ?? Colors.white);
+
+    // Strip alpha for the picker if it's a highlight (semi-transparent)
+    if (isHighlight) current = current.withValues(alpha: 1.0);
+
+    HSVColor hsv = HSVColor.fromColor(current);
+
+    final picked = await showDialog<Color>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final preview = isHighlight
+                ? hsv.toColor().withValues(alpha: 0.4)
+                : hsv.toColor();
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1A1A1A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              title: Text(
+                isHighlight ? 'Highlight color' : 'Text color',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Preview swatch
+                  Container(
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: preview,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white12),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Hue
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Hue',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(ctx).copyWith(
+                      trackHeight: 8,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 10,
+                      ),
+                    ),
+                    child: Slider(
+                      value: hsv.hue,
+                      min: 0,
+                      max: 360,
+                      activeColor: HSVColor.fromAHSV(
+                        1,
+                        hsv.hue,
+                        1,
+                        1,
+                      ).toColor(),
+                      inactiveColor: Colors.white12,
+                      onChanged: (v) => setLocal(() => hsv = hsv.withHue(v)),
+                    ),
+                  ),
+                  // Saturation
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Saturation',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(ctx).copyWith(
+                      trackHeight: 8,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 10,
+                      ),
+                    ),
+                    child: Slider(
+                      value: hsv.saturation,
+                      min: 0,
+                      max: 1,
+                      activeColor: hsv.toColor(),
+                      inactiveColor: Colors.white12,
+                      onChanged: (v) =>
+                          setLocal(() => hsv = hsv.withSaturation(v)),
+                    ),
+                  ),
+                  // Brightness
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Brightness',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(ctx).copyWith(
+                      trackHeight: 8,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 10,
+                      ),
+                    ),
+                    child: Slider(
+                      value: hsv.value,
+                      min: 0,
+                      max: 1,
+                      activeColor: hsv.toColor(),
+                      inactiveColor: Colors.white12,
+                      onChanged: (v) => setLocal(() => hsv = hsv.withValue(v)),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(
+                    ctx,
+                    isHighlight
+                        ? hsv.toColor().withValues(alpha: 0.4)
+                        : hsv.toColor(),
+                  ),
+                  child: const Text(
+                    'Apply',
+                    style: TextStyle(
+                      color: Color(0xFF64D2FF),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (picked == null) return;
+    if (isHighlight) {
+      _applyInlineFmt((s) => s.highlight = picked);
+    } else {
+      _applyInlineFmt((s) => s.color = picked);
+    }
+  }
+
   void _initBlock(NoteBlock b) {
-    if (b.type != NoteBlockType.text && b.type != NoteBlockType.checkbox) return;
+    if (b.type != NoteBlockType.text && b.type != NoteBlockType.checkbox)
+      return;
 
-    final ctrl = _RichController(segs: List.from(b.segs));
-
-    // The listener only refreshes the toolbar UI state — text/segs sync
-    // is handled by the onChanged callback on the TextField itself.
+    final ctrl = NoteRichController(segs: List.from(b.segs));
     ctrl.addListener(() {
       if (_activeId == b.id && mounted) setState(() => _refreshFmtBar(b, ctrl));
     });
 
     _ctrl[b.id] = ctrl;
+    _textKeys[b.id] = GlobalKey();
 
     final fn = FocusNode();
+    // In the FocusNode listener inside _initBlock:
     fn.addListener(() {
       if (fn.hasFocus && mounted) {
+        final isTotal =
+            b.segs.isNotEmpty &&
+            b.segs.first.text.trimLeft().startsWith('Checkbox Total:');
         setState(() {
           _activeId = b.id;
-          _refreshFmtBar(b, ctrl);
+          if (!isTotal) {
+            _refreshFmtBar(b, ctrl);
+          } else {
+            _showFormatBar = false;
+          }
         });
       }
     });
     _fn[b.id] = fn;
   }
 
-  void _refreshFmtBar(NoteBlock b, _RichController ctrl) {
+  void _refreshFmtBar(NoteBlock b, NoteRichController ctrl) {
     final sel = ctrl.selection;
     final style = ctrl.styleAt(sel);
     _fmtBold = style['bold'] as bool;
@@ -626,6 +430,7 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     _fmtStrike = style['strikethrough'] as bool;
     _fmtColor = style['color'] as Color?;
     _fmtHighlight = style['highlight'] as Color?;
+    _fmtUrl = style['url'] as String?;
     _fmtAlign = b.align;
     _fmtH1 = b.isH1;
     _fmtH2 = b.isH2;
@@ -636,32 +441,33 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   }
 
   NoteBlock? get _active => _blocks.where((b) => b.id == _activeId).firstOrNull;
-  _RichController? get _activeCtrl => _activeId != null ? _ctrl[_activeId] : null;
+  NoteRichController? get _activeCtrl =>
+      _activeId != null ? _ctrl[_activeId] : null;
 
   // ─────────────────────────────────────────────────────────────
-  // Inline formatting (applied to selected range or whole block)
+  // Inline / paragraph formatting
   // ─────────────────────────────────────────────────────────────
+  void _ensureTrailingTextBlock() {
+    if (_blocks.isEmpty || _blocks.last.type != NoteBlockType.text) {
+      final nb = NoteBlock(id: noteUid(), type: NoteBlockType.text);
+      _blocks.add(nb);
+      _initBlock(nb);
+    }
+  }
 
-  void _applyInlineFmt(void Function(_Seg s) fn) {
+  void _applyInlineFmt(void Function(NoteSeg s) fn) {
     final b = _active;
     final ctrl = _activeCtrl;
     if (b == null || ctrl == null) return;
 
     final sel = ctrl.selection;
-    int start, end;
-    if (sel.isValid && !sel.isCollapsed) {
-      start = sel.start;
-      end = sel.end;
-    } else {
-      // No selection → apply to whole block.
-      start = 0;
-      end = ctrl.text.length;
-    }
+    final start = (sel.isValid && !sel.isCollapsed) ? sel.start : 0;
+    final end = (sel.isValid && !sel.isCollapsed) ? sel.end : ctrl.text.length;
 
     setState(() {
       ctrl.applyToRange(start, end, fn);
       b.segs = List.from(ctrl.segs);
-      ctrl.rebuildText(); // refresh the span tree without corrupting _prevText
+      ctrl.rebuildText();
       _refreshFmtBar(b, ctrl);
       _dirty = true;
     });
@@ -684,16 +490,17 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 
   void _addTextBlockAfter(String afterId) {
     final idx = _blocks.indexWhere((b) => b.id == afterId);
-    final nb = NoteBlock(id: _uid(), type: NoteBlockType.text);
+    final nb = NoteBlock(id: noteUid(), type: NoteBlockType.text);
     _blocks.insert(idx + 1, nb);
     _initBlock(nb);
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _fn[nb.id]?.requestFocus());
+      (_) => _fn[nb.id]?.requestFocus(),
+    );
   }
 
   void _addCheckboxBlock() {
-    final nb = NoteBlock(id: _uid(), type: NoteBlockType.checkbox);
+    final nb = NoteBlock(id: noteUid(), type: NoteBlockType.checkbox);
     final idx = _activeId == null
         ? _blocks.length
         : _blocks.indexWhere((b) => b.id == _activeId) + 1;
@@ -701,54 +508,192 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     _initBlock(nb);
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _fn[nb.id]?.requestFocus());
+      (_) => _fn[nb.id]?.requestFocus(),
+    );
   }
 
-    void _removeBlock(String id) {
+  void _recomputeCheckboxTotal() {
+    // Collect all checkbox blocks with purely-numeric plain text
+    final numericBlocks = <({NoteBlock block, int value})>[];
+
+    for (final b in _blocks) {
+      if (b.type != NoteBlockType.checkbox) continue;
+      // Skip any existing total block
+      if (b.segs.isNotEmpty &&
+          b.segs.first.text.trimLeft().startsWith('Checkbox Total:'))
+        continue;
+
+      final raw = (b.plainText).replaceAll(RegExp(r'[\s,_]'), '');
+      final n = int.tryParse(raw);
+      if (n != null) numericBlocks.add((block: b, value: n));
+    }
+
+    // Find existing total block (if any)
+    final totalIdx = _blocks.indexWhere(
+      (b) =>
+          b.type == NoteBlockType.checkbox &&
+          b.segs.isNotEmpty &&
+          b.segs.first.text.trimLeft().startsWith('Checkbox Total:'),
+    );
+
+    if (numericBlocks.length < 2) {
+      // Remove stale total block if numeric inputs dropped below 2
+      if (totalIdx != -1) {
+        setState(() {
+          _blocks.removeAt(totalIdx);
+          _dirty = true;
+        });
+      }
+      return;
+    }
+
+    final sum = numericBlocks.fold(0, (acc, e) => acc + e.value);
+    // Format with thousands separator
+    final formatted = _formatWithCommas(sum);
+    final label = 'Checkbox Total: $formatted';
+
+    if (totalIdx != -1) {
+      // Update existing total block in-place
+      final tb = _blocks[totalIdx];
+      final ctrl = _ctrl[tb.id];
+      setState(() {
+        tb.segs = [NoteSeg(text: label)];
+        tb.checked = false;
+        if (ctrl != null) {
+          ctrl.segs = List.from(tb.segs);
+          ctrl.rebuildText();
+        }
+        _dirty = true;
+      });
+    } else {
+      // Insert new total block after the last numeric checkbox
+      final lastNumericBlock = numericBlocks.last.block;
+      final insertAfterIdx = _blocks.indexWhere(
+        (b) => b.id == lastNumericBlock.id,
+      );
+
+      final tb = NoteBlock(id: noteUid(), type: NoteBlockType.checkbox)
+        ..segs = [NoteSeg(text: label)];
+
+      _blocks.insert(insertAfterIdx + 1, tb);
+      _initBlock(tb);
+
+      // Sync the controller text immediately
+      final ctrl = _ctrl[tb.id];
+      if (ctrl != null) {
+        ctrl.segs = List.from(tb.segs);
+        ctrl.rebuildText();
+      }
+      setState(() => _dirty = true);
+    }
+  }
+
+  String _formatWithCommas(int n) {
+    final s = n.toString();
+    final buf = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
+      buf.write(s[i]);
+    }
+    return buf.toString();
+  }
+
+  void _removeBlock(String id) {
     final idx = _blocks.indexWhere((b) => b.id == id);
     if (idx == -1) return;
 
-    final block = _blocks[idx]; // ← capture before any mutation
+    final block = _blocks[idx];
 
-    // If this is the only text block, just clear it.
     final textBlocks = _blocks.where(
-        (b) => b.type == NoteBlockType.text || b.type == NoteBlockType.checkbox);
+      (b) => b.type == NoteBlockType.text || b.type == NoteBlockType.checkbox,
+    );
     if (_blocks.length <= 1 ||
         (textBlocks.length == 1 && textBlocks.first.id == id)) {
-        final ctrl = _ctrl[id];
-        if (ctrl != null) {
+      final ctrl = _ctrl[id];
+      if (ctrl != null) {
         ctrl.segs = [];
         ctrl.text = '';
         _blocks[idx].segs = [];
-        }
-        setState(() => _dirty = true);
-        return;
+      }
+      setState(() => _dirty = true);
+      return;
     }
 
-    // Clean up copied PDF file before removing the block.
     if (block.type == NoteBlockType.pdf && block.pdfPath != null) {
-        File(block.pdfPath!).delete().catchError((_) {});
+      File(block.pdfPath!).delete().catchError((_) {});
     }
+
+    // Capture references BEFORE removing from maps so we can safely
+    // defer dispose until after the frame — avoids "_dependents.isEmpty"
+    // assertion when the TextField is still mounted during setState.
+    final ctrlToDispose = _ctrl[id];
+    final fnToDispose = _fn[id];
 
     setState(() {
-        _ctrl[id]?.dispose();
-        _fn[id]?.dispose();
-        _ctrl.remove(id);
-        _fn.remove(id);
-        _blocks.removeAt(idx);
+      _ctrl.remove(id);
+      _fn.remove(id);
+      _textKeys.remove(id);
+      _blocks.removeAt(idx);
     });
 
-    // Focus the nearest preceding text/checkbox block, or the next one.
+    // Defer disposal until the widgets using these objects are gone.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_suppressTotalRecompute) _recomputeCheckboxTotal();
+      _suppressTotalRecompute = false;
+      ctrlToDispose?.dispose();
+      fnToDispose?.dispose();
+    });
+
     final focusIdx = (idx - 1).clamp(0, _blocks.length - 1);
     final targetId = _blocks[focusIdx].id;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-        _fn[targetId]?.requestFocus();
-        final c = _ctrl[targetId];
-        if (c != null) {
+      _fn[targetId]?.requestFocus();
+      final c = _ctrl[targetId];
+      if (c != null) {
         c.selection = TextSelection.collapsed(offset: c.text.length);
-        }
+      }
     });
+  }
+
+  Future<void> _handleTextTap(NoteBlock b, TapUpDetails details) async {
+    final ctrl = _ctrl[b.id];
+    if (ctrl == null) return;
+
+    final key = _textKeys[b.id];
+    if (key == null) return;
+
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject == null) return;
+
+    RenderEditable? renderEditable;
+    void visitor(RenderObject child) {
+      if (child is RenderEditable) {
+        renderEditable = child;
+        return;
+      }
+      child.visitChildren(visitor);
     }
+
+    renderObject.visitChildren(visitor);
+    if (renderEditable == null) return;
+
+    final localPos = renderEditable!.globalToLocal(details.globalPosition);
+    final textPosition = renderEditable!.getPositionForPoint(localPos);
+    final offset = textPosition.offset;
+
+    final url = ctrl.urlAt(offset);
+    if (url == null || url.isEmpty) return;
+
+    var urlStr = url;
+    if (!urlStr.startsWith('http://') && !urlStr.startsWith('https://')) {
+      urlStr = 'https://$urlStr';
+    }
+    final uri = Uri.tryParse(urlStr);
+    if (uri != null && await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Image picker
   // ─────────────────────────────────────────────────────────────
@@ -759,9 +704,11 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     if (file == null) return;
 
     final imgBlock = NoteBlock(
-        id: _uid(), type: NoteBlockType.image, imagePath: file.path);
-    // Always add a text block after the image so the user can keep writing.
-    final textAfter = NoteBlock(id: _uid(), type: NoteBlockType.text);
+      id: noteUid(),
+      type: NoteBlockType.image,
+      imagePath: file.path,
+    );
+    final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
     final idx = _activeId == null
         ? _blocks.length
         : _blocks.indexWhere((b) => b.id == _activeId) + 1;
@@ -773,97 +720,287 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     });
     _initBlock(textAfter);
     WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _fn[textAfter.id]?.requestFocus());
+      (_) => _fn[textAfter.id]?.requestFocus(),
+    );
   }
-
-  Future<void> _pickPdf() async {
-  final result = await FilePicker.platform.pickFiles(
-    type: FileType.custom,
-    allowedExtensions: ['pdf'],
-    withData: false,
-    withReadStream: false,
-  );
-  if (result == null || result.files.isEmpty) return;
-
-  final picked = result.files.first;
-  if (picked.path == null) return;
-
-  // Copy into app documents so it survives external moves/deletions.
-  final docsDir = await getApplicationDocumentsDirectory();
-  final destName =
-      '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
-  final destPath = '${docsDir.path}/$destName';
-  await File(picked.path!).copy(destPath);
-
-  // Best-effort page count via byte scan (fast, no heavy dependency).
-  int pageCount = 0;
-  try {
-    final bytes = await File(destPath).readAsBytes();
-    final content = String.fromCharCodes(bytes);
-    final matches = RegExp(r'/Type\s*/Page[^s]').allMatches(content);
-    pageCount = matches.length;
-  } catch (_) {}
-
-  final pdfBlock = NoteBlock(
-    id:           _uid(),
-    type:         NoteBlockType.pdf,
-    pdfPath:      destPath,
-    pdfName:      picked.name,
-    pdfSizeBytes: picked.size,
-    pdfPageCount: pageCount,
-  );
-  final textAfter = NoteBlock(id: _uid(), type: NoteBlockType.text);
-
-  final idx = _activeId == null
-      ? _blocks.length
-      : _blocks.indexWhere((b) => b.id == _activeId) + 1;
-
-  setState(() {
-    _blocks.insert(idx, pdfBlock);
-    _blocks.insert(idx + 1, textAfter);
-    _dirty = true;
-  });
-  _initBlock(textAfter);
-  WidgetsBinding.instance
-      .addPostFrameCallback((_) => _fn[textAfter.id]?.requestFocus());
-}
 
   void _showImageOptions() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black38,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            ListTile(
-              leading:
-                  const Icon(Icons.camera_alt_rounded, color: Color(0xFF0A84FF)),
-              title: const Text('Take Photo',
-                  style: TextStyle(color: Colors.white, fontSize: 15)),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.camera);
-              },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white10),
             ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_rounded,
-                  color: Color(0xFF0A84FF)),
-              title: const Text('Choose Photo',
-                  style: TextStyle(color: Colors.white, fontSize: 15)),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
-              },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ImageOption(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Take Photo',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickImage(ImageSource.camera);
+                  },
+                ),
+                Divider(height: 1, color: Colors.white10),
+                _ImageOption(
+                  icon: Icons.photo_library_rounded,
+                  label: 'Choose Photo',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickImage(ImageSource.gallery);
+                  },
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PDF picker
+  // ─────────────────────────────────────────────────────────────
+
+  Future<void> _pickPdf() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      withData: false,
+      withReadStream: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    final picked = result.files.first;
+    if (picked.path == null) return;
+
+    final docsDir = await getApplicationDocumentsDirectory();
+    final destName = '${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
+    final destPath = '${docsDir.path}/$destName';
+    await File(picked.path!).copy(destPath);
+
+    int pageCount = 0;
+    try {
+      final bytes = await File(destPath).readAsBytes();
+      final content = String.fromCharCodes(bytes);
+      final matches = RegExp(r'/Type\s*/Page[^s]').allMatches(content);
+      pageCount = matches.length;
+    } catch (_) {}
+
+    final pdfBlock = NoteBlock(
+      id: noteUid(),
+      type: NoteBlockType.pdf,
+      pdfPath: destPath,
+      pdfName: picked.name,
+      pdfSizeBytes: picked.size,
+      pdfPageCount: pageCount,
+    );
+    final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
+
+    final idx = _activeId == null
+        ? _blocks.length
+        : _blocks.indexWhere((b) => b.id == _activeId) + 1;
+
+    setState(() {
+      _blocks.insert(idx, pdfBlock);
+      _blocks.insert(idx + 1, textAfter);
+      _dirty = true;
+    });
+    _initBlock(textAfter);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _fn[textAfter.id]?.requestFocus(),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Link dialog
+  // ─────────────────────────────────────────────────────────────
+
+  Future<void> _showLinkDialog() async {
+    final ctrl = _activeCtrl;
+    if (ctrl == null) return;
+
+    final sel = ctrl.selection;
+    final hasSelection = sel.isValid && !sel.isCollapsed;
+    final existing = (ctrl.styleAt(sel)['url'] as String?) ?? '';
+
+    final selectedText = hasSelection
+        ? ctrl.text.substring(sel.start, sel.end).trim()
+        : '';
+    final looksLikeUrl =
+        selectedText.startsWith('http://') ||
+        selectedText.startsWith('https://') ||
+        selectedText.startsWith('www.');
+
+    // Controllers are created here and disposed AFTER the dialog closes —
+    // never inside the dialog's build (which would cause _dependents assertion).
+    final urlCtrl = TextEditingController(
+      text: existing.isNotEmpty
+          ? existing
+          : looksLikeUrl
+          ? selectedText
+          : '',
+    );
+    final textCtrl = TextEditingController(
+      text: looksLikeUrl ? '' : selectedText,
+    );
+
+    Map<String, String>? result;
+    result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Text(
+          'Insert Link',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!hasSelection) ...[
+              TextField(
+                controller: textCtrl,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Link text',
+                  hintStyle: const TextStyle(color: Colors.white38),
+                  filled: true,
+                  fillColor: const Color(0xFF252525),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            TextField(
+              controller: urlCtrl,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'https://',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: const Color(0xFF252525),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                prefixIcon: const Icon(
+                  Icons.link_rounded,
+                  color: Color(0xFF64D2FF),
+                  size: 18,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          if (existing.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, {'url': '', 'text': ''}),
+              child: const Text(
+                'Remove',
+                style: TextStyle(color: Color(0xFFFF3B30)),
+              ),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, {
+              'url': urlCtrl.text.trim(),
+              'text': textCtrl.text.trim(),
+            }),
+            child: const Text(
+              'Insert',
+              style: TextStyle(
+                color: Color(0xFF64D2FF),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Defer disposal to the next frame — by then the dialog's TextFields
+    // have been unmounted and no longer hold references to these controllers.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      urlCtrl.dispose();
+      textCtrl.dispose();
+    });
+
+    if (result == null) return;
+
+    final url = result['url']!;
+    final linkText = result['text']!;
+    final remove = url.isEmpty;
+
+    if (hasSelection) {
+      _applyInlineFmt((s) {
+        if (remove) {
+          s.url = null;
+        } else {
+          s.url = url;
+        }
+      });
+    } else if (!remove && linkText.isNotEmpty) {
+      final b = _active;
+      final at = ctrl.selection.baseOffset;
+      final newSeg = NoteSeg(
+        text: linkText,
+        url: url,
+        underline: true,
+        color: const Color(0xFF64D2FF),
+      );
+      setState(() {
+        ctrl.segs = NoteRichController.insSegs(ctrl.segs, at, linkText, newSeg);
+        int pos = 0;
+        for (final s in ctrl.segs) {
+          if (pos >= at && pos < at + linkText.length) {
+            s.url = url;
+            s.color = const Color(0xFF64D2FF);
+            s.underline = true;
+          }
+          pos += s.text.length;
+        }
+        ctrl.segs = NoteRichController.mergeSegs(ctrl.segs);
+        b?.segs = List.from(ctrl.segs);
+        ctrl.rebuildText();
+        _dirty = true;
+      });
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -872,48 +1009,170 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 
   Future<void> _toggleRecording() async {
     if (_recording) {
-      final path = await _recorder.stop();
-      setState(() => _recording = false);
-      if (path == null) return;
-
-      final audioBlock =
-          NoteBlock(id: _uid(), type: NoteBlockType.audio, audioPath: path);
-      final textAfter = NoteBlock(id: _uid(), type: NoteBlockType.text);
-      final idx = _activeId == null
-          ? _blocks.length
-          : _blocks.indexWhere((b) => b.id == _activeId) + 1;
-
-      setState(() {
-        _blocks.insert(idx, audioBlock);
-        _blocks.insert(idx + 1, textAfter);
-        _dirty = true;
-      });
-      _initBlock(textAfter);
-      WidgetsBinding.instance.addPostFrameCallback(
-          (_) => _fn[textAfter.id]?.requestFocus());
+      _stopRecording();
     } else {
       final hasPermission = await _recorder.hasPermission();
       if (!hasPermission) return;
-      final dir = await getTemporaryDirectory();
+      final dir = await getApplicationDocumentsDirectory();
       final path =
           '${dir.path}/note_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _recorder.start(const RecordConfig(), path: path);
+      _recStart = DateTime.now();
+      _recElapsed = Duration.zero;
+      _recTicker?.dispose();
+      _recTicker = createTicker((_) {
+        if (_recStart != null && mounted) {
+          setState(() => _recElapsed = DateTime.now().difference(_recStart!));
+        }
+      })..start();
       setState(() => _recording = true);
     }
   }
 
-  Future<void> _togglePlayback(NoteBlock b) async {
-    final isPlaying = _playing[b.id] ?? false;
-    if (isPlaying) {
-      await _player.pause();
-      setState(() => _playing[b.id] = false);
-    } else {
-      for (final k in _playing.keys.toList()) _playing[k] = false;
-      await _player.play(DeviceFileSource(b.audioPath!));
-      setState(() {
-        _playing[b.id] = true;
-        _activeId = b.id;
-      });
+  Future<void> _stopRecording() async {
+    _recTicker?.stop();
+    final path = await _recorder.stop();
+    setState(() {
+      _recording = false;
+      _recElapsed = Duration.zero;
+    });
+    if (path == null) return;
+
+    final audioBlock = NoteBlock(
+      id: noteUid(),
+      type: NoteBlockType.audio,
+      audioPath: path,
+      audioDuration: _recElapsed,
+    );
+    final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
+    final idx = _activeId == null
+        ? _blocks.length
+        : _blocks.indexWhere((b) => b.id == _activeId) + 1;
+
+    setState(() {
+      _blocks.insert(idx, audioBlock);
+      _blocks.insert(idx + 1, textAfter);
+      _dirty = true;
+    });
+    _initBlock(textAfter);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _fn[textAfter.id]?.requestFocus(),
+    );
+  }
+
+  Future<void> _cancelRecording() async {
+    _recTicker?.stop();
+    await _recorder.cancel();
+    setState(() {
+      _recording = false;
+      _recElapsed = Duration.zero;
+    });
+  }
+
+    Future<void> _togglePlayback(NoteBlock b) async {
+        final isPlaying = _playing[b.id] ?? false;
+        if (isPlaying) {
+            await _player.pause();
+            _positionPoller?.cancel();
+            setState(() {
+            _playing[b.id] = false;
+            _currentlyPlayingId = null;
+            });
+        } else {
+            for (final k in _playing.keys.toList()) _playing[k] = false;
+            _positionPoller?.cancel();
+            await _player.play(DeviceFileSource(b.audioPath!));
+            setState(() {
+            _playing[b.id] = true;
+            _currentlyPlayingId = b.id;
+            _activeId = b.id;
+            });
+            // Poll position every 100ms — guaranteed to work regardless of stream
+            _positionPoller = Timer.periodic(const Duration(milliseconds: 100), (_) async {
+            if (!mounted || _currentlyPlayingId == null) return;
+            final pos = await _player.getCurrentPosition();
+            if (pos != null) {
+                setState(() => _playPos[_currentlyPlayingId!] = pos);
+            }
+            });
+        }
+    }
+
+    Future<void> _seekAudio(NoteBlock b, double fraction) async {
+        final dur = _playDur[b.id] ?? b.audioDuration;
+        if (dur == Duration.zero) return;
+        final target = Duration(
+            milliseconds: (dur.inMilliseconds * fraction.clamp(0.0, 1.0)).round(),
+        );
+        await _player.seek(target);
+        setState(() => _playPos[b.id] = target); 
+    }
+
+  // ─────────────────────────────────────────────────────────────
+  // Auto-link detection
+  // ─────────────────────────────────────────────────────────────
+
+    /// Scans all text/checkbox blocks and promotes any bare URL runs that
+    /// don't already have a [url] attribute into linked segments.
+    void _autoDetectLinks() {
+    for (final b in _blocks) {
+        if (b.type != NoteBlockType.text && b.type != NoteBlockType.checkbox) {
+            continue;
+        }
+        final ctrl = _ctrl[b.id];
+        if (ctrl == null) continue;
+
+        bool changed = false;
+
+        // Rebuild segs: for each seg without a URL, scan its text for URLs.
+        final newSegs = <NoteSeg>[];
+      for (final seg in ctrl.segs) {
+        if (seg.url != null && seg.url!.isNotEmpty) {
+          newSegs.add(seg);
+          continue;
+        }
+
+        final matches = _urlRegex.allMatches(seg.text).toList();
+        if (matches.isEmpty) {
+          newSegs.add(seg);
+          continue;
+        }
+
+        changed = true;
+        int cursor = 0;
+        for (final m in matches) {
+          // Text before the URL.
+          if (m.start > cursor) {
+            newSegs.add(
+              seg.copyWith(text: seg.text.substring(cursor, m.start)),
+            );
+          }
+          // The URL span.
+          final urlText = m.group(0)!;
+          final urlTarget = urlText.startsWith('http')
+              ? urlText
+              : 'https://$urlText';
+          newSegs.add(
+            seg.copyWith(
+              text: urlText,
+              url: urlTarget,
+              underline: true,
+              color: const Color(0xFF64D2FF),
+            ),
+          );
+          cursor = m.end;
+        }
+        // Trailing text after last URL.
+        if (cursor < seg.text.length) {
+          newSegs.add(seg.copyWith(text: seg.text.substring(cursor)));
+        }
+      }
+
+      if (changed) {
+        ctrl.segs = NoteRichController.mergeSegs(newSegs);
+        b.segs = List.from(ctrl.segs);
+        ctrl.rebuildText();
+      }
     }
   }
 
@@ -922,26 +1181,44 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   // ─────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
-    // Flush controller state to blocks before encoding.
+    // Auto-detect bare URLs and promote them to linked segments.
+    _autoDetectLinks();
+
     for (final b in _blocks) {
       if (_ctrl[b.id] != null) b.segs = List.from(_ctrl[b.id]!.segs);
     }
     final trimmed = _blocks.length > 1
-        ? (_blocks.toList()
-          ..removeWhere((b) =>
-              b == _blocks.last &&
-              b.type == NoteBlockType.text &&
-              b.plainText.trim().isEmpty))
+        ? (_blocks.toList()..removeWhere(
+            (b) =>
+                b == _blocks.last &&
+                b.type == NoteBlockType.text &&
+                b.plainText.trim().isEmpty,
+          ))
         : _blocks;
     final encoded = NoteBlock.encodeList(trimmed);
-    await AppController.instance.updateProjectNote(widget.project.id, encoded);
-    if (mounted) {
-      AppToast.show(context,
-          msg: 'Note saved',
-          backgroundColor: const Color(0xFF0A1F0A),
-          textColor: const Color(0xFF34C759));
+
+    if (widget.onSaveNote != null) {
+      await widget.onSaveNote!(_titleCtrl.text.trim(), encoded);
+    } else {
+      await AppController.instance.updateProjectNote(
+        widget.project.id,
+        encoded,
+      );
     }
-    setState(() => _dirty = false);
+
+    if (mounted) {
+      AppToast.show(
+        context,
+        msg: 'Note saved',
+        backgroundColor: const Color(0xFF0A1F0A),
+        textColor: const Color(0xFF34C759),
+      );
+      setState(() {
+        _dirty = false;
+        _readOnly = true;
+        FocusScope.of(context).unfocus();
+      });
+    }
   }
 
   Future<void> _clear() async {
@@ -949,20 +1226,28 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Clear note?',
-            style: TextStyle(color: Colors.white, fontSize: 17)),
-        content: const Text('All note content will be removed.',
-            style: TextStyle(color: Colors.white60, fontSize: 14)),
+        title: const Text(
+          'Clear note?',
+          style: TextStyle(color: Colors.white, fontSize: 17),
+        ),
+        content: const Text(
+          'All note content will be removed.',
+          style: TextStyle(color: Colors.white60, fontSize: 14),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Clear',
-                style: TextStyle(color: Color(0xFFFF3B30))),
+            child: const Text(
+              'Clear',
+              style: TextStyle(color: Color(0xFFFF3B30)),
+            ),
           ),
         ],
       ),
@@ -973,14 +1258,187 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     }
   }
 
+  String _fmtDateOnly(DateTime dt) {
+    final l = dt.toLocal();
+    return '${l.day.toString().padLeft(2, '0')}/'
+        '${l.month.toString().padLeft(2, '0')}/'
+        '${l.year}';
+  }
+
+  String _fmtTimeOnly(DateTime dt) {
+    final l = dt.toLocal();
+    final hour12 = l.hour % 12 == 0 ? 12 : l.hour % 12;
+    return '${hour12.toString().padLeft(2, '0')}:'
+        '${l.minute.toString().padLeft(2, '0')} '
+        '${l.hour >= 12 ? 'PM' : 'AM'}';
+  }
+
+    void _showMoveSheet(NoteBlock audioBlock) {
+  final isStandalone = widget.onSaveNote != null;
+
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: const Color(0xFF1A1A1A),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) {
+      // ── Build the list items based on note type ──
+      final List<Widget> items;
+
+      if (isStandalone) {
+        // Standalone notes list
+        final notes = StandaloneNoteController.instance.notes
+            .where((n) => n.id != widget.project.id)
+            .toList();
+
+        items = notes.map((note) => ListTile(
+          leading: const Icon(Icons.note_outlined, color: Colors.white38, size: 18),
+          title: Text(
+            note.title.isEmpty ? 'Untitled' : note.title,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+          ),
+          onTap: () async {
+            Navigator.pop(ctx);
+            setState(() {
+              _blocks.removeWhere((bl) => bl.id == audioBlock.id);
+              _dirty = true;
+            });
+            await _save();
+
+            final target = StandaloneNoteController.instance.find(note.id);
+            if (target == null) return;
+            final targetBlocks = NoteBlock.decodeList(target.note);
+            targetBlocks.add(audioBlock);
+            await StandaloneNoteController.instance.saveNote(
+              note.id,
+              note.title,
+              NoteBlock.encodeList(targetBlocks),
+            );
+
+            if (mounted) {
+              AppToast.show(
+                context,
+                msg: 'Moved to "${note.title.isEmpty ? 'Untitled' : note.title}"',
+                backgroundColor: const Color(0xFF0A1F0A),
+                textColor: const Color(0xFF34C759),
+              );
+            }
+          },
+        )).toList();
+      } else {
+        // Project notes list
+        final projects = AppController.instance.projects
+            .where((p) => p.id != widget.project.id)
+            .toList();
+
+        items = projects.map((project) => ListTile(
+          leading: Container(
+            width: 8, height: 8,
+            decoration: BoxDecoration(
+              color: project.priority.color,
+              shape: BoxShape.circle,
+            ),
+          ),
+          title: Text(
+            project.name,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+          ),
+          subtitle: project.description.isNotEmpty
+              ? Text(
+                  project.description,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : null,
+          onTap: () async {
+            Navigator.pop(ctx);
+            setState(() {
+              _blocks.removeWhere((bl) => bl.id == audioBlock.id);
+              _dirty = true;
+            });
+            await _save();
+
+            // Load target project's existing note blocks and append
+            final targetProject = AppController.instance.projects
+                .firstWhere((p) => p.id == project.id);
+            final targetBlocks = NoteBlock.decodeList(targetProject.note);
+            targetBlocks.add(audioBlock);
+            await AppController.instance.updateProjectNote(
+              project.id,
+              NoteBlock.encodeList(targetBlocks),
+            );
+
+            if (mounted) {
+              AppToast.show(
+                context,
+                msg: 'Moved to "${project.name}"',
+                backgroundColor: const Color(0xFF0A1F0A),
+                textColor: const Color(0xFF34C759),
+              );
+            }
+          },
+        )).toList();
+      }
+
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36, height: 4,
+            margin: const EdgeInsets.only(top: 12, bottom: 14),
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              isStandalone ? 'Move to note' : 'Move to project',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
+          ),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                isStandalone ? 'No other notes available' : 'No other projects available',
+                style: const TextStyle(color: Colors.white38, fontSize: 13),
+              ),
+            )
+          else
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: items,
+              ),
+            ),
+          const SizedBox(height: 20),
+        ],
+      );
+    },
+  );
+}
+
   @override
   void dispose() {
+    _positionPoller?.cancel();
     for (final c in _ctrl.values) c.dispose();
     for (final f in _fn.values) f.dispose();
+    
     _titleCtrl.dispose();
     _titleFn.dispose();
+    _pulseCtrl.dispose();
+    _recTicker?.dispose();
     _recorder.dispose();
     _player.dispose();
+    _totalDebounce?.cancel();
     super.dispose();
   }
 
@@ -991,9 +1449,10 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   @override
   Widget build(BuildContext context) {
     if (_fullscreenImage != null) {
-      return _FullscreenImage(
-          path: _fullscreenImage!,
-          onClose: () => setState(() => _fullscreenImage = null));
+      return NoteFullscreenImage(
+        path: _fullscreenImage!,
+        onClose: () => setState(() => _fullscreenImage = null),
+      );
     }
     return Scaffold(
       backgroundColor: const Color(0xFF0E0E0F),
@@ -1002,8 +1461,9 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
           children: [
             _buildTopBar(),
             Expanded(child: _buildEditor()),
-            if (_showFormatBar) _buildFormatBar(),
-            _buildBottomBar(),
+            if (_recording) _buildRecordingPanel(),
+            if (_showFormatBar && !_readOnly) _buildFormatBar(),
+            if (!_readOnly) _buildBottomBar(),
           ],
         ),
       ),
@@ -1018,7 +1478,8 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0xFF1E1E1E)))),
+        border: Border(bottom: BorderSide(color: Color(0xFF1E1E1E))),
+      ),
       child: Row(
         children: [
           GestureDetector(
@@ -1028,8 +1489,11 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
             },
             child: Container(
               padding: const EdgeInsets.all(8),
-              child: Icon(Icons.arrow_back_ios_rounded,
-                  color: Colors.white.withValues(alpha: 0.7), size: 20),
+              child: Icon(
+                Icons.arrow_back_ios_rounded,
+                color: Colors.white.withValues(alpha: 0.7),
+                size: 20,
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -1042,60 +1506,137 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                    color: widget.project.priority.color.withValues(alpha: 0.5),
-                    blurRadius: 5)
+                  color: widget.project.priority.color.withValues(alpha: 0.5),
+                  blurRadius: 5,
+                ),
               ],
             ),
           ),
           Expanded(
-            child: Text(
-              widget.project.noteUpdatedAt != null
-                  ? _fmtDate(widget.project.noteUpdatedAt!)
-                  : 'New note',
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
-            ),
+            child: widget.project.noteUpdatedAt != null
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _fmtDateOnly(widget.project.noteUpdatedAt!),
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        _fmtTimeOnly(widget.project.noteUpdatedAt!),
+                        style: const TextStyle(
+                          color: Colors.white24,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  )
+                : const Text(
+                    'New note',
+                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
           ),
           if (widget.project.hasNote)
             GestureDetector(
               onTap: _clear,
               child: Container(
                 margin: const EdgeInsets.only(right: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF2E0A0A),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                      color: const Color(0xFFFF3B30).withValues(alpha: 0.3)),
+                    color: const Color(0xFFFF3B30).withValues(alpha: 0.3),
+                  ),
                 ),
-                child: const Text('Clear',
-                    style: TextStyle(
-                        color: Color(0xFFFF3B30),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
+                child: const Text(
+                  'Clear',
+                  style: TextStyle(
+                    color: Color(0xFFFF3B30),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
+          // Edit / Preview toggle
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _readOnly = !_readOnly;
+                if (_readOnly) {
+                  FocusScope.of(context).unfocus();
+                  _showFormatBar = false;
+                }
+              });
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _readOnly
+                    ? const Color(0xFF0A1A2E)
+                    : const Color(0xFF1C1C1C),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _readOnly
+                      ? const Color(0xFF64D2FF).withValues(alpha: 0.4)
+                      : Colors.white10,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _readOnly ? Icons.edit_outlined : Icons.visibility_outlined,
+                    size: 12,
+                    color: _readOnly ? const Color(0xFF64D2FF) : Colors.white38,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _readOnly ? 'Edit' : 'Preview',
+                    style: TextStyle(
+                      color: _readOnly
+                          ? const Color(0xFF64D2FF)
+                          : Colors.white38,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           GestureDetector(
             onTap: _save,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 color: _dirty
                     ? const Color(0xFF34C759)
                     : const Color(0xFF1C1C1C),
                 borderRadius: BorderRadius.circular(9),
                 border: Border.all(
-                    color: _dirty
-                        ? const Color(0xFF34C759).withValues(alpha: 0.5)
-                        : Colors.white10),
+                  color: _dirty
+                      ? const Color(0xFF34C759).withValues(alpha: 0.5)
+                      : Colors.white10,
+                ),
               ),
-              child: Text('Save',
-                  style: TextStyle(
-                      color: _dirty ? Colors.black : Colors.white30,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700)),
+              child: Text(
+                'Save',
+                style: TextStyle(
+                  color: _dirty ? Colors.black : Colors.white30,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ),
           ),
         ],
@@ -1107,34 +1648,58 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   // Editor
   // ─────────────────────────────────────────────────────────────
 
-  Widget _buildEditor() {
-    return GestureDetector(
-      onTap: () {
-        // Tap on empty space below content → focus last text-input block.
+Widget _buildEditor() {
+  return GestureDetector(
+    onTap: () {
+      _ensureTrailingTextBlock();
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
         final last = _blocks.lastWhere(
-          (b) =>
-              b.type == NoteBlockType.text ||
-              b.type == NoteBlockType.checkbox,
+          (b) => b.type == NoteBlockType.text || b.type == NoteBlockType.checkbox,
           orElse: () => _blocks.last,
         );
         _fn[last.id]?.requestFocus();
         final c = _ctrl[last.id];
-        if (c != null) {
-          c.selection =
-              TextSelection.collapsed(offset: c.text.length);
-        }
+        if (c != null) c.selection = TextSelection.collapsed(offset: c.text.length);
+      });
+    },
+    child: ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 60),
+      onReorder: (oldIndex, newIndex) {
+        // index 0 is the title block (not in _blocks), so shift by -1
+        final adjustedOld = oldIndex - 1;
+        final adjustedNew = newIndex - 1;
+        if (adjustedOld < 0 || adjustedNew < 0) return;
+        setState(() {
+          if (adjustedNew > adjustedOld) {
+            final newAdj = adjustedNew - 1;
+            final block = _blocks.removeAt(adjustedOld);
+            _blocks.insert(newAdj, block);
+          } else {
+            final block = _blocks.removeAt(adjustedOld);
+            _blocks.insert(adjustedNew, block);
+          }
+          _dirty = true;
+        });
       },
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 60),
-        itemCount: _blocks.length + 1,
-        itemBuilder: (ctx, i) {
-          if (i == 0) return _buildTitleBlock();
-          final b = _blocks[i - 1];
-          return _buildBlock(b, i - 1);
-        },
-      ),
-    );
-  }
+      buildDefaultDragHandles: false,
+      itemCount: _blocks.length + 1,
+      itemBuilder: (ctx, i) {
+        if (i == 0) {
+          return KeyedSubtree(
+            key: const ValueKey('__title__'),
+            child: _buildTitleBlock(),
+          );
+        }
+        final b = _blocks[i - 1];
+        return KeyedSubtree(
+          key: ValueKey(b.id),
+          child: _buildBlock(b, i - 1),
+        );
+      },
+    ),
+  );
+}
 
   Widget _buildTitleBlock() {
     return Padding(
@@ -1143,17 +1708,19 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
         controller: _titleCtrl,
         focusNode: _titleFn,
         style: const TextStyle(
-            color: Colors.white,
-            fontSize: 26,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
-            height: 1.3),
+          color: Colors.white70,
+          fontSize: 26,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.5,
+          height: 1.3,
+        ),
         decoration: const InputDecoration(
           hintText: 'Title',
           hintStyle: TextStyle(
-              color: Colors.white24,
-              fontSize: 26,
-              fontWeight: FontWeight.w700),
+            color: Colors.white24,
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+          ),
           border: InputBorder.none,
           isDense: true,
           contentPadding: EdgeInsets.zero,
@@ -1171,12 +1738,12 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
       NoteBlockType.checkbox => _buildCheckboxBlock(b, index),
       NoteBlockType.image => _buildImageBlock(b),
       NoteBlockType.audio => _buildAudioBlock(b),
-      NoteBlockType.pdf      => _buildPdfBlock(b),
+      NoteBlockType.pdf => _buildPdfBlock(b),
     };
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Text block — full native editing: cursor anywhere, delete, select
+  // Text block
   // ─────────────────────────────────────────────────────────────
 
   Widget _buildTextBlock(NoteBlock b, int index) {
@@ -1184,9 +1751,56 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     final prefix = b.orderedList
         ? '${index + 1}.  '
         : b.bulletList
-            ? '•  '
-            : '';
+        ? '•  '
+        : '';
 
+    // In read-only/preview mode, render as tappable rich text (no TextField).
+    if (_readOnly) {
+        final ctrl = _ctrl[b.id];
+        final plainText = _segsToMarkdown(b);
+
+  return Padding(
+    padding: const EdgeInsets.only(bottom: 2),
+    child: MarkdownBody(
+      data: plainText,
+      styleSheet: MarkdownStyleSheet(
+        p: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
+        h1: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700),
+        h2: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w700),
+        h3: const TextStyle(color: Color(0xFFFFD60A), fontSize: 18, fontWeight: FontWeight.w600),
+        h4: const TextStyle(color: Color(0xFF64D2FF), fontSize: 16, fontWeight: FontWeight.w600),
+        strong: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        em: const TextStyle(color: Colors.white70, fontStyle: FontStyle.italic),
+        code: const TextStyle(color: Color(0xFF34C759), fontFamily: 'monospace', fontSize: 13),
+        codeblockDecoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white10),
+        ),
+        tableBody: const TextStyle(color: Colors.white70, fontSize: 13),
+        tableHead: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13),
+        tableBorder: TableBorder.all(color: Colors.white12, width: 1),
+        blockquoteDecoration: BoxDecoration(
+          border: Border(left: BorderSide(color: const Color(0xFF64D2FF), width: 3)),
+          color: const Color(0xFF0A1A2E),
+        ),
+        blockquote: const TextStyle(color: Colors.white54, fontSize: 14),
+        listBullet: const TextStyle(color: Colors.white38),
+        horizontalRuleDecoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: Colors.white12)),
+        ),
+      ),
+      onTapLink: (text, href, title) async {
+        if (href == null) return;
+        final uri = Uri.tryParse(href);
+        if (uri != null && await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      },
+      selectable: true,
+    ),
+  );
+}
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Row(
@@ -1195,59 +1809,109 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
           if (prefix.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 2, right: 4),
-              child: Text(prefix,
-                  style: baseStyle.copyWith(color: Colors.white38)),
+              child: Text(
+                prefix,
+                style: baseStyle.copyWith(color: Colors.white38),
+              ),
             ),
           Expanded(
-            child: Focus(
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent &&
-                    event.logicalKey == LogicalKeyboardKey.backspace &&
-                    _ctrl[b.id]?.text.isEmpty == true) {
-                  _removeBlock(b.id);
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: TextField(
-                controller: _ctrl[b.id],
-                focusNode: _fn[b.id],
-                maxLines: null,
-                // Selection is fully enabled — the system handles it.
-                enableInteractiveSelection: true,
-                selectionControls: MaterialTextSelectionControls(),
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                textAlign: switch (b.align) {
-                  NoteAlign.left => TextAlign.left,
-                  NoteAlign.center => TextAlign.center,
-                  NoteAlign.right => TextAlign.right,
+            child: GestureDetector(
+              onTapUp: (details) => _handleTextTap(b, details),
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.backspace &&
+                      _ctrl[b.id]?.text.isEmpty == true) {
+                    _removeBlock(b.id);
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
                 },
-                style: baseStyle,
-                onChanged: (t) {
-                  final ctrl = _ctrl[b.id];
-                  if (ctrl == null) return;
-                  ctrl.handleTextChange(t);
-                  b.segs = List.from(ctrl.segs);
-                  if (!_dirty) setState(() => _dirty = true);
-                },
-                onSubmitted: (_) => _addTextBlockAfter(b.id),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                  hintText:
-                      (_activeId == b.id && _blocks.length == 1)
-                          ? 'Start typing…'
-                          : null,
-                  hintStyle: const TextStyle(
-                      color: Colors.white12, fontSize: 14),
+                child: TextField(
+                  key: _textKeys[b.id],
+                  controller: _ctrl[b.id],
+                  focusNode: _fn[b.id],
+                  maxLines: null,
+                  enableInteractiveSelection: true,
+                  selectionControls: MaterialTextSelectionControls(),
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  textAlign: switch (b.align) {
+                    NoteAlign.left => TextAlign.left,
+                    NoteAlign.center => TextAlign.center,
+                    NoteAlign.right => TextAlign.right,
+                  },
+                  style: baseStyle,
+                  onChanged: (t) {
+                    final ctrl = _ctrl[b.id];
+                    if (ctrl == null) return;
+                    ctrl.handleTextChange(t);
+                    b.segs = List.from(ctrl.segs);
+                    if (!_dirty) setState(() => _dirty = true);
+                  },
+                  onSubmitted: (_) => _addTextBlockAfter(b.id),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: (_activeId == b.id && _blocks.length == 1)
+                        ? 'Start typing…'
+                        : null,
+                    hintStyle: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 14,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// Builds an inline [TextSpan] from segs for read-only rendering.
+  /// URL segments get a TapGestureRecognizer wired to [launchUrl].
+  TextSpan _buildReadOnlySpan(NoteBlock b, TextStyle baseStyle) {
+    final ctrl = _ctrl[b.id];
+    final segs = ctrl?.segs ?? b.segs;
+    return TextSpan(
+      style: baseStyle,
+      children: segs.map((s) {
+        final isLink = s.url != null && s.url!.isNotEmpty;
+        return TextSpan(
+          text: s.text,
+          style: TextStyle(
+            fontWeight: s.bold ? FontWeight.w700 : FontWeight.w400,
+            fontStyle: s.italic ? FontStyle.italic : FontStyle.normal,
+            color: isLink ? const Color(0xFF64D2FF) : s.color,
+            backgroundColor: s.highlight,
+            decoration: TextDecoration.combine([
+              if (s.underline || isLink) TextDecoration.underline,
+              if (s.strikethrough) TextDecoration.lineThrough,
+            ]),
+            decorationColor: isLink ? const Color(0xFF64D2FF) : null,
+          ),
+          recognizer: isLink
+              ? (TapGestureRecognizer()
+                  ..onTap = () async {
+                    var urlStr = s.url!;
+                    if (!urlStr.startsWith('http://') &&
+                        !urlStr.startsWith('https://')) {
+                      urlStr = 'https://$urlStr';
+                    }
+                    final uri = Uri.tryParse(urlStr);
+                    if (uri != null && await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  })
+              : null,
+        );
+      }).toList(),
     );
   }
 
@@ -1256,80 +1920,126 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   // ─────────────────────────────────────────────────────────────
 
   Widget _buildCheckboxBlock(NoteBlock b, int index) {
+    final checkColor = b.checked
+        ? Colors.white30
+        : Colors.white.withValues(alpha: 0.88);
+    final checkStyle = TextStyle(
+      color: checkColor,
+      fontSize: 14,
+      height: 1.5,
+      decoration: b.checked ? TextDecoration.lineThrough : TextDecoration.none,
+    );
+
+    final checkBox = GestureDetector(
+      onTap: _readOnly
+          ? null
+          : () {
+              final isTotal =
+                  b.segs.isNotEmpty &&
+                  b.segs.first.text.trimLeft().startsWith('Checkbox Total:');
+              if (isTotal) {
+                _suppressTotalRecompute = true; // ← guard BEFORE remove
+                _removeBlock(b.id);
+                setState(() => _dirty = true);
+              } else {
+                setState(() {
+                  b.checked = !b.checked;
+                  _dirty = true;
+                });
+              }
+            },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 20,
+        height: 20,
+        margin: const EdgeInsets.only(right: 10),
+        decoration: BoxDecoration(
+          color: b.checked ? const Color(0xFF34C759) : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(
+            color: b.checked ? const Color(0xFF34C759) : Colors.white30,
+            width: 1.5,
+          ),
+        ),
+        child: b.checked
+            ? const Icon(Icons.check_rounded, size: 13, color: Colors.black)
+            : null,
+      ),
+    );
+
+    if (_readOnly) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            checkBox,
+            Expanded(
+              child: GestureDetector(
+                onTapUp: (details) => _handleTextTap(b, details),
+                child: Text.rich(_buildReadOnlySpan(b, checkStyle)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          GestureDetector(
-            onTap: () => setState(() {
-              b.checked = !b.checked;
-              _dirty = true;
-            }),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 20,
-              height: 20,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: b.checked ? const Color(0xFF34C759) : Colors.transparent,
-                borderRadius: BorderRadius.circular(5),
-                border: Border.all(
-                    color: b.checked
-                        ? const Color(0xFF34C759)
-                        : Colors.white30,
-                    width: 1.5),
-              ),
-              child: b.checked
-                  ? const Icon(Icons.check_rounded,
-                      size: 13, color: Colors.black)
-                  : null,
-            ),
-          ),
+          checkBox,
           Expanded(
-            child: Focus(
-              onKeyEvent: (node, event) {
-                if (event is KeyDownEvent &&
-                    event.logicalKey == LogicalKeyboardKey.backspace &&
-                    _ctrl[b.id]?.text.isEmpty == true) {
-                  _removeBlock(b.id);
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: TextField(
-                controller: _ctrl[b.id],
-                focusNode: _fn[b.id],
-                maxLines: null,
-                enableInteractiveSelection: true,
-                selectionControls: MaterialTextSelectionControls(),
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                onChanged: (t) {
-                  final ctrl = _ctrl[b.id];
-                  if (ctrl == null) return;
-                  ctrl.handleTextChange(t);
-                  b.segs = List.from(ctrl.segs);
-                  if (!_dirty) setState(() => _dirty = true);
+            child: GestureDetector(
+              onTapUp: (details) => _handleTextTap(b, details),
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.backspace &&
+                      _ctrl[b.id]?.text.isEmpty == true) {
+                    final isTotal =
+                        b.segs.isNotEmpty &&
+                        b.segs.first.text.trimLeft().startsWith(
+                          'Checkbox Total:',
+                        );
+                    if (!isTotal) _removeBlock(b.id); // ← guard
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
                 },
-                onSubmitted: (_) => _addTextBlockAfter(b.id),
-                style: TextStyle(
-                  color: b.checked
-                      ? Colors.white30
-                      : Colors.white.withValues(alpha: 0.88),
-                  fontSize: 14,
-                  height: 1.5,
-                  decoration: b.checked
-                      ? TextDecoration.lineThrough
-                      : TextDecoration.none,
-                ),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: EdgeInsets.zero,
-                  hintText: 'To-do item',
-                  hintStyle:
-                      TextStyle(color: Colors.white12, fontSize: 14),
+                child: TextField(
+                  key: _textKeys[b.id],
+                  controller: _ctrl[b.id],
+                  focusNode: _fn[b.id],
+                  maxLines: null,
+                  enableInteractiveSelection: true,
+                  selectionControls: MaterialTextSelectionControls(),
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  onChanged: (t) {
+                    final ctrl = _ctrl[b.id];
+                    if (ctrl == null) return;
+                    ctrl.handleTextChange(t);
+                    b.segs = List.from(ctrl.segs);
+                    if (!_dirty) setState(() => _dirty = true);
+                    // Replace _recomputeCheckboxTotal(); with:
+                    _totalDebounce?.cancel();
+                    _totalDebounce = Timer(
+                      const Duration(milliseconds: 400),
+                      _recomputeCheckboxTotal,
+                    );
+                  },
+                  onSubmitted: (_) => _addTextBlockAfter(b.id),
+                  style: checkStyle,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: 'To-do item',
+                    hintStyle: TextStyle(color: Colors.white12, fontSize: 14),
+                  ),
                 ),
               ),
             ),
@@ -1340,7 +2050,7 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Image block — tap → fullscreen; ✕ button to delete
+  // Image block
   // ─────────────────────────────────────────────────────────────
 
   Widget _buildImageBlock(NoteBlock b) {
@@ -1362,11 +2072,13 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
               width: double.infinity,
               height: double.infinity,
               errorBuilder: (_, __, ___) => const Center(
-                child: Icon(Icons.broken_image_outlined,
-                    color: Colors.white24, size: 40),
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white24,
+                  size: 40,
+                ),
               ),
             ),
-            // ✕ delete button
             Positioned(
               top: 8,
               right: 8,
@@ -1379,20 +2091,22 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
                     color: Colors.black.withValues(alpha: 0.65),
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.25)),
+                      color: Colors.white.withValues(alpha: 0.25),
+                    ),
                   ),
-                  child: const Icon(Icons.close_rounded,
-                      size: 16, color: Colors.white),
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 16,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
-            // Expand hint
             Positioned(
               bottom: 8,
               left: 8,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.55),
                   borderRadius: BorderRadius.circular(6),
@@ -1400,14 +2114,20 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.open_in_full_rounded,
-                        size: 11, color: Colors.white70),
+                    Icon(
+                      Icons.open_in_full_rounded,
+                      size: 11,
+                      color: Colors.white70,
+                    ),
                     SizedBox(width: 4),
-                    Text('View',
-                        style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500)),
+                    Text(
+                      'View',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1419,87 +2139,120 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   }
 
   // ─────────────────────────────────────────────────────────────
-  // Audio block — with inline ✕ delete
+  // Recording panel — slides up from bottom while recording
   // ─────────────────────────────────────────────────────────────
 
-  Widget _buildAudioBlock(NoteBlock b) {
-    final isPlaying = _playing[b.id] ?? false;
-    final pos = _playPos[b.id] ?? Duration.zero;
-    final dur = b.audioDuration;
-    final progress = dur.inMilliseconds > 0
-        ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
-        : 0.0;
-
+  Widget _buildRecordingPanel() {
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: isPlaying
-                ? const Color(0xFF0A84FF).withValues(alpha: 0.5)
-                : Colors.white10),
+        color: const Color(0xFF130A0A),
+        border: Border(
+          top: BorderSide(
+            color: const Color(0xFFFF3B30).withValues(alpha: 0.2),
+          ),
+        ),
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => _togglePlayback(b),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 36,
-              height: 36,
+          // Pulsing red dot
+          AnimatedBuilder(
+            animation: _pulseAnim,
+            builder: (_, __) => Container(
+              width: 10,
+              height: 10,
               decoration: BoxDecoration(
-                color: isPlaying
-                    ? const Color(0xFF0A84FF)
-                    : const Color(0xFF252525),
                 shape: BoxShape.circle,
+                color: Color.fromRGBO(
+                  255,
+                  59,
+                  48,
+                  _pulseAnim.value,
+                ), // FF3B30 with animated opacity
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(
+                      0xFFFF3B30,
+                    ).withValues(alpha: _pulseAnim.value * 0.6),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ],
               ),
-              child: Icon(
-                  isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                  color: Colors.white,
-                  size: 20),
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: progress.toDouble(),
-                    backgroundColor: Colors.white12,
-                    valueColor:
-                        const AlwaysStoppedAnimation(Color(0xFF0A84FF)),
-                    minHeight: 3,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text('${_fmtDur(pos)} / ${_fmtDur(dur)}',
-                    style: const TextStyle(
-                        color: Colors.white38, fontSize: 11)),
-              ],
+
+          // REC label + elapsed
+          const Text(
+            'REC',
+            style: TextStyle(
+              color: Color(0xFFFF3B30),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
             ),
           ),
-          const SizedBox(width: 8),
-          const Icon(Icons.mic_rounded, color: Colors.white24, size: 16),
-          const SizedBox(width: 8),
-          // ✕ delete button
+          const SizedBox(width: 10),
+          Text(
+            _fmtDur(_recElapsed),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w300,
+              fontFeatures: [FontFeature.tabularFigures()],
+              letterSpacing: 1,
+            ),
+          ),
+
+          const Spacer(),
+
+          // Cancel button
           GestureDetector(
-            onTap: () => _confirmRemoveBlock(b),
+            onTap: _cancelRecording,
             child: Container(
-              width: 28,
-              height: 28,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.07),
-                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white12),
               ),
-              child: const Icon(Icons.close_rounded,
-                  size: 14, color: Colors.white38),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // Stop / save button
+          GestureDetector(
+            onTap: _stopRecording,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF3B30),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.stop_rounded, size: 14, color: Colors.white),
+                  SizedBox(width: 5),
+                  Text(
+                    'Stop',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1507,150 +2260,400 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // Audio block — modern waveform-style player
+  // ─────────────────────────────────────────────────────────────
 
-    Widget _buildPdfBlock(NoteBlock b) {
-        final name      = b.pdfName ?? 'document.pdf';
-        final sizeLabel = _fmtBytes(b.pdfSizeBytes);
-        final pageLabel = b.pdfPageCount > 0
-            ? '${b.pdfPageCount} page${b.pdfPageCount == 1 ? '' : 's'}'
-            : 'PDF';
+  Widget _buildAudioBlock(NoteBlock b) {
+    final isPlaying = _playing[b.id] ?? false;
+    final pos = _playPos[b.id] ?? Duration.zero;
+    final dur = _playDur[b.id] ?? b.audioDuration;
+    final progress = dur.inMilliseconds > 0
+        ? (pos.inMilliseconds / dur.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+    final remaining = dur > pos ? dur - pos : Duration.zero;
 
-        return GestureDetector(
-        onTap: () async {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF141414),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isPlaying
+              ? const Color(0xFF0A84FF).withValues(alpha: 0.35)
+              : Colors.white.withValues(alpha: 0.07),
+        ),
+        boxShadow: isPlaying
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF0A84FF).withValues(alpha: 0.12),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
+      ),
+      child: Column(
+        children: [
+          // ── Top row: play button + waveform bars + time ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+            child: Row(
+              children: [
+                // Play / Pause button
+                GestureDetector(
+                  onTap: () => _togglePlayback(b),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isPlaying
+                          ? const Color(0xFF0A84FF)
+                          : const Color(0xFF0A84FF).withValues(alpha: 0.15),
+                      border: Border.all(
+                        color: const Color(
+                          0xFF0A84FF,
+                        ).withValues(alpha: isPlaying ? 0.0 : 0.4),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: isPlaying ? Colors.white : const Color(0xFF0A84FF),
+                      size: 22,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Fake waveform bars (decorative, animated when playing)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Waveform
+                      WaveformBars(
+                        progress: progress.toDouble(),
+                        isPlaying: isPlaying,
+                        onSeek: (f) => _seekAudio(b, f),
+                      ),
+                      const SizedBox(height: 6),
+
+                      // Time row
+                      Row(
+                        children: [
+                          Text(
+                            _fmtDur(pos),
+                            style: TextStyle(
+                              color: isPlaying
+                                  ? const Color(0xFF0A84FF)
+                                  : Colors.white38,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '-${_fmtDur(remaining)}',
+                            style: const TextStyle(
+                              color: Colors.white24,
+                              fontSize: 11,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+               const SizedBox(width: 6),
+
+                // Drag handle
+                ReorderableDragStartListener(
+                index: _blocks.indexWhere((bl) => bl.id == b.id) + 1,
+                child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.04),
+                    shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                    Icons.drag_handle_rounded,
+                    size: 14,
+                    color: Colors.white24,
+                    ),
+                ),
+                ),
+                const SizedBox(width: 6),
+
+                // Delete button (unchanged)
+                GestureDetector(
+                onTap: () => _confirmRemoveBlock(b),
+                child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                    ),
+                    child: const Icon(Icons.close_rounded, size: 14, color: Colors.white30),
+                ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Bottom mic label strip ──
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.03),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(16),
+              ),
+            ),
+            child: Row(
+                children: [
+                    Icon(
+                    Icons.mic_rounded,
+                    size: 12,
+                    color: isPlaying
+                        ? const Color(0xFF0A84FF).withValues(alpha: 0.7)
+                        : Colors.white24,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                    'Voice note',
+                    style: TextStyle(
+                        color: isPlaying
+                            ? const Color(0xFF0A84FF).withValues(alpha: 0.7)
+                            : Colors.white24,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                    ),
+                    ),
+                    const Spacer(),
+                    if (dur != Duration.zero)
+                    Text(
+                        _fmtDur(dur),
+                        style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                        ),
+                    ),
+                    if (dur != Duration.zero) const SizedBox(width: 8),
+                    // Move button
+                    GestureDetector(
+                    onTap: () => _showMoveSheet(b),
+                    child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                        color: const Color(0xFF64D2FF).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: const Color(0xFF64D2FF).withValues(alpha: 0.25),
+                        ),
+                        ),
+                        child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                            Icon(Icons.drive_file_move_outline, size: 11, color: Color(0xFF64D2FF)),
+                            SizedBox(width: 4),
+                            Text(
+                            'Move',
+                            style: TextStyle(
+                                color: Color(0xFF64D2FF),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                            ),
+                            ),
+                        ],
+                        ),
+                    ),
+                    ),
+                ],
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PDF block
+  // ─────────────────────────────────────────────────────────────
+
+  Widget _buildPdfBlock(NoteBlock b) {
+    final name = b.pdfName ?? 'document.pdf';
+    final sizeLabel = _fmtBytes(b.pdfSizeBytes);
+    final pageLabel = b.pdfPageCount > 0
+        ? '${b.pdfPageCount} page${b.pdfPageCount == 1 ? '' : 's'}'
+        : 'PDF';
+
+    return GestureDetector(
+      onTap: () async {
         if (b.pdfPath != null) await OpenFilex.open(b.pdfPath!);
-        },
-        child: Container(
+      },
+      child: Container(
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFFF6B9D).withValues(alpha: 0.25)),
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFFFF6B9D).withValues(alpha: 0.25),
+          ),
         ),
         child: Row(
-            children: [
-            // PDF icon badge
+          children: [
             Container(
-                width: 42,
-                height: 50,
-                decoration: BoxDecoration(
+              width: 42,
+              height: 50,
+              decoration: BoxDecoration(
                 color: const Color(0xFF2E0A18),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                    color: const Color(0xFFFF6B9D).withValues(alpha: 0.4)),
+                  color: const Color(0xFFFF6B9D).withValues(alpha: 0.4),
                 ),
-                child: Column(
+              ),
+              child: const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                    Icon(Icons.picture_as_pdf_rounded,
-                        color: Color(0xFFFF6B9D), size: 20),
-                    SizedBox(height: 2),
-                    Text('PDF',
-                        style: TextStyle(
-                            color: Color(0xFFFF6B9D),
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.5)),
+                children: [
+                  Icon(
+                    Icons.picture_as_pdf_rounded,
+                    color: Color(0xFFFF6B9D),
+                    size: 20,
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'PDF',
+                    style: TextStyle(
+                      color: Color(0xFFFF6B9D),
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
                 ],
-                ),
+              ),
             ),
             const SizedBox(width: 12),
-
-            // File info
             Expanded(
-                child: Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                    Text(
+                  Text(
                     name,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        height: 1.3),
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
                     ),
-                    const SizedBox(height: 4),
-                    Row(
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
                     children: [
-                        Text(pageLabel,
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 11)),
-                        const Text(' · ',
-                            style: TextStyle(color: Colors.white24, fontSize: 11)),
-                        Text(sizeLabel,
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 11)),
+                      Text(
+                        pageLabel,
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                      ),
+                      const Text(
+                        ' · ',
+                        style: TextStyle(color: Colors.white24, fontSize: 11),
+                      ),
+                      Text(
+                        sizeLabel,
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 11,
+                        ),
+                      ),
                     ],
-                    ),
+                  ),
                 ],
-                ),
+              ),
             ),
             const SizedBox(width: 8),
-
-            // Open hint
             Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
                 color: const Color(0xFFFF6B9D).withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(
-                    color: const Color(0xFFFF6B9D).withValues(alpha: 0.3)),
+                  color: const Color(0xFFFF6B9D).withValues(alpha: 0.3),
                 ),
-                child: const Text('Open',
-                    style: TextStyle(
-                        color: Color(0xFFFF6B9D),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600)),
+              ),
+              child: const Text(
+                'Open',
+                style: TextStyle(
+                  color: Color(0xFFFF6B9D),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
-
-            // Delete
             GestureDetector(
-                onTap: () => _confirmRemoveBlock(b),
-                child: Container(
+              onTap: () => _confirmRemoveBlock(b),
+              child: Container(
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.07),
-                    shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.07),
+                  shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close_rounded,
-                    size: 14, color: Colors.white38),
+                child: const Icon(
+                  Icons.close_rounded,
+                  size: 14,
+                  color: Colors.white38,
                 ),
+              ),
             ),
-            ],
+          ],
         ),
-        ),
+      ),
     );
-    }
-
-    String _fmtBytes(int bytes) {
-    if (bytes <= 0) return '';
-    if (bytes < 1024) return '${bytes}B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
-    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
-    }
+  }
 
   Future<void> _confirmRemoveBlock(NoteBlock b) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Remove block?',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: const Text(
+          'Remove block?',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove',
-                style: TextStyle(color: Color(0xFFFF3B30))),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Color(0xFFFF3B30)),
+            ),
           ),
         ],
       ),
@@ -1665,6 +2668,7 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   Widget _buildFormatBar() {
     return Container(
       decoration: const BoxDecoration(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
         color: Color(0xFF141414),
         border: Border(
           top: BorderSide(color: Color(0xFF1E1E1E)),
@@ -1676,112 +2680,184 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
         children: [
           // Row 1 — heading style chips
           _fmtRow([
-            _TChip('H1', _fmtH1, const Color(0xFFFF6B9D),
-                () => _applyParagraphFmt((b) {
-                      b.isH1 = !b.isH1;
-                      b.isH2 = b.isH3 = b.isH4 = false;
-                    })),
-            _TChip('H2', _fmtH2, const Color(0xFFFF9F0A),
-                () => _applyParagraphFmt((b) {
-                      b.isH2 = !b.isH2;
-                      b.isH1 = b.isH3 = b.isH4 = false;
-                    })),
-            _TChip('H3', _fmtH3, const Color(0xFFFFD60A),
-                () => _applyParagraphFmt((b) {
-                      b.isH3 = !b.isH3;
-                      b.isH1 = b.isH2 = b.isH4 = false;
-                    })),
-            _TChip('H4', _fmtH4, const Color(0xFF64D2FF),
-                () => _applyParagraphFmt((b) {
-                      b.isH4 = !b.isH4;
-                      b.isH1 = b.isH2 = b.isH3 = false;
-                    })),
-            _TChip(
-                'body',
-                !_fmtH1 && !_fmtH2 && !_fmtH3 && !_fmtH4,
-                Colors.white,
-                () => _applyParagraphFmt(
-                    (b) => b.isH1 = b.isH2 = b.isH3 = b.isH4 = false)),
+            NoteTChip(
+              'H1',
+              _fmtH1,
+              const Color(0xFFFF6B9D),
+              () => _applyParagraphFmt((b) {
+                b.isH1 = !b.isH1;
+                b.isH2 = b.isH3 = b.isH4 = false;
+              }),
+            ),
+            NoteTChip(
+              'H2',
+              _fmtH2,
+              const Color(0xFFFF9F0A),
+              () => _applyParagraphFmt((b) {
+                b.isH2 = !b.isH2;
+                b.isH1 = b.isH3 = b.isH4 = false;
+              }),
+            ),
+            NoteTChip(
+              'H3',
+              _fmtH3,
+              const Color(0xFFFFD60A),
+              () => _applyParagraphFmt((b) {
+                b.isH3 = !b.isH3;
+                b.isH1 = b.isH2 = b.isH4 = false;
+              }),
+            ),
+            NoteTChip(
+              'H4',
+              _fmtH4,
+              const Color(0xFF64D2FF),
+              () => _applyParagraphFmt((b) {
+                b.isH4 = !b.isH4;
+                b.isH1 = b.isH2 = b.isH3 = false;
+              }),
+            ),
+            NoteTChip(
+              'body',
+              !_fmtH1 && !_fmtH2 && !_fmtH3 && !_fmtH4,
+              Colors.white,
+              () => _applyParagraphFmt(
+                (b) => b.isH1 = b.isH2 = b.isH3 = b.isH4 = false,
+              ),
+            ),
           ]),
 
           // Row 2 — inline: B / I / U / S + alignment + lists
           _fmtRow([
-            _FBtn('B',
-                bold: true,
-                active: _fmtBold,
-                onTap: () => _applyInlineFmt((s) => s.bold = !s.bold)),
-            _FBtn('I',
-                italic: true,
-                active: _fmtItalic,
-                onTap: () => _applyInlineFmt((s) => s.italic = !s.italic)),
-            _FBtn('U',
-                under: true,
-                active: _fmtUnder,
-                onTap: () =>
-                    _applyInlineFmt((s) => s.underline = !s.underline)),
-            _FBtn('S',
-                strike: true,
-                active: _fmtStrike,
-                onTap: () =>
-                    _applyInlineFmt((s) => s.strikethrough = !s.strikethrough)),
-            _Sep(),
-            _IBtn(Icons.format_align_left_rounded,
-                _fmtAlign == NoteAlign.left,
-                () => _applyParagraphFmt((b) => b.align = NoteAlign.left)),
-            _IBtn(Icons.format_align_center_rounded,
-                _fmtAlign == NoteAlign.center,
-                () => _applyParagraphFmt((b) => b.align = NoteAlign.center)),
-            _IBtn(Icons.format_align_right_rounded,
-                _fmtAlign == NoteAlign.right,
-                () => _applyParagraphFmt((b) => b.align = NoteAlign.right)),
-            _Sep(),
-            _IBtn(Icons.format_list_numbered_rounded, _fmtOL,
-                () => _applyParagraphFmt((b) {
-                      b.orderedList = !b.orderedList;
-                      b.bulletList = false;
-                    })),
-            _IBtn(Icons.format_list_bulleted_rounded, _fmtBL,
-                () => _applyParagraphFmt((b) {
-                      b.bulletList = !b.bulletList;
-                      b.orderedList = false;
-                    })),
+            NoteFBtn(
+              'B',
+              bold: true,
+              active: _fmtBold,
+              onTap: () => _applyInlineFmt((s) => s.bold = !s.bold),
+            ),
+            NoteFBtn(
+              'I',
+              italic: true,
+              active: _fmtItalic,
+              onTap: () => _applyInlineFmt((s) => s.italic = !s.italic),
+            ),
+            NoteFBtn(
+              'U',
+              under: true,
+              active: _fmtUnder,
+              onTap: () => _applyInlineFmt((s) => s.underline = !s.underline),
+            ),
+            NoteFBtn(
+              'S',
+              strike: true,
+              active: _fmtStrike,
+              onTap: () =>
+                  _applyInlineFmt((s) => s.strikethrough = !s.strikethrough),
+            ),
+            NoteIBtn(
+              Icons.link_rounded,
+              _fmtUrl != null && _fmtUrl!.isNotEmpty,
+              _showLinkDialog,
+            ),
+            const NoteToolbarSep(),
+            NoteIBtn(
+              Icons.format_align_left_rounded,
+              _fmtAlign == NoteAlign.left,
+              () => _applyParagraphFmt((b) => b.align = NoteAlign.left),
+            ),
+            NoteIBtn(
+              Icons.format_align_center_rounded,
+              _fmtAlign == NoteAlign.center,
+              () => _applyParagraphFmt((b) => b.align = NoteAlign.center),
+            ),
+            NoteIBtn(
+              Icons.format_align_right_rounded,
+              _fmtAlign == NoteAlign.right,
+              () => _applyParagraphFmt((b) => b.align = NoteAlign.right),
+            ),
+            const NoteToolbarSep(),
+            NoteIBtn(
+              Icons.format_list_numbered_rounded,
+              _fmtOL,
+              () => _applyParagraphFmt((b) {
+                b.orderedList = !b.orderedList;
+                b.bulletList = false;
+              }),
+            ),
+            NoteIBtn(
+              Icons.format_list_bulleted_rounded,
+              _fmtBL,
+              () => _applyParagraphFmt((b) {
+                b.bulletList = !b.bulletList;
+                b.orderedList = false;
+              }),
+            ),
           ]),
 
-          // Row 3 — text colour (inline)
+          // Row 3 — text colour
           _fmtRow([
             const Padding(
               padding: EdgeInsets.only(right: 6),
               child: Center(
-                  child: Text('A',
-                      style: TextStyle(
-                          color: Colors.white38,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700))),
+                child: Text(
+                  'A',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
-            ..._textColors.map((c) => _ColorDot(
-                  color: c,
-                  selected: c == _fmtColor,
-                  onTap: () => _applyInlineFmt((s) {
-                    s.color = c;
-                  }),
-                )),
+            ..._textColors.map(
+              (c) => NoteColorDot(
+                color: c == _kCustomColor ? null : c,
+                selected: c == _kCustomColor
+                    ? (_fmtColor != null && !_textColors.contains(_fmtColor))
+                    : c == _fmtColor,
+                isCustom: c == _kCustomColor,
+                customPreview:
+                    (_fmtColor != null && !_textColors.contains(_fmtColor))
+                    ? _fmtColor
+                    : null,
+                onTap: () => c == _kCustomColor
+                    ? _showColorPicker(isHighlight: false)
+                    : _applyInlineFmt((s) => s.color = c),
+              ),
+            ),
           ]),
 
-          // Row 4 — highlight colour (inline)
+          // Row 4 — highlight colour
           _fmtRow([
             const Padding(
               padding: EdgeInsets.only(right: 6),
               child: Center(
-                  child: Icon(Icons.highlight_rounded,
-                      size: 14, color: Colors.white38)),
+                child: Icon(
+                  Icons.highlight_rounded,
+                  size: 14,
+                  color: Colors.white38,
+                ),
+              ),
             ),
-            ..._highlights.map((c) => _ColorDot(
-                  color: c,
-                  selected: c == _fmtHighlight,
-                  onTap: () => _applyInlineFmt((s) {
-                    s.highlight = c;
-                  }),
-                )),
+            ..._highlights.map(
+              (c) => NoteColorDot(
+                color: c,
+                selected: c == _fmtHighlight,
+                onTap: () => _applyInlineFmt((s) => s.highlight = c),
+              ),
+            ),
+            // Custom highlight dot
+            NoteColorDot(
+              color: null,
+              isCustom: true,
+              selected:
+                  _fmtHighlight != null && !_highlights.contains(_fmtHighlight),
+              customPreview:
+                  (_fmtHighlight != null &&
+                      !_highlights.contains(_fmtHighlight))
+                  ? _fmtHighlight
+                  : null,
+              onTap: () => _showColorPicker(isHighlight: true),
+            ),
           ]),
         ],
       ),
@@ -1789,14 +2865,13 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   }
 
   Widget _fmtRow(List<Widget> children) => SizedBox(
-        height: 44,
-        child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-          children: children,
-        ),
-      );
+    height: 44,
+    child: ListView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      children: children,
+    ),
+  );
 
   // ─────────────────────────────────────────────────────────────
   // Bottom bar
@@ -1804,42 +2879,35 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 
   Widget _buildBottomBar() {
     return Container(
-      height: 52,
+      height: 56,
       decoration: const BoxDecoration(
-        color: Color(0xFF111111),
-        border: Border(top: BorderSide(color: Color(0xFF1E1E1E))),
+        color: Color(0xFF0E0E0F),
+        border: Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _BarBtn( icon: Icons.image_outlined, onTap: _showImageOptions),
-          _BarBtn(
-            icon: Icons.picture_as_pdf_rounded,
-            onTap: _pickPdf,
-            ),
-          _BarBtn(
-            icon: Icons.text_fields_rounded,
+          _BarIcon(
+            icon: CupertinoIcons.photo_fill_on_rectangle_fill,
+            onTap: _showImageOptions,
+          ),
+          _BarIcon(icon: Icons.picture_as_pdf_rounded, onTap: _pickPdf),
+          _BarIcon(
+            icon: CupertinoIcons.textformat,
             active: _showFormatBar,
             activeColor: const Color(0xFFFFD60A),
             onTap: () => setState(() => _showFormatBar = !_showFormatBar),
           ),
-          _BarBtn(
-            icon: _recording
-                ? Icons.stop_circle_rounded
-                : Icons.mic_none_rounded,
+          _BarIcon(
+            icon: CupertinoIcons.mic_solid,
             active: _recording,
             activeColor: const Color(0xFFFF3B30),
-            onTap: _toggleRecording,
+            onTap: _recording ? _stopRecording : _toggleRecording,
           ),
-          _BarBtn(
-              icon: Icons.check_box_outlined, onTap: _addCheckboxBlock),
-        //   _BarBtn(
-        //     icon: Icons.keyboard_hide_rounded,
-        //     onTap: () {
-        //       FocusScope.of(context).unfocus();
-        //       setState(() => _showFormatBar = false);
-        //     },
-        //   ),
+          _BarIcon(
+            icon: CupertinoIcons.checkmark_square,
+            onTap: _addCheckboxBlock,
+          ),
         ],
       ),
     );
@@ -1851,10 +2919,11 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 
   String _fmtDate(DateTime dt) {
     final l = dt.toLocal();
+    final hour12 = l.hour % 12 == 0 ? 12 : l.hour % 12; // ← fix
     return '${l.day.toString().padLeft(2, '0')}/'
         '${l.month.toString().padLeft(2, '0')}/'
         '${l.year},  '
-        '${l.hour.toString().padLeft(2, '0')}:'
+        '${hour12.toString().padLeft(2, '0')}:'
         '${l.minute.toString().padLeft(2, '0')} '
         '${l.hour >= 12 ? 'PM' : 'AM'}';
   }
@@ -1864,273 +2933,115 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
   }
+
+  String _fmtBytes(int bytes) {
+    if (bytes <= 0) return '';
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    }
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Fullscreen image viewer with pinch-to-zoom
-// ─────────────────────────────────────────────────────────────────────────────
+class _ImageOption extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
 
-class _FullscreenImage extends StatelessWidget {
-  final String path;
-  final VoidCallback onClose;
-  const _FullscreenImage({required this.path, required this.onClose});
+  const _ImageOption({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Center(
-            child: InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 6.0,
-              child: Image.file(
-                File(path),
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.white24,
-                    size: 60),
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white70, size: 22),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
               ),
             ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 12,
-            right: 16,
-            child: GestureDetector(
-              onTap: onClose,
-              child: Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.6),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: const Icon(Icons.close_rounded,
-                    color: Colors.white, size: 20),
-              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BarIcon extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool active;
+  final Color activeColor;
+
+  const _BarIcon({
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+    this.activeColor = const Color(0xFF0A84FF),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 52,
+        height: 56,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: active
+                  ? activeColor.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              size: 24,
+              color: active ? activeColor : Colors.white60,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Toolbar atoms
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _TChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final Color accent;
-  final VoidCallback onTap;
-  const _TChip(this.label, this.selected, this.accent, this.onTap);
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.only(right: 6),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          decoration: BoxDecoration(
-            color: selected
-                ? accent.withValues(alpha: 0.18)
-                : const Color(0xFF1C1C1C),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-                color: selected
-                    ? accent.withValues(alpha: 0.5)
-                    : Colors.white12),
-          ),
-          child: Text(label,
-              style: TextStyle(
-                  color: selected ? accent : Colors.white38,
-                  fontSize: 13,
-                  fontWeight:
-                      selected ? FontWeight.w700 : FontWeight.w500)),
-        ),
-      );
-}
-
-class _FBtn extends StatelessWidget {
-  final String label;
-  final bool bold, italic, under, strike, active;
-  final VoidCallback onTap;
-  const _FBtn(this.label,
-      {this.bold = false,
-      this.italic = false,
-      this.under = false,
-      this.strike = false,
-      required this.active,
-      required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 32,
-          height: 32,
-          margin: const EdgeInsets.only(right: 4),
-          decoration: BoxDecoration(
-            color: active
-                ? Colors.white.withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(
-                color: active ? Colors.white30 : Colors.white10),
-          ),
-          child: Center(
-            child: Text(label,
-                style: TextStyle(
-                  color: active ? Colors.white : Colors.white38,
-                  fontSize: 14,
-                  fontWeight: bold ? FontWeight.w900 : FontWeight.w400,
-                  fontStyle:
-                      italic ? FontStyle.italic : FontStyle.normal,
-                  decoration: TextDecoration.combine([
-                    if (under) TextDecoration.underline,
-                    if (strike) TextDecoration.lineThrough,
-                  ]),
-                )),
-          ),
-        ),
-      );
-}
-
-class _IBtn extends StatelessWidget {
-  final IconData icon;
-  final bool active;
-  final VoidCallback onTap;
-  const _IBtn(this.icon, this.active, this.onTap);
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 32,
-          height: 32,
-          margin: const EdgeInsets.only(right: 4),
-          decoration: BoxDecoration(
-            color: active
-                ? Colors.white.withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(7),
-            border: Border.all(
-                color: active ? Colors.white30 : Colors.white10),
-          ),
-          child: Icon(icon,
-              size: 16,
-              color: active ? Colors.white : Colors.white38),
-        ),
-      );
-}
-
-class _ColorDot extends StatelessWidget {
-  final Color? color;
-  final bool selected;
-  final VoidCallback onTap;
-  const _ColorDot(
-      {required this.color, required this.selected, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 26,
-          height: 26,
-          margin: const EdgeInsets.only(right: 7),
-          decoration: BoxDecoration(
-            color: color ?? const Color(0xFF2A2A2A),
-            shape: BoxShape.circle,
-            border: Border.all(
-                color: selected ? Colors.white : Colors.white24,
-                width: selected ? 2.5 : 1),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                        color: (color ?? Colors.white)
-                            .withValues(alpha: 0.4),
-                        blurRadius: 6)
-                  ]
-                : null,
-          ),
-          child: color == null
-              ? const Center(
-                  child: Icon(Icons.close_rounded,
-                      size: 12, color: Colors.white38))
-              : null,
-        ),
-      );
-}
-
-class _Sep extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Container(
-      width: 1,
-      height: 20,
-      margin: const EdgeInsets.symmetric(horizontal: 6),
-      color: Colors.white12);
-}
-
-class _BarBtn extends StatelessWidget {
-  final IconData icon;
-  final String? label;
-final double? size;
-  final bool active;
-  final Color activeColor;
-  final VoidCallback onTap;
- 
-
-  const _BarBtn(
-      {required this.icon,
-      this.label,
-        this.size,
-      this.active = false,
-      this.activeColor = const Color(0xFF0A84FF),
-      required this.onTap});
-
-  @override
-  Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: SizedBox(
-          width: 44,
-          height: 44,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon,
-                  size: 22,
-                  color: active ? activeColor : Colors.white38),
-              if (label != null) ...[
-                const SizedBox(height: 1),
-                Text(label!,
-                    style: TextStyle(
-                        fontSize: 9,
-                        color: active ? activeColor : Colors.white24,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ],
-          ),
-        ),
-      );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
-void showProjectNoteSheet(BuildContext context, {required Project project}) {
-  Navigator.of(context).push(MaterialPageRoute(
-    fullscreenDialog: true,
-    builder: (_) => ProjectNoteSheet(project: project),
-  ));
+void showProjectNoteSheet(
+  BuildContext context, {
+  required Project project,
+  Future<void> Function(String title, String? note)? onSaveNote,
+  Future<void> Function()? onClearNote,
+}) {
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => ProjectNoteSheet(
+        project: project,
+        onSaveNote: onSaveNote,
+        onClearNote: onClearNote,
+      ),
+    ),
+  );
 }

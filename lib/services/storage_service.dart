@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:focusbell/models/focus_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
 
 import '../models/project.dart';
 import '../models/settings.dart';
@@ -68,8 +69,11 @@ class StorageService {
   Future<void> deleteTask(String taskId) =>
       DatabaseHelper.instance.deleteTask(taskId);
 
+// Exposes the underlying database for services that need direct access.
+  Future<Database> get database => DatabaseHelper.instance.database;
   Future<void> updateTaskNote(String taskId, String? note) =>
       DatabaseHelper.instance.updateTaskNote(taskId, note);
+      
 
   // ── Settings ──────────────────────────────────────────────────
 

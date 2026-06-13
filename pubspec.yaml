@@ -28,6 +28,8 @@ dependencies:
   home_widget: ^0.6.0
   file_picker: ^8.3.0
   open_filex: ^4.5.0
+  google_fonts: ^6.2.1
+  alarm: ^5.5.0
   
  
 
@@ -36,9 +38,15 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
 
+dependency_overrides:
+  flutter_fgbg: ^0.6.0
+
 flutter:
   assets:
     - assets/sounds/tick.mp3
     - assets/sounds/complete.wav
+    - assets/sounds/binaural_40hz.mp3   
+    - assets/sounds/brown_noise.mp3     
+    - assets/sounds/rain.wav 
   uses-material-design: true
   

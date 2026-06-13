@@ -1,5 +1,29 @@
 import 'package:flutter/material.dart';
 
+
+// ── Project category ──────────────────────────────────────────────
+
+enum ProjectCategory {
+  finance,
+  education,
+  general,
+  others;
+
+  String get label => switch (this) {
+    ProjectCategory.finance   => 'Finance',
+    ProjectCategory.education => 'Education',
+    ProjectCategory.general   => 'General',
+    ProjectCategory.others    => 'Others',
+  };
+
+  String get emoji => switch (this) {
+    ProjectCategory.finance   => '💰',
+    ProjectCategory.education => '📚',
+    ProjectCategory.general   => '📋',
+    ProjectCategory.others    => '🗂️',
+  };
+}
+
 // ── Priority ──────────────────────────────────────────────────────
 
 enum Priority {
@@ -226,6 +250,7 @@ class Project {
   final String id;
   final String name;
   final String description;
+  final ProjectCategory category;
   final Priority priority;
   final bool isActive;
   final int sortOrder;
@@ -239,6 +264,7 @@ class Project {
     required this.id,
     required this.name,
     required this.description,
+    this.category = ProjectCategory.general,
     required this.priority,
     this.isActive = false,
     this.sortOrder = 0,
@@ -272,6 +298,7 @@ class Project {
  Project copyWith({
     String?     name,
     String?     description,
+    ProjectCategory? category,
     Priority?   priority,
     bool?       isActive,
     int?        sortOrder,
@@ -285,6 +312,7 @@ class Project {
         id:            id,
         name:          name          ?? this.name,
         description:   description   ?? this.description,
+        category: category ?? this.category,
         priority:      priority      ?? this.priority,
         isActive:      isActive      ?? this.isActive,
         sortOrder:     sortOrder     ?? this.sortOrder,
@@ -300,6 +328,7 @@ class Project {
         'id':            id,
         'name':          name,
         'description':   description,
+        'category': category.name,
         'priority':      priority.index,
         'isActive':      isActive,
         'sortOrder':     sortOrder,
@@ -313,6 +342,10 @@ class Project {
         id:            json['id']          as String,
         name:          json['name']        as String,
         description:   json['description'] as String? ?? '',
+        category: ProjectCategory.values.firstWhere(
+          (e) => e.name == (json['category'] as String? ?? 'general'),
+          orElse: () => ProjectCategory.general,
+        ),
         priority:      Priority.values[json['priority'] as int],
         isActive:      json['isActive']    as bool? ?? false,
         sortOrder:     json['sort_order']  as int?  ?? 0,

@@ -52,14 +52,19 @@ class FocusTimerSheet extends StatefulWidget {
 class _FocusTimerSheetState extends State<FocusTimerSheet> {
   final _svc = FocusTimerService.instance;
 
+  bool _dialogShown = false;
+
   @override
   void initState() {
     super.initState();
     _svc.addListener(_onStateChange);
-    // If a segment finished while we were away, show dialog immediately.
     if (_svc.pendingFinished) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) { _svc.clearPendingFinished(); _showFinishedDialog(); }
+        if (mounted && !_dialogShown) {
+          _dialogShown = true;
+          _svc.clearPendingFinished();
+          _showFinishedDialog();
+        }
       });
     }
   }
@@ -67,9 +72,13 @@ class _FocusTimerSheetState extends State<FocusTimerSheet> {
   void _onStateChange() {
     if (!mounted) return;
     setState(() {});
-    if (_svc.pendingFinished) {
+    if (_svc.pendingFinished && !_dialogShown) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) { _svc.clearPendingFinished(); _showFinishedDialog(); }
+        if (mounted && !_dialogShown) {
+          _dialogShown = true;
+          _svc.clearPendingFinished();
+          _showFinishedDialog();
+        }
       });
     }
   }
@@ -119,26 +128,28 @@ class _FocusTimerSheetState extends State<FocusTimerSheet> {
 
   // ── Finished dialog ───────────────────────────────────────────
 
-  void _showFinishedDialog() {
-    // Stop alarm when user interacts.
-    showDialog(
-      context:            context,
-      barrierDismissible: false,
-      builder: (ctx) => _FinishedDialog(
-        svc:      _svc,
-        onStart: () {
-          _svc.stopAlarmManually();
-          Navigator.pop(ctx);
-          _svc.start();
-        },
-        onStop: () {
-          _svc.stopAlarmManually();
-          Navigator.pop(ctx);
-          _svc.stop();
-        },
-      ),
-    );
-  }
+// In _showFinishedDialog():
+void _showFinishedDialog() {
+  final completedType = _svc.completedSegmentType;  // ← read before clearing
+  showDialog(
+    context:            context,
+    barrierDismissible: false,
+    builder: (ctx) => _FinishedDialog(
+      svc:           _svc,
+      completedType: completedType,   // ← pass it in
+      onStart: () {
+        _svc.stopAlarmManually();
+        Navigator.pop(ctx);
+        _svc.start();
+      },
+      onStop: () {
+        _svc.stopAlarmManually();
+        Navigator.pop(ctx);
+        _svc.stop();
+      },
+    ),
+  );
+}
 
   // ── Settings menu ─────────────────────────────────────────────
 
@@ -301,6 +312,7 @@ class _FocusTimerSheetState extends State<FocusTimerSheet> {
               const SizedBox(height: 16),
 
               // ── Preset picker ─────────────────────────────
+             // ── Preset picker ─────────────────────────────────────────────────
               _PresetPicker(
                 preset:   s.preset,
                 enabled:  !s.isActive,
@@ -308,6 +320,12 @@ class _FocusTimerSheetState extends State<FocusTimerSheet> {
                   preset:      p,
                   projectId:   widget.project.id,
                   projectName: widget.project.name,
+                ),
+                onCustomConfirmed: (mins) => _svc.configure(
+                  preset:            TimerPreset.custom,
+                  projectId:         widget.project.id,
+                  projectName:       widget.project.name,
+                  customWorkMinutes: mins,
                 ),
               ),
 
@@ -608,16 +626,63 @@ Widget build(BuildContext context) {
                   _SectionLabel('AUTOSTART'),
                   const SizedBox(height: 8),
 
-                  _ToggleRow(
-                    icon: Icons.coffee_rounded,
-                    color: const Color(0xFF32D74B),
-                    title: 'Autostart break from session',
-                    subtitle:
-                        'Break begins automatically when work ends',
-                    value: _s.autostartBreak,
-                    onChanged: (v) =>
-                        _update(_s.copyWith(autostartBreak: v)),
-                  ),
+                  _SectionLabel('FOCUS SOUND'),
+                  const SizedBox(height: 8),
+                  ...FocusSound.values.map((sound) {
+                    final sel = _s.focusSound == sound;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: GestureDetector(
+                        onTap: () => _update(_s.copyWith(focusSound: sound)),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: sel
+                                ? const Color(0xFF0A84FF).withValues(alpha: 0.07)
+                                : Colors.white.withValues(alpha: 0.03),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: sel
+                                  ? const Color(0xFF0A84FF).withValues(alpha: 0.25)
+                                  : Colors.white.withValues(alpha: 0.07),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 34, height: 34,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0A84FF)
+                                      .withValues(alpha: sel ? 0.15 : 0.06),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Center(
+                                  child: Text(sound.emoji,
+                                      style: const TextStyle(fontSize: 16)),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  sound.label,
+                                  style: TextStyle(
+                                    color: sel ? Colors.white : Colors.white60,
+                                    fontSize:   13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              if (sel)
+                                const Icon(Icons.check_circle_rounded,
+                                    color: Color(0xFF0A84FF), size: 18),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
 
                   const SizedBox(height: 8),
 
@@ -771,11 +836,13 @@ class _ToggleRow extends StatelessWidget {
 
 class _FinishedDialog extends StatelessWidget {
   final FocusTimerService svc;
+  final SessionType?      completedType; 
   final VoidCallback      onStart;
   final VoidCallback      onStop;
 
   const _FinishedDialog({
     required this.svc,
+    required this.completedType, 
     required this.onStart,
     required this.onStop,
   });
@@ -916,58 +983,243 @@ class _FinishedDialog extends StatelessWidget {
 }
 
 // ── Preset picker ─────────────────────────────────────────────────
+// ── Preset picker (with Custom inline minute entry) ───────────────
 
-class _PresetPicker extends StatelessWidget {
+class _PresetPicker extends StatefulWidget {
   final TimerPreset preset;
   final bool        enabled;
   final ValueChanged<TimerPreset> onSelect;
+  /// Called specifically when the user confirms a custom duration.
+  final void Function(int minutes) onCustomConfirmed;
 
   const _PresetPicker({
     required this.preset,
     required this.enabled,
     required this.onSelect,
+    required this.onCustomConfirmed,
   });
 
   @override
+  State<_PresetPicker> createState() => _PresetPickerState();
+}
+
+class _PresetPickerState extends State<_PresetPicker> {
+  bool _showCustomInput = false;
+  final _ctrl = TextEditingController(text: '25');
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _commitCustom() {
+    final mins = int.tryParse(_ctrl.text.trim()) ?? 25;
+    final clamped = mins.clamp(1, 480); // 1 min – 8 hours
+    _ctrl.text = clamped.toString();
+    widget.onCustomConfirmed(clamped);
+    setState(() => _showCustomInput = false);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 36,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        children: TimerPreset.values.map((p) {
-          final sel = p == preset;
-          return GestureDetector(
-            onTap: enabled ? () => onSelect(p) : null,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin:  const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 14, vertical: 7),
-              decoration: BoxDecoration(
-                color: sel
-                    ? Colors.white.withValues(alpha: 0.10)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: sel ? Colors.white38 : Colors.white12),
-              ),
-              child: Text(
-                p.label,
-                style: TextStyle(
-                  color:      sel ? Colors.white : Colors.white38,
-                  fontSize:   12,
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Pill row ──────────────────────────────────────────
+        SizedBox(
+          height: 36,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: TimerPreset.values.map((p) {
+              final sel = p == widget.preset;
+              return GestureDetector(
+                onTap: widget.enabled
+                    ? () {
+                        if (p == TimerPreset.custom) {
+                          // Selecting custom — show the input row
+                          widget.onSelect(p);
+                          setState(() {
+                            _showCustomInput = true;
+                            // Pre-fill with current total if already custom
+                          });
+                        } else {
+                          setState(() => _showCustomInput = false);
+                          widget.onSelect(p);
+                        }
+                      }
+                    : null,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  margin:  const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: sel
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: sel ? Colors.white38 : Colors.white12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        p.label,
+                        style: TextStyle(
+                          color: sel ? Colors.white : Colors.white38,
+                          fontSize:   12,
+                          fontWeight: sel
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                        ),
+                      ),
+                      // Small "+" icon hint on Custom pill when not selected
+                      if (p == TimerPreset.custom && !sel) ...[
+                        const SizedBox(width: 4),
+                        Icon(Icons.add_rounded,
+                            color: Colors.white24, size: 12),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
+              );
+            }).toList(),
+          ),
+        ),
+
+        // ── Inline custom minute input ─────────────────────────
+        AnimatedSize(
+          duration: const Duration(milliseconds: 220),
+          curve:    Curves.easeOut,
+          child: _showCustomInput && widget.enabled
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                  child: Row(
+                    children: [
+                      // Minus
+                      _StepBtn(
+                        icon: Icons.remove_rounded,
+                        onTap: () {
+                          final v =
+                              (int.tryParse(_ctrl.text) ?? 25) - 5;
+                          _ctrl.text = v.clamp(1, 480).toString();
+                        },
+                      ),
+                      const SizedBox(width: 10),
+
+                      // Text field
+                      Expanded(
+                        child: Container(
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 52,
+                                child: TextField(
+                                  controller:  _ctrl,
+                                  keyboardType: TextInputType.number,
+                                  textAlign:   TextAlign.center,
+                                  style: const TextStyle(
+                                    color:      Colors.white,
+                                    fontSize:   15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    border:      InputBorder.none,
+                                    isDense:     true,
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                  onSubmitted: (_) => _commitCustom(),
+                                ),
+                              ),
+                              const Text(' min',
+                                  style: TextStyle(
+                                      color:    Colors.white38,
+                                      fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      // Plus
+                      _StepBtn(
+                        icon: Icons.add_rounded,
+                        onTap: () {
+                          final v =
+                              (int.tryParse(_ctrl.text) ?? 25) + 5;
+                          _ctrl.text = v.clamp(1, 480).toString();
+                        },
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      // Confirm
+                      GestureDetector(
+                        onTap: _commitCustom,
+                        child: Container(
+                          height: 40,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF453A)
+                                .withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(0xFFFF453A)
+                                  .withValues(alpha: 0.40),
+                            ),
+                          ),
+                          child: const Center(
+                            child: Text('Set',
+                                style: TextStyle(
+                                  color:      Color(0xFFFF453A),
+                                  fontSize:   13,
+                                  fontWeight: FontWeight.w700,
+                                )),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }
 
+// Small −/+ stepper button used in the custom input row
+class _StepBtn extends StatelessWidget {
+  final IconData     icon;
+  final VoidCallback onTap;
+  const _StepBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36, height: 36,
+          decoration: BoxDecoration(
+            color:        Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+            border:       Border.all(color: Colors.white12),
+          ),
+          child: Icon(icon, color: Colors.white38, size: 18),
+        ),
+      );
+}
 // ── Circular ring ─────────────────────────────────────────────────
 
 class _TimerRing extends StatelessWidget {
