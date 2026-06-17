@@ -141,7 +141,7 @@ and sets text on the `RemoteViews` layout.
 AND the `namespace` in `build.gradle`. Currently:
 
 ```kotlin
-package com.example.focusbell
+package co.ibeep.focusbell
 ```
 
 **When to edit this file:**
@@ -252,7 +252,7 @@ the `<application>` tag:
 ```
 
 **`android:name=".FocusWidgetProvider"`** — the leading dot means "relative to the
-app's package." Android expands this to `com.example.focusbell.FocusWidgetProvider`.
+app's package." Android expands this to `co.ibeep.focusbell.FocusWidgetProvider`.
 
 **When to edit:** Almost never. Only if you rename the Kotlin class or add a second
 widget provider.
@@ -272,7 +272,7 @@ bridge to the native widget.
 
 ```dart
 static const _kProviderName = 'FocusWidgetProvider';
-static const _kQualifiedProvider = 'com.example.focusbell.FocusWidgetProvider';
+static const _kQualifiedProvider = 'co.ibeep.focusbell.FocusWidgetProvider';
 //                                  ^^^^^^^^^^^^^^^^^^^^^ MUST match build.gradle namespace
 ```
 
@@ -469,7 +469,7 @@ grep "namespace" android/app/build.gradle
 **Then set it in `widget_service.dart`:**
 
 ```dart
-static const _kQualifiedProvider = 'com.example.focusbell.FocusWidgetProvider';
+static const _kQualifiedProvider = 'co.ibeep.focusbell.FocusWidgetProvider';
 //                                   ^^^^^^^^^^^^^^^^^^^^ must match namespace
 ```
 
@@ -480,7 +480,7 @@ appears on the home screen but never updates. This is the hardest bug to diagnos
 **Also check:** The `package` line at the top of `FocusWidgetProvider.kt` must match:
 
 ```kotlin
-package com.example.focusbell   // must match build.gradle namespace
+package co.ibeep.focusbell   // must match build.gradle namespace
 ```
 
 And the folder path must match:
@@ -549,7 +549,7 @@ Run `flutter run` and switch active project. Check the VS Code Debug Console.
 
 ```bash
 grep "namespace" android/app/build.gradle
-# Should output something like: namespace 'com.example.focusbell'
+# Should output something like: namespace 'co.ibeep.focusbell'
 ```
 
 Compare to `_kQualifiedProvider` in `widget_service.dart`. They must match.
@@ -624,7 +624,7 @@ android:minHeight="60dp"
 
 ### Rename the app package
 
-If you ever change the app's package (e.g. from `com.example.focusbell` to
+If you ever change the app's package (e.g. from `co.ibeep.focusbell` to
 `com.focusbell.app`), you must update ALL of these:
 
 1. `build.gradle` → `namespace` and `applicationId`
@@ -643,7 +643,7 @@ package supports iOS via a shared **App Group** container.
 
 The iOS app group ID is already defined in `widget_service.dart`:
 ```dart
-static const _kAppGroupId = 'group.com.example.focusbell';
+static const _kAppGroupId = 'group.co.ibeep.focusbell';
 ```
 
 And `init()` already registers it:

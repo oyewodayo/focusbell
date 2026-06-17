@@ -1,4 +1,4 @@
-package com.example.focusbell
+package co.ibeep.focusbell
 
 import io.flutter.embedding.android.FlutterActivity
 

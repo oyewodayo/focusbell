@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+
+	<!-- Scene manifest — must ONLY contain scene config keys -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -45,25 +47,36 @@
 					<string>Main</string>
 				</dict>
 			</array>
-		</dict>		 
-		<key>NSLocationWhenInUseUsageDescription</key>
-		<string>FocusBell uses your location to remind you when you arrive at or leave places you've set.</string>
-		
-		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-		<string>FocusBell needs background location access to remind you when you arrive at or leave places even when the app is closed.</string>
-		
-		<key>NSLocationAlwaysUsageDescription</key>
-		<string>FocusBell needs background location access to remind you when you arrive at or leave places even when the app is closed.</string>
-		
-		<key>UIBackgroundModes</key>
-		<array>
-			<string>location</string>
-			<string>fetch</string>
-		</array>
-
-
-
+		</dict>
 	</dict>
+
+	<!-- Location usage descriptions — REQUIRED top-level keys, not nested.
+	     Without these at the top level, iOS will not show permission
+	     prompts at all and your geofencing silently fails. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>FocusBell uses your location to remind you when you arrive at or leave places you've set.</string>
+
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>FocusBell needs background location access to remind you when you arrive at or leave places even when the app is closed.</string>
+
+	<!-- NSLocationAlwaysUsageDescription is the pre-iOS11 legacy key.
+	     Apple still recommends including it for older OS compatibility,
+	     but on a modern app it's optional. Kept here for safety since
+	     your minimum iOS target is unconfirmed. -->
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>FocusBell needs background location access to remind you when you arrive at or leave places even when the app is closed.</string>
+
+	<!-- Background modes — REQUIRED top-level array, not nested.
+	     "location" is required for geofencing region-monitoring callbacks
+	     to fire while the app is suspended/terminated.
+	     "fetch" is for legacy Background App Refresh; harmless to keep,
+	     but does NOT give you persistent timers — see notes below. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
+
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

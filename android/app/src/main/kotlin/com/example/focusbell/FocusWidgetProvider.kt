@@ -1,4 +1,4 @@
-package com.example.focusbell
+package co.ibeep.focusbell
 
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider

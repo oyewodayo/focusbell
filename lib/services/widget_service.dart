@@ -38,10 +38,10 @@ class WidgetService {
   //
   static const _kProviderName   = 'FocusWidgetProvider';
   static const _kQualifiedProvider =
-      'com.example.focusbell.FocusWidgetProvider'; // ← update if needed
+      'co.ibeep.focusbell.FocusWidgetProvider'; // ← update if needed
 
   // ── iOS app group (needed when you add the Swift WidgetKit extension) ──────
-  static const _kAppGroupId = 'group.com.example.focusbell';
+  static const _kAppGroupId = 'group.co.ibeep.focusbell';
 
   // ── Throttle: timer ticks fire push() very often; gate widget I/O ─────────
   static const _kTimerThrottle = Duration(seconds: 30);

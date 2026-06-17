@@ -1,0 +1,83 @@
+workflows:
+  ios-testflight:
+    name: FocusBell iOS - TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      app_store_connect: focusbell_appstore_connect   # name this whatever
+                                                        # you call the API key
+                                                        # integration in
+                                                        # Codemagic > Team
+                                                        # settings > Integrations
+    environment:
+      ios_signing:
+        distribution_type: app_store     # TestFlight uses the same
+                                          # distribution cert as App Store
+        bundle_identifier: co.ibeep.focusbell   # ⚠️ match your real
+                                                          # bundle ID exactly —
+                                                          # see note below
+      vars:
+        APP_ID: 0000000000   # your App Store Connect "Apple ID" (numeric),
+                              # found on the app's App Information page
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter packages pub get
+
+      - name: Install pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+
+      - name: Set up code signing
+        script: |
+          # Pulls certs + provisioning profile automatically from your
+          # connected Apple Developer account — nothing manual to upload.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Flutter build ipa with auto build number
+        script: |
+          BUILD_NUMBER=$(($(app-store-connect get-latest-testflight-build-number \
+            --platform=IOS "$APP_ID" 2>/dev/null || echo 0) + 1))
+
+          flutter build ipa --release \
+            --build-name=1.0.0 \
+            --build-number=$BUILD_NUMBER \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - "CERN Testers"   # create this internal testing group in
+                              # App Store Connect once, then just add your
+                              # colleague's email to it each time
+      email:
+        recipients:
+          - your_email@example.com   # gets notified on build pass/fail
+        notify:
+          success: true
+          failure: true

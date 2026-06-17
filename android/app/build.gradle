@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.focusbell"
+    namespace = "co.ibeep.focusbell"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -20,7 +20,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.focusbell"
+        applicationId = "co.ibeep.focusbell"
         minSdkVersion = flutter.minSdkVersion
         targetSdk = 36
         versionCode = flutter.versionCode
