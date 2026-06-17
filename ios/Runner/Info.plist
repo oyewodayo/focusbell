@@ -59,6 +59,8 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>FocusBell needs background location access to remind you when you arrive at or leave places even when the app is closed.</string>
 
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>FocusBell sends focus reminders, session alerts, and productivity notifications.</string>
 	<!-- NSLocationAlwaysUsageDescription is the pre-iOS11 legacy key.
 	     Apple still recommends including it for older OS compatibility,
 	     but on a modern app it's optional. Kept here for safety since

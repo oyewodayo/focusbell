@@ -1,37 +1,24 @@
-// services/geofence_service.dart — NEW FILE
-//
-// Responsibilities:
-//   • Request & check location permissions at runtime
-//   • Register / unregister geofences per reminder
-//   • Poll current position in the foreground task tick (every 30s)
-//   • Detect enter/leave events and fire a notification
-//   • Persist which geofences are "active" across restarts
-//
-// Uses geolocator (position polling) — no Google Play Services dependency.
-// Background execution piggybacks on the existing flutter_foreground_task.
+// services/geofence_service.dart — FULL REPLACEMENT
+// Location polling + fires full AlarmService alarm on geofence trigger
 
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart'
-    as fln;
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/reminder_model.dart';
-import 'notification_service.dart';
+import '../screens/alarm_screen.dart';
+import 'alarm_service.dart';
 import 'reminder_service.dart';
 
 class GeofenceService {
   GeofenceService._();
   static final GeofenceService instance = GeofenceService._();
 
-  // ── State ─────────────────────────────────────────────────────
-
-  /// reminderId → whether the user was INSIDE the fence last check.
   final Map<String, bool> _insideMap = {};
-
   Timer? _pollTimer;
   bool _permissionGranted = false;
   bool _initialized = false;
@@ -44,40 +31,27 @@ class GeofenceService {
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
-
     await _loadInsideMap();
     _permissionGranted = await _checkPermission();
-
-    if (_permissionGranted) {
-      _startPolling();
-    }
+    if (_permissionGranted) _startPolling();
     debugPrint('[GeofenceService] init — permission: $_permissionGranted');
   }
 
   // ── Permission ────────────────────────────────────────────────
 
-  /// Requests location permission if not already granted.
-  /// Returns true if we have at least "while in use" permission.
-  /// Call this from the UI before showing the location picker.
   Future<bool> requestPermission() async {
     LocationPermission perm = await Geolocator.checkPermission();
-
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
     }
-
     if (perm == LocationPermission.deniedForever) {
       debugPrint('[GeofenceService] Permission permanently denied.');
       return false;
     }
-
     _permissionGranted =
         perm == LocationPermission.whileInUse ||
         perm == LocationPermission.always;
-
     if (_permissionGranted && _pollTimer == null) _startPolling();
-
-    debugPrint('[GeofenceService] permission: $perm');
     return _permissionGranted;
   }
 
@@ -89,9 +63,8 @@ class GeofenceService {
 
   bool get hasPermission => _permissionGranted;
 
-  // ── Current position (for the picker UI) ─────────────────────
+  // ── Current position (for picker UI) ─────────────────────────
 
-  /// Returns current position or null if unavailable.
   Future<Position?> getCurrentPosition() async {
     if (!_permissionGranted) return null;
     try {
@@ -112,7 +85,6 @@ class GeofenceService {
   void _startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(_kPollInterval, (_) => _poll());
-    // Also poll immediately
     Future.microtask(_poll);
   }
 
@@ -124,18 +96,16 @@ class GeofenceService {
   Future<void> _poll() async {
     if (!_permissionGranted) return;
 
-    // Only process reminders that have a geofence attached
     final geofenced = ReminderService.instance.reminders.value
         .where((r) => r.geofence != null)
         .toList();
-
     if (geofenced.isEmpty) return;
 
     Position pos;
     try {
       pos = await Geolocator.getCurrentPosition(
         locationSettings: LocationSettings(
-          accuracy: LocationAccuracy.medium,
+          accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 8),
         ),
       );
@@ -155,94 +125,57 @@ class GeofenceService {
       final inside = dist <= fence.radiusMeters;
       final wasInside = _insideMap[reminder.id] ?? false;
 
-      if (inside != wasInside) {
-        _insideMap[reminder.id] = inside;
-        _persistInsideMap();
+      if (inside == wasInside) continue;
+      _insideMap[reminder.id] = inside;
+      _persistInsideMap();
 
-        // Fire notification on the relevant transition
-        final entered = inside && !wasInside;
-        final left = !inside && wasInside;
+      final entered = inside && !wasInside;
+      final left = !inside && wasInside;
 
-        if ((fence.trigger == GeofenceTrigger.onArrive && entered) ||
-            (fence.trigger == GeofenceTrigger.onLeave && left)) {
-          await _fireGeofenceNotification(reminder, fence, entered);
-        }
+      if ((fence.trigger == GeofenceTrigger.onArrive && entered) ||
+          (fence.trigger == GeofenceTrigger.onLeave && left)) {
+        await _fireGeofenceAlarm(reminder, fence, entered);
       }
     }
   }
 
-  // ── Notification ──────────────────────────────────────────────
+  // ── Fire alarm (full AlarmScreen + audio) ─────────────────────
 
-  static const _kGeofenceChannelId = 'focusbell_geofence';
-  static const _kGeofenceChannelName = 'Location Reminders';
-  static int _nextNotifId = 90000;
-
-  Future<void> _fireGeofenceNotification(
+  Future<void> _fireGeofenceAlarm(
     Reminder reminder,
     ReminderGeofence fence,
     bool entered,
   ) async {
-    debugPrint(
-      '[GeofenceService] FIRE: ${reminder.title} '
-      '(${entered ? "entered" : "left"} ${fence.placeName})',
-    );
-
-    final plugin = NotificationService.instance.plugin;
-
-    // Ensure the geofence channel exists
-    final androidPlugin = plugin
-        .resolvePlatformSpecificImplementation<
-          fln.AndroidFlutterLocalNotificationsPlugin
-        >();
-    if (androidPlugin != null) {
-      try {
-        await androidPlugin.createNotificationChannel(
-          const fln.AndroidNotificationChannel(
-            _kGeofenceChannelId,
-            _kGeofenceChannelName,
-            description: 'Reminders triggered by your location.',
-            importance: fln.Importance.max,
-            playSound: true,
-            enableVibration: true,
-          ),
-        );
-      } catch (_) {}
-    }
-
     final action = entered ? 'Arrived at' : 'Left';
-    final id = _nextNotifId++;
-
-    await plugin.show(
-      id,
-      '📍 $action ${fence.placeName}',
-      reminder.title,
-      fln.NotificationDetails(
-        android: fln.AndroidNotificationDetails(
-          _kGeofenceChannelId,
-          _kGeofenceChannelName,
-          importance: fln.Importance.max,
-          priority: fln.Priority.max,
-          enableVibration: true,
-          playSound: true,
-          fullScreenIntent: false,
-        ),
-        iOS: const fln.DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      ),
-      payload: reminder.id,
+    debugPrint(
+      '[GeofenceService] FIRE: ${reminder.title} ($action ${fence.placeName})',
     );
 
-    // For repeating reminders, leave it active.
-    // For one-shot, remove after firing.
+    // Build a one-shot reminder that carries the location context in notes
+    final triggered = reminder.copyWith(
+      title: reminder.title,
+      notes:
+          '$action ${fence.placeName}${reminder.notes != null ? '\n${reminder.notes}' : ''}',
+    );
+
+    // Push full AlarmScreen — same rich UI as time-based reminders
+    AlarmService.navigatorKey.currentState?.push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.transparent,
+        pageBuilder: (_, __, ___) => AlarmScreen(reminders: [triggered]),
+        transitionsBuilder: (_, anim, __, child) =>
+            FadeTransition(opacity: anim, child: child),
+      ),
+    );
+
+    // Remove one-shot reminders after firing; keep repeating ones active
     if (!reminder.isRepeating) {
       await ReminderService.instance.remove(reminder.id);
     }
   }
 
-  // ── Distance helper (Haversine) ───────────────────────────────
+  // ── Haversine distance ────────────────────────────────────────
 
   static double _distanceMeters(
     double lat1,
@@ -250,7 +183,7 @@ class GeofenceService {
     double lat2,
     double lon2,
   ) {
-    const R = 6371000.0; // Earth radius in metres
+    const R = 6371000.0;
     final dLat = _rad(lat2 - lat1);
     final dLon = _rad(lon2 - lon1);
     final a =
@@ -269,37 +202,33 @@ class GeofenceService {
   Future<void> _loadInsideMap() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getStringList(_kPrefsKey) ?? [];
-      for (final entry in raw) {
+      for (final entry in prefs.getStringList(_kPrefsKey) ?? []) {
         final parts = entry.split(':');
-        if (parts.length == 2) {
-          _insideMap[parts[0]] = parts[1] == '1';
-        }
+        if (parts.length == 2) _insideMap[parts[0]] = parts[1] == '1';
       }
     } catch (e) {
-      debugPrint('[GeofenceService] loadInsideMap failed: $e');
+      debugPrint('[GeofenceService] load failed: $e');
     }
   }
 
   Future<void> _persistInsideMap() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = _insideMap.entries
-          .map((e) => '${e.key}:${e.value ? '1' : '0'}')
-          .toList();
-      await prefs.setStringList(_kPrefsKey, raw);
+      await prefs.setStringList(
+        _kPrefsKey,
+        _insideMap.entries
+            .map((e) => '${e.key}:${e.value ? '1' : '0'}')
+            .toList(),
+      );
     } catch (e) {
-      debugPrint('[GeofenceService] persistInsideMap failed: $e');
+      debugPrint('[GeofenceService] persist failed: $e');
     }
   }
 
-  /// Called when a reminder with a geofence is deleted — clears its state.
   void removeGeofence(String reminderId) {
     _insideMap.remove(reminderId);
     _persistInsideMap();
   }
 
-  void dispose() {
-    stopPolling();
-  }
+  void dispose() => stopPolling();
 }

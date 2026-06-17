@@ -1181,18 +1181,42 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('📊', style: TextStyle(fontSize: 40)),
-          SizedBox(height: 16),
-          Text('No sessions recorded yet.',
-              style: TextStyle(color: Colors.white38, fontSize: 14)),
-          SizedBox(height: 6),
-          Text('Start a focus session to see your data here.',
-              style: TextStyle(color: Colors.white24, fontSize: 12)),
-        ],
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 36),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _IconBadge(
+              icon:  Icons.bar_chart_rounded,
+              color: const Color(0xFFFF453A),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Your focus story starts here',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color:         Colors.white,
+                fontSize:      18,
+                fontWeight:    FontWeight.w700,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Run your first session and this screen turns into '
+              'streaks, totals, and a daily breakdown.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color:    Colors.white38,
+                fontSize: 13,
+                height:   1.4,
+              ),
+            ),
+            const SizedBox(height: 28),
+            const _PreviewRow(),
+          ],
+        ),
       ),
     );
   }
@@ -1203,17 +1227,144 @@ class _EmptySessionsState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 36),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _IconBadge(
+              icon:  Icons.history_rounded,
+              color: const Color(0xFF0A84FF),
+              size:  56,
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Nothing in this window',
+              style: TextStyle(
+                color:      Colors.white70,
+                fontSize:   15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Switch to 30d to see older sessions.',
+              style: TextStyle(color: Colors.white24, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shared empty-state pieces ─────────────────────────────────────
+
+/// Soft glow + ringed circle behind an icon — reused by both empty states.
+class _IconBadge extends StatelessWidget {
+  final IconData icon;
+  final Color    color;
+  final double   size;
+  const _IconBadge({
+    required this.icon,
+    required this.color,
+    this.size = 72,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width:  size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: RadialGradient(
+          colors: [
+            color.withValues(alpha: 0.18),
+            color.withValues(alpha: 0.0),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Container(
+          width:  size * 0.66,
+          height: size * 0.66,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withValues(alpha: 0.10),
+            border: Border.all(color: color.withValues(alpha: 0.25)),
+          ),
+          child: Icon(icon, color: color, size: size * 0.34),
+        ),
+      ),
+    );
+  }
+}
+
+/// A tiny "preview" of what the populated state looks like — three
+/// mini stat chips, dimmed, to give first-time users a reason to start.
+class _PreviewRow extends StatelessWidget {
+  const _PreviewRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _GhostStat(
+          icon:  Icons.local_fire_department_rounded,
+          label: 'Streaks',
+          color: const Color(0xFFFF9F0A),
+        ),
+        const SizedBox(width: 10),
+        _GhostStat(
+          icon:  Icons.check_circle_rounded,
+          label: 'Sessions',
+          color: const Color(0xFF32D74B),
+        ),
+        const SizedBox(width: 10),
+        _GhostStat(
+          icon:  Icons.show_chart_rounded,
+          label: 'Trends',
+          color: const Color(0xFF0A84FF),
+        ),
+      ],
+    );
+  }
+}
+
+class _GhostStat extends StatelessWidget {
+  final IconData icon;
+  final String   label;
+  final Color    color;
+  const _GhostStat({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color:        color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Text('🕐', style: TextStyle(fontSize: 32)),
-          SizedBox(height: 12),
-          Text('No sessions in this period.',
-              style: TextStyle(color: Colors.white38, fontSize: 13)),
-          SizedBox(height: 4),
-          Text('Switch to 30d to see older sessions.',
-              style: TextStyle(color: Colors.white24, fontSize: 11)),
+          Icon(icon, color: color.withValues(alpha: 0.85), size: 16),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color:      color.withValues(alpha: 0.85),
+              fontSize:   10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ),
     );

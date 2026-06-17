@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:focusbell/services/alarm_service.dart';
 import 'package:focusbell/services/focus_timer_service.dart';
+import 'package:focusbell/services/geofence_service.dart';
+import 'package:focusbell/services/saved_places_service.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'services/app_controller.dart';
 import 'services/standalone_note_controller.dart';
@@ -12,44 +14,49 @@ import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/reminder_service.dart';
-import 'services/geofence_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tz.initializeTimeZones();
 
-  // Orientation lock is synchronous — fine to await
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Render the app immediately — spinner shows while services boot
   runApp(const FocusBellApp());
-
-  // Everything runs in background after first frame
   _initServices();
 }
 
 /// All service initialization — fully fire-and-forget.
-/// Nothing here can block the UI.
 void _initServices() {
   Future(() async {
     await _safe('NotificationService',
         () => NotificationService.instance.initialize());
+
+    // ReminderService.init() boots GeofenceService internally after
+    // loading reminders, so geofences are registered on first poll.
     await _safe('ReminderService',
-        () => ReminderService.instance.init());  
+        () => ReminderService.instance.init());
+
     await _safe('AppController',
         () => AppController.instance.boot());
+
     await _safe('StandaloneNoteController',
         () => StandaloneNoteController.instance.boot());
+
     await _safe('FocusTimerService',
         () => FocusTimerService.instance.init());
+
     await _safe('AlarmService',
         () => AlarmService.instance.init());
-    // GeofenceService is already booted inside ReminderService.init(),
-    // but calling it here as well is safe (init() is idempotent) and
-    // ensures the poll timer starts even if ReminderService had no reminders.
+
+    await _safe('SavedPlacesService',
+        () => SavedPlacesService.instance.init());
+
+    // GeofenceService.init() is idempotent — safe to call again here.
+    // This ensures the poll timer starts even when ReminderService
+    // skips it (e.g. on a cold boot with no reminders yet).
     await _safe('GeofenceService',
         () => GeofenceService.instance.init());
   });
@@ -117,7 +124,6 @@ class _LoaderState extends State<_Loader> {
       builder: (context, _) {
         final ctrl = AppController.instance;
 
-        // Still booting
         if (ctrl.loading) {
           return const Scaffold(
             backgroundColor: Color(0xFF0A0A0A),
@@ -130,7 +136,6 @@ class _LoaderState extends State<_Loader> {
           );
         }
 
-        // Boot failed
         if (ctrl.bootError != null) {
           return Scaffold(
             backgroundColor: const Color(0xFF0A0A0A),
@@ -166,8 +171,7 @@ class _LoaderState extends State<_Loader> {
                     const SizedBox(height: 20),
                     const Text(
                         'Copy the error above and share it for debugging.',
-                        style:
-                            TextStyle(color: Colors.white38, fontSize: 13)),
+                        style: TextStyle(color: Colors.white38, fontSize: 13)),
                   ],
                 ),
               ),
@@ -175,7 +179,6 @@ class _LoaderState extends State<_Loader> {
           );
         }
 
-        // Ready
         return const HomeScreen();
       },
     );
