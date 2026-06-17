@@ -12,6 +12,7 @@ import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/reminder_service.dart';
+import 'services/geofence_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,25 +35,23 @@ void main() async {
 /// Nothing here can block the UI.
 void _initServices() {
   Future(() async {
-    // Run in sequence so dependent services start in order,
-    // but the entire chain is detached from the UI.
     await _safe('NotificationService',
         () => NotificationService.instance.initialize());
-
     await _safe('ReminderService',
-        () => ReminderService.instance.init());
-
+        () => ReminderService.instance.init());  
     await _safe('AppController',
         () => AppController.instance.boot());
-
     await _safe('StandaloneNoteController',
         () => StandaloneNoteController.instance.boot());
-
     await _safe('FocusTimerService',
         () => FocusTimerService.instance.init());
-
     await _safe('AlarmService',
         () => AlarmService.instance.init());
+    // GeofenceService is already booted inside ReminderService.init(),
+    // but calling it here as well is safe (init() is idempotent) and
+    // ensures the poll timer starts even if ReminderService had no reminders.
+    await _safe('GeofenceService',
+        () => GeofenceService.instance.init());
   });
 }
 

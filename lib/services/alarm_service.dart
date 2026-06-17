@@ -47,7 +47,7 @@ class AlarmService {
     final settings = AlarmSettings(
       id:             alarmId,
       dateTime:       dt,
-      assetAudioPath: 'assets/sounds/complete.mp3',
+      assetAudioPath: 'assets/sounds/complete.wav',
       loopAudio:      true,
       vibrate:        true,
       warningNotificationOnKill: Platform.isIOS,

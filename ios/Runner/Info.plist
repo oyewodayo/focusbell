@@ -45,7 +45,24 @@
 					<string>Main</string>
 				</dict>
 			</array>
-		</dict>
+		</dict>		 
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>FocusBell uses your location to remind you when you arrive at or leave places you've set.</string>
+		
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>FocusBell needs background location access to remind you when you arrive at or leave places even when the app is closed.</string>
+		
+		<key>NSLocationAlwaysUsageDescription</key>
+		<string>FocusBell needs background location access to remind you when you arrive at or leave places even when the app is closed.</string>
+		
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>location</string>
+			<string>fetch</string>
+		</array>
+
+
+
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>

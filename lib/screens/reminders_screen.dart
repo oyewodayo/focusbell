@@ -13,6 +13,7 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 import '../data/timezone_data.dart';
 import '../models/reminder_model.dart';
 import '../services/reminder_service.dart';
+import 'location_picker_sheet.dart';
 
 // ── lerp helper (avoid dart:ui conflict) ─────────────────────────
 double _lerp(double a, double b, double t) => a + (b - a) * t;
@@ -231,9 +232,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
     final minutesCtrl = TextEditingController();
     final notesCtrl   = TextEditingController();
     DateTime?        picked;
+    List<DateTime>   extraDates = [];
     bool             useMinutes = false;
     RepeatDays       repeat     = RepeatDays.once();
     ReminderPriority priority   = ReminderPriority.normal;
+    ReminderGeofence? geofence;
 
     await showModalBottomSheet(
       context: context,
@@ -265,8 +268,20 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     icon: CupertinoIcons.timer,
                     keyboardType: TextInputType.number,
                   )
+                else if (repeat.isOnce)
+                  // Once — full date+time + multi-date support
+                  _MultiDateTimePicker(
+                    selected: picked,
+                    extraDates: extraDates,
+                    onPick: (dt) => ss(() => picked = dt),
+                    onExtraDatesChanged: (dates) => ss(() => extraDates = dates),
+                  )
                 else
-                  _DateTimePicker(selected: picked, onPick: (dt) => ss(() => picked = dt)),
+                  // Repeating — time only, date is irrelevant
+                  _TimeOnlyPicker(
+                    selected: picked,
+                    onPick: (dt) => ss(() => picked = dt),
+                  ),
                 const SizedBox(height: 16),
                 _SectionLabel('Repeat'),
                 const SizedBox(height: 8),
@@ -284,6 +299,21 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   icon: CupertinoIcons.doc_text,
                   maxLines: 3,
                 ),
+                const SizedBox(height: 14),
+                _LocationToggle(
+                  geofence: geofence,
+                  onTap: () async {
+                    await showModalBottomSheet(
+                      context: ctx,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => LocationPickerSheet(
+                        initial: geofence,
+                        onConfirm: (g) => ss(() => geofence = g),
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 20),
                 _sheetSaveBtn('Add Reminder', () async {
                   final title = titleCtrl.text.trim();
@@ -293,22 +323,35 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     final mins = int.tryParse(minutesCtrl.text.trim());
                     if (mins == null || mins <= 0) return;
                     dt = DateTime.now().add(Duration(minutes: mins));
+                  } else if (repeat.isRepeating) {
+                    // Time-only picker — use today's date with picked time,
+                    // then nextOccurrence finds the first valid weekday
+                    if (picked == null) return;
+                    dt = repeat.nextOccurrence(picked!);
                   } else {
-                    if (repeat.isRepeating && picked == null) {
-                      dt = repeat.nextOccurrence(DateTime.now());
-                    } else {
-                      if (picked == null) return;
-                      dt = picked;
-                    }
+                    // Once — needs a full date+time
+                    if (picked == null && geofence == null) return;
+                    dt = picked ?? DateTime.now().add(const Duration(hours: 1));
                   }
-                  final id = '${DateTime.now().millisecondsSinceEpoch}';
+                  final baseId = '${DateTime.now().millisecondsSinceEpoch}';
                   final r = Reminder(
-                    id: id, title: title, dateTime: dt!,
+                    id: baseId, title: title, dateTime: dt!,
                     repeat: repeat, priority: priority,
                     notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                    geofence: geofence,
                   );
                   await _svc.add(r);
-                  if (mounted) setState(() => _lastAddedReminderId = id);
+                  if (mounted) setState(() => _lastAddedReminderId = baseId);
+                  // Add extra dates as separate once-off reminders
+                  for (int i = 0; i < extraDates.length; i++) {
+                    final extraId = '${DateTime.now().millisecondsSinceEpoch}_$i';
+                    final extra = Reminder(
+                      id: extraId, title: title, dateTime: extraDates[i],
+                      repeat: RepeatDays.once(), priority: priority,
+                      notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                    );
+                    await _svc.add(extra);
+                  }
                   if (ctx.mounted) Navigator.of(ctx).pop();
                 }),
               ],
@@ -327,6 +370,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     DateTime?        picked   = DateTime(date.year, date.month, date.day, 9, 0);
     RepeatDays       repeat   = RepeatDays.once();
     ReminderPriority priority = ReminderPriority.normal;
+    ReminderGeofence? geofence;
 
     await showModalBottomSheet(
       context: context,
@@ -367,6 +411,21 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   icon: CupertinoIcons.doc_text,
                   maxLines: 3,
                 ),
+                const SizedBox(height: 14),
+                _LocationToggle(
+                  geofence: geofence,
+                  onTap: () async {
+                    await showModalBottomSheet(
+                      context: ctx,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => LocationPickerSheet(
+                        initial: geofence,
+                        onConfirm: (g) => ss(() => geofence = g),
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 20),
                 _sheetSaveBtn('Add Reminder', () async {
                   final title = titleCtrl.text.trim();
@@ -376,6 +435,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     id: id, title: title, dateTime: picked!,
                     repeat: repeat, priority: priority,
                     notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                    geofence: geofence,
                   );
                   await _svc.add(r);
                   if (mounted) setState(() => _lastAddedReminderId = id);
@@ -549,6 +609,12 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   label: r.repeat.label,
                   color: const Color(0xFF0A84FF),
                 ),
+              // Location
+              if (r.isLocationBased)
+                _DetailChip(
+                  label: r.geofence!.fullLabel,
+                  color: const Color(0xFF30D158),
+                ),
             ]),
 
             const SizedBox(height: 24),
@@ -625,9 +691,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Future<void> _showEditDialog(Reminder existing) async {
     final titleCtrl = TextEditingController(text: existing.title);
     final notesCtrl = TextEditingController(text: existing.notes ?? '');
-    DateTime?        picked   = existing.dateTime;
-    RepeatDays       repeat   = existing.repeat;
-    ReminderPriority priority = existing.priority;
+    DateTime?         picked   = existing.dateTime;
+    RepeatDays        repeat   = existing.repeat;
+    ReminderPriority  priority = existing.priority;
+    ReminderGeofence? geofence = existing.geofence;
 
     await showModalBottomSheet(
       context: context,
@@ -694,18 +761,35 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   icon: CupertinoIcons.doc_text,
                   maxLines: 3,
                 ),
+                const SizedBox(height: 14),
+                _LocationToggle(
+                  geofence: geofence,
+                  onTap: () async {
+                    await showModalBottomSheet(
+                      context: ctx,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => LocationPickerSheet(
+                        initial: geofence,
+                        onConfirm: (g) => ss(() => geofence = g),
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 20),
                 _sheetSaveBtn('Save Changes', () async {
                   final title = titleCtrl.text.trim();
                   if (title.isEmpty || picked == null) return;
                   final updated = existing.copyWith(
-                    title:    title,
-                    dateTime: picked,
-                    repeat:   repeat,
-                    priority: priority,
-                    notes:    notesCtrl.text.trim().isEmpty
-                                ? null
-                                : notesCtrl.text.trim(),
+                    title:         title,
+                    dateTime:      picked,
+                    repeat:        repeat,
+                    priority:      priority,
+                    notes:         notesCtrl.text.trim().isEmpty
+                                       ? null
+                                       : notesCtrl.text.trim(),
+                    geofence:      geofence,
+                    clearGeofence: geofence == null,
                   );
                   await _svc.update(updated);
                   if (ctx.mounted) Navigator.of(ctx).pop();
@@ -1078,6 +1162,25 @@ class _ReminderTileState extends State<_ReminderTile>
                               ),
                             ],
                           ]),
+                          if (widget.reminder.isLocationBased) ...[
+                            const SizedBox(height: 3),
+                            Row(children: [
+                              const Icon(CupertinoIcons.location_fill,
+                                  color: Color(0xFF30D158), size: 11),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  widget.reminder.geofence!.fullLabel,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF30D158),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ]),
+                          ],
                           if (widget.reminder.notes != null &&
                               widget.reminder.notes!.isNotEmpty) ...[
                             const SizedBox(height: 2),
@@ -1390,6 +1493,233 @@ class _Pill extends StatelessWidget {
     );
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+// Time-only picker — used for repeating reminders
+// Shows just a time picker; no date needed
+// ════════════════════════════════════════════════════════════════
+
+class _TimeOnlyPicker extends StatelessWidget {
+  final DateTime? selected;
+  final ValueChanged<DateTime> onPick;
+  const _TimeOnlyPicker({required this.selected, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () async {
+        final time = await showTimePicker(
+          context: context,
+          initialTime: selected != null
+              ? TimeOfDay.fromDateTime(selected!)
+              : TimeOfDay.now(),
+        );
+        if (time == null || !context.mounted) return;
+        // Anchor to today's date — nextOccurrence() will find the right day
+        final now = DateTime.now();
+        onPick(DateTime(now.year, now.month, now.day, time.hour, time.minute));
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(children: [
+          const Icon(CupertinoIcons.clock, color: Colors.white38, size: 18),
+          const SizedBox(width: 12),
+          Text(
+            selected == null
+                ? 'Pick time'
+                : DateFormat('hh:mm a').format(selected!),
+            style: TextStyle(
+              color: selected == null ? Colors.white24 : Colors.white,
+              fontSize: 15,
+            ),
+          ),
+          const Spacer(),
+          if (selected != null)
+            Text(
+              'repeats on selected days',
+              style: const TextStyle(color: Colors.white24, fontSize: 11),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Multi-date + time picker — used for Once reminders
+// Primary date+time + optional extra dates (each becomes its own reminder)
+// ════════════════════════════════════════════════════════════════
+
+class _MultiDateTimePicker extends StatelessWidget {
+  final DateTime?        selected;
+  final List<DateTime>   extraDates;
+  final ValueChanged<DateTime>       onPick;
+  final ValueChanged<List<DateTime>> onExtraDatesChanged;
+
+  const _MultiDateTimePicker({
+    required this.selected,
+    required this.extraDates,
+    required this.onPick,
+    required this.onExtraDatesChanged,
+  });
+
+  Future<void> _pickPrimary(BuildContext context) async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: selected ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate:  DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !context.mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: selected != null
+          ? TimeOfDay.fromDateTime(selected!)
+          : TimeOfDay.now(),
+    );
+    if (time == null) return;
+    onPick(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+  }
+
+  Future<void> _addExtraDate(BuildContext context) async {
+    final time = selected != null
+        ? TimeOfDay.fromDateTime(selected!)
+        : TimeOfDay.now();
+
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now().add(const Duration(days: 1)),
+      firstDate: DateTime.now(),
+      lastDate:  DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null) return;
+
+    // Check not already in list or primary
+    final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    final alreadyPrimary = selected != null &&
+        date.year  == selected!.year &&
+        date.month == selected!.month &&
+        date.day   == selected!.day;
+    final alreadyExtra = extraDates.any((d) =>
+        d.year == date.year && d.month == date.month && d.day == date.day);
+    if (alreadyPrimary || alreadyExtra) return;
+
+    onExtraDatesChanged([...extraDates, dt]);
+  }
+
+  void _removeExtra(int index) {
+    final updated = List<DateTime>.from(extraDates)..removeAt(index);
+    onExtraDatesChanged(updated);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Primary date+time
+        GestureDetector(
+          onTap: () => _pickPrimary(context),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1C1C1E),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Row(children: [
+              const Icon(CupertinoIcons.calendar, color: Colors.white38, size: 18),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  selected == null
+                      ? 'Pick date & time'
+                      : DateFormat('EEE, MMM d · hh:mm a').format(selected!),
+                  style: TextStyle(
+                    color: selected == null ? Colors.white24 : Colors.white,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+              if (selected != null)
+                GestureDetector(
+                  onTap: () => _addExtraDate(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0A84FF).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: const Color(0xFF0A84FF).withOpacity(0.3)),
+                    ),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(CupertinoIcons.plus, color: Color(0xFF0A84FF), size: 11),
+                      SizedBox(width: 4),
+                      Text('Add date', style: TextStyle(
+                        color: Color(0xFF0A84FF), fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      )),
+                    ]),
+                  ),
+                ),
+            ]),
+          ),
+        ),
+
+        // Extra dates chips
+        if (extraDates.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6, runSpacing: 6,
+            children: List.generate(extraDates.length, (i) {
+              return Container(
+                padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0A84FF).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: const Color(0xFF0A84FF).withOpacity(0.3)),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(
+                    DateFormat('MMM d').format(extraDates[i]),
+                    style: const TextStyle(
+                      color: Color(0xFF0A84FF), fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => _removeExtra(i),
+                    child: const Icon(CupertinoIcons.xmark_circle_fill,
+                        color: Color(0xFF0A84FF), size: 14),
+                  ),
+                ]),
+              );
+            }),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 2),
+            child: Text(
+              '${extraDates.length + 1} reminder${extraDates.length + 1 == 1 ? '' : 's'} will be created',
+              style: const TextStyle(color: Colors.white38, fontSize: 11),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Original _DateTimePicker — kept for edit sheet (no multi-date needed)
+// ════════════════════════════════════════════════════════════════
 
 class _DateTimePicker extends StatelessWidget {
   final DateTime? selected;
@@ -2242,6 +2572,73 @@ class _BloomDot extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Location toggle — tappable row in Add/Edit sheets
+// ════════════════════════════════════════════════════════════════
+
+class _LocationToggle extends StatelessWidget {
+  final ReminderGeofence? geofence;
+  final VoidCallback       onTap;
+  const _LocationToggle({required this.geofence, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasGeo = geofence != null;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        decoration: BoxDecoration(
+          color: hasGeo
+              ? const Color(0xFF30D158).withOpacity(0.10)
+              : const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: hasGeo
+                ? const Color(0xFF30D158).withOpacity(0.4)
+                : Colors.white10,
+          ),
+        ),
+        child: Row(children: [
+          Icon(
+            hasGeo ? CupertinoIcons.location_fill : CupertinoIcons.location,
+            color: hasGeo ? const Color(0xFF30D158) : Colors.white38,
+            size: 18,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  hasGeo ? 'Location reminder set' : 'Add location trigger',
+                  style: TextStyle(
+                    color: hasGeo ? const Color(0xFF30D158) : Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  hasGeo
+                      ? geofence!.fullLabel
+                      : 'Fire when you arrive or leave a place',
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            hasGeo ? CupertinoIcons.xmark_circle : CupertinoIcons.chevron_right,
+            color: Colors.white24,
+            size: 16,
+          ),
+        ]),
+      ),
     );
   }
 }
