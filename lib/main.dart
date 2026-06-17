@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -14,36 +16,57 @@ import 'services/reminder_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tz.initializeTimeZones();
+
+  // Orientation lock is synchronous — fine to await
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  await NotificationService.instance.initialize();
-  await ReminderService.instance.init();
-  await AppController.instance.boot().timeout(
-    const Duration(seconds: 10),
-    onTimeout: () {
-      debugPrint('[main] AppController.boot() timed out after 10s');
-    },
-  );
-
-  try {
-    await StandaloneNoteController.instance.boot();
-  } catch (e, stack) {
-    debugPrint('[StandaloneNoteController] boot() failed:\n$e\n$stack');
-  }
-
-  await FocusTimerService.instance.init();
-
+  // Render the app immediately — spinner shows while services boot
   runApp(const FocusBellApp());
 
-  // Init alarm AFTER runApp so the navigator is mounted and ready.
-  // AlarmScreen pushes via navigatorKey — which only works once
-  // MaterialApp has built.
-  AlarmService.instance.init().catchError((e, st) {
-    debugPrint('[AlarmService] init failed: $e\n$st');
+  // Everything runs in background after first frame
+  _initServices();
+}
+
+/// All service initialization — fully fire-and-forget.
+/// Nothing here can block the UI.
+void _initServices() {
+  Future(() async {
+    // Run in sequence so dependent services start in order,
+    // but the entire chain is detached from the UI.
+    await _safe('NotificationService',
+        () => NotificationService.instance.initialize());
+
+    await _safe('ReminderService',
+        () => ReminderService.instance.init());
+
+    await _safe('AppController',
+        () => AppController.instance.boot());
+
+    await _safe('StandaloneNoteController',
+        () => StandaloneNoteController.instance.boot());
+
+    await _safe('FocusTimerService',
+        () => FocusTimerService.instance.init());
+
+    await _safe('AlarmService',
+        () => AlarmService.instance.init());
   });
+}
+
+/// Runs [fn] with a 10s timeout, logs failures, never throws.
+Future<void> _safe(String name, Future<void> Function() fn) async {
+  try {
+    await fn().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () => debugPrint('[main] $name timed out after 10s'),
+    );
+    debugPrint('[main] $name ✓');
+  } catch (e, st) {
+    debugPrint('[main] $name failed: $e\n$st');
+  }
 }
 
 class FocusBellApp extends StatelessWidget {
@@ -52,7 +75,7 @@ class FocusBellApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: AlarmService.navigatorKey, // required for AlarmScreen push
+      navigatorKey: AlarmService.navigatorKey,
       title: 'FocusBell',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -73,7 +96,6 @@ class FocusBellApp extends StatelessWidget {
 
 class _Loader extends StatefulWidget {
   const _Loader();
-
   @override
   State<_Loader> createState() => _LoaderState();
 }
@@ -96,20 +118,20 @@ class _LoaderState extends State<_Loader> {
       builder: (context, _) {
         final ctrl = AppController.instance;
 
-        // ── Still loading ────────────────────────────────────
+        // Still booting
         if (ctrl.loading) {
           return const Scaffold(
             backgroundColor: Color(0xFF0A0A0A),
             body: Center(
               child: CircularProgressIndicator(
-                color: Color(0xFF4CAF50),
+                color: Colors.blueAccent,
                 strokeWidth: 2,
               ),
             ),
           );
         }
 
-        // ── Boot failed — show error so we can diagnose ──────
+        // Boot failed
         if (ctrl.bootError != null) {
           return Scaffold(
             backgroundColor: const Color(0xFF0A0A0A),
@@ -120,14 +142,11 @@ class _LoaderState extends State<_Loader> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '⚠️ Startup failed',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    const Text('⚠️ Startup failed',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700)),
                     const SizedBox(height: 16),
                     Container(
                       width: double.infinity,
@@ -138,21 +157,18 @@ class _LoaderState extends State<_Loader> {
                         border: Border.all(
                             color: Colors.red.withValues(alpha: 0.3)),
                       ),
-                      child: Text(
-                        ctrl.bootError.toString(),
-                        style: const TextStyle(
-                          color: Color(0xFFFF6B6B),
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          height: 1.5,
-                        ),
-                      ),
+                      child: Text(ctrl.bootError.toString(),
+                          style: const TextStyle(
+                              color: Color(0xFFFF6B6B),
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              height: 1.5)),
                     ),
                     const SizedBox(height: 20),
                     const Text(
-                      'Copy the error above and share it for debugging.',
-                      style: TextStyle(color: Colors.white38, fontSize: 13),
-                    ),
+                        'Copy the error above and share it for debugging.',
+                        style:
+                            TextStyle(color: Colors.white38, fontSize: 13)),
                   ],
                 ),
               ),
@@ -160,7 +176,7 @@ class _LoaderState extends State<_Loader> {
           );
         }
 
-        // ── Ready ────────────────────────────────────────────
+        // Ready
         return const HomeScreen();
       },
     );

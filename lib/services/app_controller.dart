@@ -1,11 +1,10 @@
 // lib/services/app_controller.dart
 //
-// Changes vs previous version:
-//   • import widget_service.dart
-//   • private _pushWidget() helper added at bottom
-//   • _pushWidget() called after notifyListeners() in every mutating method
-//   • WidgetService.instance.init() called inside boot() after storage loads
-//   • boot() pushes widget after _loading = false so cold-start widget is correct
+// PERMANENT FIX: boot() now returns immediately after kicking off async work.
+// The UI renders at once; services initialize in the background.
+// No service failure can ever block the splash screen again.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -15,66 +14,88 @@ import '../models/settings.dart';
 import 'foreground_service.dart';
 import 'notification_service.dart';
 import 'storage_service.dart';
-import 'widget_service.dart'; // ← NEW
+import 'widget_service.dart';
 
-/// Application state manager.
-///
-/// Owns the in-memory project list and delegates all persistence to
-/// [StorageService]. UI widgets listen via [ChangeNotifier].
-///
-/// Design rules:
-///   - Every mutating method updates [_projects] optimistically in memory
-///     first, then persists to SQLite, then calls [notifyListeners].
-///   - [StorageService] (and through it [DatabaseHelper]) is the only
-///     persistence boundary — no SQL leaks into this class.
-///   - After every [notifyListeners()] call, [_pushWidget()] syncs the
-///     Android home-screen / lock-screen widget with the latest state.
 class AppController extends ChangeNotifier {
   AppController._();
   static final AppController instance = AppController._();
 
-  late StorageService _storage;
+  StorageService? _storage;
   List<Project> _projects = [];
   AppSettings   _settings = const AppSettings();
   bool          _loading  = true;
+  Object?       bootError;
 
-  List<Project>  get projects => _projects;
-  AppSettings    get settings => _settings;
-  bool           get loading  => _loading;
+  List<Project> get projects  => _projects;
+  AppSettings   get settings  => _settings;
+  bool          get loading   => _loading;
 
   Project? get activeProject =>
       _projects.where((p) => p.isActive).firstOrNull;
 
   // ── Boot ──────────────────────────────────────────────────────────────────
 
-  // Exposed so the UI can display the error instead of hanging forever.
-  Object? bootError;
-
+  /// Returns immediately. All heavy work runs in the background.
+  /// The UI will rebuild when [_loading] flips to false.
   Future<void> boot() async {
-    try {
-      _storage  = await StorageService.getInstance();
-      _projects = await _storage.loadProjects();
-      _settings = _storage.loadSettings();
+    // Kick off background init — never await this in main()
+    _bootInBackground();
+  }
 
-      // Init widget bridge early so the first push() below works.
-      await WidgetService.instance.init(); // ← NEW
-    } catch (e, stack) {
-      debugPrint('[AppController] boot() failed:\n$e\n$stack');
-      bootError = e;
-      _loading  = false;
+  void _bootInBackground() {
+    // Each step is individually guarded. One failure never kills the rest.
+    Future(() async {
+      // ① Storage — the only truly required step
+      try {
+        _storage  = await StorageService.getInstance()
+            .timeout(const Duration(seconds: 10));
+        _projects = await _storage!.loadProjects()
+            .timeout(const Duration(seconds: 5));
+        _settings = _storage!.loadSettings();
+      } catch (e, st) {
+        debugPrint('[AppController] storage init failed: $e\n$st');
+        bootError = e;
+        _loading  = false;
+        notifyListeners();
+        return; // Can't continue without storage
+      }
+
+      // ② Mark ready — UI unblocks here
+      _loading = false;
       notifyListeners();
-      return;
+
+      // ③ Non-critical services — all fire-and-forget after UI is shown
+      unawaited(_safeInit('WidgetService',
+          () => WidgetService.instance.init()));
+
+      unawaited(_safeInit('ForegroundService',
+          () async => ForegroundServiceManager.instance.configure(_settings)));
+
+      unawaited(_safeInit('reschedule',
+          () => rescheduleIfNeeded()));
+
+      unawaited(_safeInit('pushWidget',
+          () async => _pushWidget()));
+
+    });
+  }
+
+  /// Runs [fn] with a 6-second timeout, swallowing all errors.
+  Future<void> _safeInit(String name, Future<void> Function() fn) async {
+    try {
+      await fn().timeout(const Duration(seconds: 6));
+    } catch (e) {
+      debugPrint('[AppController] $name failed (non-fatal): $e');
     }
+  }
 
-    _loading = false;
-    notifyListeners();
-
-    // Sync the widget immediately after boot so it reflects the current
-    // active project even if the user hasn't interacted with the app yet.
-    _pushWidget(); // ← NEW
-
-    ForegroundServiceManager.instance.configure(_settings);
-    await rescheduleIfNeeded();
+  /// Legacy escape hatch — kept for compatibility but no longer needed.
+  void forceReady() {
+    if (_loading) {
+      _loading  = false;
+      bootError ??= 'Boot timed out.';
+      notifyListeners();
+    }
   }
 
   // ── Projects ──────────────────────────────────────────────────────────────
@@ -95,10 +116,7 @@ class AppController extends ChangeNotifier {
     );
     _projects = [..._projects, project];
     notifyListeners();
-    // No _pushWidget() here: adding a project doesn't change the active one,
-    // so the widget content is unchanged. If the first-ever project should
-    // auto-activate in your flow, add _pushWidget() after that logic instead.
-    await _storage.saveProject(project);
+    await _storage?.saveProject(project);
   }
 
   Future<void> setActive(String id) async {
@@ -117,16 +135,17 @@ class AppController extends ChangeNotifier {
         .toList()
         .cast<Project>();
     notifyListeners();
-    _pushWidget(); // ← NEW — active project changed; widget must update
+    _pushWidget();
 
-    await _storage.setActiveProject(id);
-    await _storage.reorderProjects(reordered.map((p) => p.id).toList());
+    await _storage?.setActiveProject(id);
+    await _storage?.reorderProjects(reordered.map((p) => p.id).toList());
 
     final active = activeProject;
     if (active != null && _settings.notificationsEnabled) {
       await NotificationService.instance
           .showInstant(active, soundMode: _settings.soundMode);
-      await ForegroundServiceManager.instance.startOrUpdate(active, _settings);
+      unawaited(_safeInit('foreground',
+          () => ForegroundServiceManager.instance.startOrUpdate(active, _settings)));
     }
   }
 
@@ -135,17 +154,16 @@ class AppController extends ChangeNotifier {
     _projects = _projects.where((p) => p.id != id).toList();
 
     if (wasActive && _projects.isNotEmpty) {
-      // Promote the first remaining project to active.
       final promoted = _projects.first.copyWith(isActive: true);
       _projects = [promoted, ..._projects.skip(1)];
-      await _storage.setActiveProject(promoted.id);
+      await _storage?.setActiveProject(promoted.id);
     }
 
     notifyListeners();
-    _pushWidget(); // ← NEW — active project may have changed or cleared
+    _pushWidget();
 
-    await _storage.deleteProject(id); // CASCADE removes child tasks
-    await rescheduleIfNeeded();
+    await _storage?.deleteProject(id);
+    unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
   }
 
   Future<void> archiveProject(String id) async {
@@ -155,11 +173,11 @@ class AppController extends ChangeNotifier {
         .toList()
         .cast<Project>();
     notifyListeners();
-    _pushWidget(); // ← NEW — archived project can no longer be active
+    _pushWidget();
 
     final updated = _projects.firstWhere((p) => p.id == id);
-    await _storage.updateProject(updated);
-    await rescheduleIfNeeded();
+    await _storage?.updateProject(updated);
+    unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
   }
 
   Future<void> unarchiveProject(String id) async {
@@ -168,34 +186,34 @@ class AppController extends ChangeNotifier {
         .toList()
         .cast<Project>();
     notifyListeners();
-    // No active-project change here, but the project list changed;
-    // push anyway so task_summary stays consistent if it was active before.
-    _pushWidget(); // ← NEW
+    _pushWidget();
 
     final updated = _projects.firstWhere((p) => p.id == id);
-    await _storage.updateProject(updated);
+    await _storage?.updateProject(updated);
   }
 
   Future<void> updateProject(
     String id, {
-    required String   name,
-    required String   description,
-    required Priority priority,
+    required String          name,
+    required String          description,
+    required Priority        priority,
     required ProjectCategory category,
   }) async {
     _projects = _projects.map((p) {
       if (p.id != id) return p;
-      return p.copyWith(name: name, description: description, priority: priority, category: category);
+      return p.copyWith(
+          name: name, description: description,
+          priority: priority, category: category);
     }).toList().cast<Project>();
     notifyListeners();
-    _pushWidget(); // ← NEW — name / priority shown in widget may have changed
+    _pushWidget();
 
     final updated = _projects.firstWhere((p) => p.id == id);
-    await _storage.updateProject(updated);
+    await _storage?.updateProject(updated);
 
     if (activeProject?.id == id) {
-      await ForegroundServiceManager.instance
-          .updateData(activeProject!, _settings);
+      unawaited(_safeInit('foreground',
+          () => ForegroundServiceManager.instance.updateData(activeProject!, _settings)));
     }
   }
 
@@ -205,12 +223,14 @@ class AppController extends ChangeNotifier {
         .toList()
         .cast<Project>();
     notifyListeners();
-    _pushWidget(); // ← NEW — priority dot in widget must update
+    _pushWidget();
 
     final updated = _projects.firstWhere((p) => p.id == id);
-    await _storage.updateProject(updated);
+    await _storage?.updateProject(updated);
 
-    if (activeProject?.id == id) await rescheduleIfNeeded();
+    if (activeProject?.id == id) {
+      unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
+    }
   }
 
   Future<void> reorderProjects(List<String> orderedIds) async {
@@ -221,12 +241,9 @@ class AppController extends ChangeNotifier {
         .toList()
         .cast<Project>();
     notifyListeners();
-    // Reordering doesn't change which project is active, so no _pushWidget().
-    await _storage.reorderProjects(orderedIds);
+    await _storage?.reorderProjects(orderedIds);
   }
 
-  /// Saves (or clears) the rich-text note for [projectId].
-  /// Passing null clears the note and its timestamp.
   Future<void> updateProjectNote(String projectId, String? note) async {
     final now = note != null ? DateTime.now().toUtc() : null;
 
@@ -239,23 +256,17 @@ class AppController extends ChangeNotifier {
       );
     }).toList().cast<Project>();
     notifyListeners();
-    // Note changes are not shown in the widget, so no _pushWidget() needed.
 
     final updated = _projects.firstWhere((p) => p.id == projectId);
-    await _storage.updateProject(updated);
+    await _storage?.updateProject(updated);
   }
 
   // ── Tasks ─────────────────────────────────────────────────────────────────
 
-  /// Returns the live in-memory project, or null.
   Project? findProject(String projectId) =>
       _projects.where((p) => p.id == projectId).firstOrNull;
 
-  Future<void> addTask(
-    String projectId,
-    String title, {
-    DateTime? dueDate,
-  }) async {
+  Future<void> addTask(String projectId, String title, {DateTime? dueDate}) async {
     final task = Task(
       id:        const Uuid().v4(),
       title:     title,
@@ -270,11 +281,8 @@ class AppController extends ChangeNotifier {
     }).toList().cast<Project>();
     notifyListeners();
 
-    // Task count / overdue summary is displayed in the widget.
-    // Only push if the affected project is the active one.
-    if (activeProject?.id == projectId) _pushWidget(); // ← NEW
-
-    await _storage.saveTask(task, projectId);
+    if (activeProject?.id == projectId) _pushWidget();
+    await _storage?.saveTask(task, projectId);
   }
 
   Future<void> updateTask(
@@ -304,10 +312,8 @@ class AppController extends ChangeNotifier {
     }).toList().cast<Project>();
     notifyListeners();
 
-    // Task status / overdue changes affect the widget task_summary.
-    if (activeProject?.id == projectId) _pushWidget(); // ← NEW
-
-    if (updated != null) await _storage.updateTask(updated!, projectId);
+    if (activeProject?.id == projectId) _pushWidget();
+    if (updated != null) await _storage?.updateTask(updated!, projectId);
   }
 
   Future<void> removeTask(String projectId, String taskId) async {
@@ -318,18 +324,17 @@ class AppController extends ChangeNotifier {
     }).toList().cast<Project>();
     notifyListeners();
 
-    if (activeProject?.id == projectId) _pushWidget(); // ← NEW
-
-    await _storage.deleteTask(taskId);
+    if (activeProject?.id == projectId) _pushWidget();
+    await _storage?.deleteTask(taskId);
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────
 
   Future<void> updateSettings(AppSettings s) async {
     _settings = s;
-    await _storage.saveSettings(s);
+    await _storage?.saveSettings(s);
     notifyListeners();
-    await rescheduleIfNeeded();
+    unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
   }
 
   // ── Foreground service ────────────────────────────────────────────────────
@@ -345,11 +350,8 @@ class AppController extends ChangeNotifier {
 
   // ── Widget bridge ─────────────────────────────────────────────────────────
 
-  /// Fire-and-forget: push current active project state to the home widget.
-  ///
-  /// Never awaited by callers — a widget failure must never block app logic.
-  /// Errors are caught and logged inside [WidgetService.push].
   void _pushWidget() {
-    WidgetService.instance.push(activeProject: activeProject);
+    unawaited(_safeInit('widget push',
+        () async => WidgetService.instance.push(activeProject: activeProject)));
   }
 }

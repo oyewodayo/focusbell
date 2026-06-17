@@ -134,15 +134,18 @@ class NotificationService {
   ) async {
     final vibPattern = Int64List.fromList([0, 400, 200, 400]);
 
-    for (final id in [
-      _channelBoth,
-      _channelRing,
-      _channelVibrate,
-      _channelSilent,
-      'focusbell_fg_service',
-    ]) {
-      await androidPlugin.deleteNotificationChannel(id);
-    }
+      for (final id in [
+        _channelBoth,
+        _channelRing,
+        _channelVibrate,
+        _channelSilent,
+      ]) {
+        try {
+          await androidPlugin.deleteNotificationChannel(id);
+        } catch (e) {
+          debugPrint('[Notifications] Could not delete channel $id: $e');
+        }
+      }
 
     await androidPlugin.createNotificationChannel(
       fln.AndroidNotificationChannel(
@@ -179,17 +182,25 @@ class NotificationService {
       ),
     );
 
+    final existing = await androidPlugin.getNotificationChannels();
+    final hasFgChannel = existing?.any((c) => c.id == 'focusbell_fg_service') ?? false;
+
     // In _recreateChannels(), add after the silent channel:
+    if (!hasFgChannel) {
     await androidPlugin.createNotificationChannel(
-    fln.AndroidNotificationChannel(
+      const fln.AndroidNotificationChannel(
         'focusbell_fg_service',
         'FocusBell Active',
         description: 'Keeps focus reminders running in the background.',
-        importance: fln.Importance.high,   // sticky should be low-importance
+        importance: fln.Importance.low,  // low = no sound, no heads-up, less intrusive
         playSound: false,
         enableVibration: false,
-    ),
+      ),
     );
+    debugPrint('[Notifications] Created focusbell_fg_service channel.');
+  } else {
+    debugPrint('[Notifications] focusbell_fg_service channel already exists — skipping.');
+  }
 
     await androidPlugin.createNotificationChannel(
       fln.AndroidNotificationChannel(
