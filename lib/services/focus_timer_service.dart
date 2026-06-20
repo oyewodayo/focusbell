@@ -28,6 +28,7 @@ import '../models/project.dart';
 import 'app_controller.dart'; // ← NEW
 import 'storage_service.dart';
 import 'widget_service.dart'; // ← NEW
+import 'geofence_service.dart';
 
 // ── Timer phase ───────────────────────────────────────────────────
 
@@ -346,6 +347,9 @@ class FocusTimerService extends ChangeNotifier {
     if (_settings.tickEnabled) _startTick();
     notifyListeners();
 
+    // Notify GeofenceService so it captures the focus anchor
+    if (_state.isWork) GeofenceService.instance.onFocusSessionStarted();
+
     _fireNotif(
       id: 1,
       title: _state.isWork
@@ -382,6 +386,7 @@ class FocusTimerService extends ChangeNotifier {
     _prefs?.remove(_kStartedAt);
     _saveState();
     _cancelNotif(1);
+    GeofenceService.instance.onFocusSessionEnded();
     notifyListeners();
     // Session ended — push "No active session" to widget immediately. ← NEW
     WidgetService.instance.pushSessionEnded(
@@ -416,6 +421,7 @@ class FocusTimerService extends ChangeNotifier {
     _prefs?.remove(_kStartedAt);
     _saveState();
     _cancelNotif(1);
+    GeofenceService.instance.onFocusSessionEnded();
     notifyListeners();
     // Session stopped — push "No active session" to widget immediately. ← NEW
     WidgetService.instance.pushSessionEnded(
@@ -557,6 +563,7 @@ class FocusTimerService extends ChangeNotifier {
 
     // 6. Advance to next segment (phase = idle, timer loaded, NOT started).
     _advanceToNextSegment();
+    GeofenceService.instance.onFocusSessionEnded();
 
     // 7. Fire the "segment complete" notification.
     _fireNotif(

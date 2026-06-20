@@ -9,8 +9,8 @@ import 'package:sqflite/sqflite.dart';
 import '../models/reminder_model.dart';
 import 'alarm_service.dart';
 import 'database_helper.dart';
-import 'package:focusbell/services/geofence_service.dart';
-
+import 'geofence_service.dart';
+import 'reminder_group_service.dart';
 
 class ReminderService {
   ReminderService._();
@@ -122,7 +122,8 @@ class ReminderService {
         repeat    TEXT NOT NULL DEFAULT '',
         priority  TEXT NOT NULL DEFAULT 'normal',
         notes     TEXT,
-        geofence  TEXT
+        geofence  TEXT,
+        group_id  TEXT
       )
     ''');
     final info = await db.rawQuery('PRAGMA table_info(reminders)');
@@ -135,6 +136,8 @@ class ReminderService {
       await db.execute("ALTER TABLE reminders ADD COLUMN notes TEXT");
     if (!cols.contains('geofence'))
       await db.execute("ALTER TABLE reminders ADD COLUMN geofence TEXT");
+    if (!cols.contains('group_id'))
+      await db.execute("ALTER TABLE reminders ADD COLUMN group_id TEXT");
   }
 
   Future<void> _load() async {
@@ -159,6 +162,7 @@ class ReminderService {
     'geofence':  r.geofence != null
         ? jsonEncode(r.geofence!.toJson())
         : null,
+    'group_id':  r.groupId,
   };
 
   Reminder _fromRow(Map<String, dynamic> row) {
@@ -177,6 +181,7 @@ class ReminderService {
           ? ReminderGeofence.fromJson(
               jsonDecode(geoRaw) as Map<String, dynamic>)
           : null,
+      groupId: row['group_id'] as String?,
     );
   }
 }

@@ -448,6 +448,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
   double? _lat;
   double? _lng;
   double  _radius       = 150;
+  bool    _isWatched    = false;
   bool    _loading      = false;
   String? _error;
 
@@ -461,6 +462,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
       _lat           = e.latitude;
       _lng           = e.longitude;
       _radius        = e.radiusMeters;
+      _isWatched     = e.isWatched;
     }
   }
 
@@ -494,13 +496,15 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
     if (widget.editing != null) {
       place = widget.editing!.copyWith(
         name: name, emoji: _emoji,
-        latitude: _lat!, longitude: _lng!, radiusMeters: _radius,
+        latitude: _lat!, longitude: _lng!,
+        radiusMeters: _radius, isWatched: _isWatched,
       );
       await SavedPlacesService.instance.update(place);
     } else {
       place = await SavedPlacesService.instance.add(
         name: name, emoji: _emoji,
-        latitude: _lat!, longitude: _lng!, radiusMeters: _radius,
+        latitude: _lat!, longitude: _lng!,
+        radiusMeters: _radius, isWatched: _isWatched,
       );
     }
     widget.onSaved(place);
@@ -690,6 +694,98 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                 child: Slider(
                   value: _radius, min: 50, max: 500, divisions: 9,
                   onChanged: (v) => setState(() => _radius = v),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Always-on watch toggle ──────────────────────
+              GestureDetector(
+                onTap: () => setState(() => _isWatched = !_isWatched),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: _isWatched
+                        ? const Color(0xFF30D158).withOpacity(0.10)
+                        : const Color(0xFF1C1C1E),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _isWatched
+                          ? const Color(0xFF30D158).withOpacity(0.4)
+                          : Colors.white10,
+                    ),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      width: 38, height: 38,
+                      decoration: BoxDecoration(
+                        color: _isWatched
+                            ? const Color(0xFF30D158).withOpacity(0.2)
+                            : Colors.white.withOpacity(0.06),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _isWatched
+                            ? CupertinoIcons.location_fill
+                            : CupertinoIcons.location,
+                        color: _isWatched
+                            ? const Color(0xFF30D158)
+                            : Colors.white38,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Always-on awareness',
+                            style: TextStyle(
+                              color: _isWatched
+                                  ? const Color(0xFF30D158)
+                                  : Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            _isWatched
+                                ? 'Alarm fires every arrival & departure'
+                                : 'No time needed — rings when you arrive or leave',
+                            style: const TextStyle(
+                                color: Colors.white38, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Toggle pill
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      width: 44, height: 26,
+                      decoration: BoxDecoration(
+                        color: _isWatched
+                            ? const Color(0xFF30D158)
+                            : Colors.white12,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: Stack(children: [
+                        AnimatedPositioned(
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOutCubic,
+                          left: _isWatched ? 20 : 2,
+                          top: 2,
+                          child: Container(
+                            width: 22, height: 22,
+                            decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  ]),
                 ),
               ),
 

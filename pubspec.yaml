@@ -49,5 +49,6 @@ flutter:
     - assets/sounds/binaural_40hz.mp3   
     - assets/sounds/brown_noise.mp3     
     - assets/sounds/rain.wav 
+    - assets/images/aura.jpg 
   uses-material-design: true
   

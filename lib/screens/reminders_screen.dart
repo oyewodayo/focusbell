@@ -12,7 +12,12 @@ import 'package:timezone/data/latest_all.dart' as tz_data;
 
 import '../data/timezone_data.dart';
 import '../models/reminder_model.dart';
+import '../models/reminder_group.dart';
+import '../models/saved_place.dart';
+import '../services/geofence_service.dart';
 import '../services/reminder_service.dart';
+import '../services/reminder_group_service.dart';
+import '../services/saved_places_service.dart';
 import 'location_picker_sheet.dart';
 
 // ── lerp helper (avoid dart:ui conflict) ─────────────────────────
@@ -33,11 +38,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
   late Timer _ticker;
   DateTime _now = DateTime.now();
 
-  String _deviceTz      = '';
-  String _selectedTz    = '';
-  String _selectedCity  = '';
+  String _deviceTz = '';
+  String _selectedTz = '';
+  String _selectedCity = '';
   String _selectedCountry = '';
-  bool   _useDeviceTz   = true;
+  bool _useDeviceTz = true;
 
   String? _lastAddedReminderId;
 
@@ -64,9 +69,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       );
       if (mounted) {
         setState(() {
-          _deviceTz       = tzName;
-          _selectedTz     = tzName;
-          _selectedCity   = match.city;
+          _deviceTz = tzName;
+          _selectedTz = tzName;
+          _selectedCity = match.city;
           _selectedCountry = match.country;
         });
       }
@@ -79,7 +84,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
     if (_useDeviceTz || _selectedTz.isEmpty) return DateTime.now();
     try {
       final loc = tz.getLocation(_selectedTz);
-      final t   = tz.TZDateTime.now(loc);
+      final t = tz.TZDateTime.now(loc);
       return DateTime(t.year, t.month, t.day, t.hour, t.minute, t.second);
     } catch (_) {
       return DateTime.now();
@@ -88,11 +93,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
   String _gmtOffset(String tzName) {
     try {
-      final loc    = tz.getLocation(tzName);
+      final loc = tz.getLocation(tzName);
       final offset = tz.TZDateTime.now(loc).timeZoneOffset;
-      final h      = offset.inHours;
-      final m      = offset.inMinutes.abs() % 60;
-      final sign   = h >= 0 ? '+' : '-';
+      final h = offset.inHours;
+      final m = offset.inMinutes.abs() % 60;
+      final sign = h >= 0 ? '+' : '-';
       return 'GMT $sign${h.abs().toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
     } catch (_) {
       return '';
@@ -118,23 +123,23 @@ class _RemindersScreenState extends State<RemindersScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _TzPickerSheet(
-        selectedTz:  _selectedTz,
+        selectedTz: _selectedTz,
         useDeviceTz: _useDeviceTz,
-        deviceTz:    _deviceTz,
-        gmtOffset:   _gmtOffset,
+        deviceTz: _deviceTz,
+        gmtOffset: _gmtOffset,
         onPick: (city) {
           setState(() {
-            _selectedTz      = city.tzName;
-            _selectedCity    = city.city;
+            _selectedTz = city.tzName;
+            _selectedCity = city.city;
             _selectedCountry = city.country;
-            _useDeviceTz     = false;
-            _now             = _currentTime;
+            _useDeviceTz = false;
+            _now = _currentTime;
           });
         },
         onUseDevice: () {
           setState(() {
             _useDeviceTz = true;
-            _selectedTz  = _deviceTz;
+            _selectedTz = _deviceTz;
             final match = kAllCities.firstWhere(
               (c) => c.tzName == _deviceTz,
               orElse: () => TzCity(
@@ -143,7 +148,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 tzName: _deviceTz,
               ),
             );
-            _selectedCity    = match.city;
+            _selectedCity = match.city;
             _selectedCountry = match.country;
           });
         },
@@ -168,8 +173,10 @@ class _RemindersScreenState extends State<RemindersScreen> {
               children: [
                 Icon(CupertinoIcons.globe, size: 18, color: Color(0xFF0A84FF)),
                 SizedBox(width: 10),
-                Text('Change Clock City',
-                    style: TextStyle(color: Color(0xFF0A84FF), fontSize: 16)),
+                Text(
+                  'Change Clock City',
+                  style: TextStyle(color: Color(0xFF0A84FF), fontSize: 16),
+                ),
               ],
             ),
           ),
@@ -186,7 +193,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
   Widget _sheetWrap({required Widget child}) {
     return Container(
-      margin:  const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       decoration: BoxDecoration(
         color: const Color(0xFF141414),
@@ -199,9 +206,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
 
   Widget _sheetHandle() => Center(
     child: Container(
-      width: 40, height: 4,
+      width: 40,
+      height: 4,
       decoration: BoxDecoration(
-        color: Colors.white24, borderRadius: BorderRadius.circular(2),
+        color: Colors.white24,
+        borderRadius: BorderRadius.circular(2),
       ),
     ),
   );
@@ -217,9 +226,14 @@ class _RemindersScreenState extends State<RemindersScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Center(
-          child: Text(label, style: const TextStyle(
-            color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600,
-          )),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     ),
@@ -228,15 +242,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
   // ── Add reminder ──────────────────────────────────────────────
 
   Future<void> _showAddDialog() async {
-    final titleCtrl   = TextEditingController();
+    final titleCtrl = TextEditingController();
     final minutesCtrl = TextEditingController();
-    final notesCtrl   = TextEditingController();
-    DateTime?        picked;
-    List<DateTime>   extraDates = [];
-    bool             useMinutes = false;
-    RepeatDays       repeat     = RepeatDays.once();
-    ReminderPriority priority   = ReminderPriority.normal;
+    final notesCtrl = TextEditingController();
+    DateTime? picked;
+    List<DateTime> extraDates = [];
+    bool useMinutes = false;
+    RepeatDays repeat = RepeatDays.once();
+    ReminderPriority priority = ReminderPriority.normal;
     ReminderGeofence? geofence;
+    String? groupId;
+    String? smartSuggestion; // aha: smart time hint
 
     await showModalBottomSheet(
       context: context,
@@ -244,7 +260,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
           child: _sheetWrap(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -252,14 +270,89 @@ class _RemindersScreenState extends State<RemindersScreen> {
               children: [
                 _sheetHandle(),
                 const SizedBox(height: 18),
-                const Text('New Reminder', style: TextStyle(
-                  color: Colors.white, fontSize: 20,
-                  fontWeight: FontWeight.w700, letterSpacing: -0.4,
-                )),
+                const Text(
+                  'New Reminder',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ),
+                ),
                 const SizedBox(height: 18),
-                _SheetField(controller: titleCtrl, hint: 'Reminder title', icon: CupertinoIcons.bell),
+                _SheetField(
+                  controller: titleCtrl,
+                  hint: 'Reminder title',
+                  icon: CupertinoIcons.bell,
+                  onChanged: (v) {
+                    final suggestion = _smartTimeSuggestion(v);
+                    if (suggestion != smartSuggestion) {
+                      ss(() => smartSuggestion = suggestion);
+                    }
+                  },
+                ),
+                // Smart suggestion chip
+                if (smartSuggestion != null && picked == null && !useMinutes)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: GestureDetector(
+                      onTap: () {
+                        final t = _smartTimeForSuggestion(smartSuggestion!);
+                        ss(() {
+                          picked = t;
+                          smartSuggestion = null;
+                        });
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFF9F0A).withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFFFF9F0A).withOpacity(0.4),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  '💡',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  smartSuggestion!,
+                                  style: const TextStyle(
+                                    color: Color(0xFFFF9F0A),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'Tap to use',
+                                  style: TextStyle(
+                                    color: Color(0xFFFF9F0A),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 12),
-                _TogglePill(useMinutes: useMinutes, onToggle: (v) => ss(() => useMinutes = v)),
+                _TogglePill(
+                  useMinutes: useMinutes,
+                  onToggle: (v) => ss(() => useMinutes = v),
+                ),
                 const SizedBox(height: 12),
                 if (useMinutes)
                   _SheetField(
@@ -274,7 +367,8 @@ class _RemindersScreenState extends State<RemindersScreen> {
                     selected: picked,
                     extraDates: extraDates,
                     onPick: (dt) => ss(() => picked = dt),
-                    onExtraDatesChanged: (dates) => ss(() => extraDates = dates),
+                    onExtraDatesChanged: (dates) =>
+                        ss(() => extraDates = dates),
                   )
                 else
                   // Repeating — time only, date is irrelevant
@@ -285,13 +379,22 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 const SizedBox(height: 16),
                 _SectionLabel('Repeat'),
                 const SizedBox(height: 8),
-                _RepeatPresets(repeat: repeat, onSelect: (r) => ss(() => repeat = r)),
+                _RepeatPresets(
+                  repeat: repeat,
+                  onSelect: (r) => ss(() => repeat = r),
+                ),
                 const SizedBox(height: 10),
-                _DayCheckboxGrid(repeat: repeat, onChanged: (r) => ss(() => repeat = r)),
+                _DayCheckboxGrid(
+                  repeat: repeat,
+                  onChanged: (r) => ss(() => repeat = r),
+                ),
                 const SizedBox(height: 16),
                 _SectionLabel('Priority'),
                 const SizedBox(height: 8),
-                _PrioritySelector(selected: priority, onSelect: (p) => ss(() => priority = p)),
+                _PrioritySelector(
+                  selected: priority,
+                  onSelect: (p) => ss(() => priority = p),
+                ),
                 const SizedBox(height: 12),
                 _SheetField(
                   controller: notesCtrl,
@@ -300,6 +403,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   maxLines: 3,
                 ),
                 const SizedBox(height: 14),
+                _GroupPicker(
+                  selectedGroupId: groupId,
+                  onSelect: (id) => ss(() => groupId = id),
+                ),
+                const SizedBox(height: 10),
                 _LocationToggle(
                   geofence: geofence,
                   onTap: () async {
@@ -335,20 +443,32 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   }
                   final baseId = '${DateTime.now().millisecondsSinceEpoch}';
                   final r = Reminder(
-                    id: baseId, title: title, dateTime: dt!,
-                    repeat: repeat, priority: priority,
-                    notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                    id: baseId,
+                    title: title,
+                    dateTime: dt!,
+                    repeat: repeat,
+                    priority: priority,
+                    notes: notesCtrl.text.trim().isEmpty
+                        ? null
+                        : notesCtrl.text.trim(),
                     geofence: geofence,
+                    groupId: groupId,
                   );
                   await _svc.add(r);
                   if (mounted) setState(() => _lastAddedReminderId = baseId);
                   // Add extra dates as separate once-off reminders
                   for (int i = 0; i < extraDates.length; i++) {
-                    final extraId = '${DateTime.now().millisecondsSinceEpoch}_$i';
+                    final extraId =
+                        '${DateTime.now().millisecondsSinceEpoch}_$i';
                     final extra = Reminder(
-                      id: extraId, title: title, dateTime: extraDates[i],
-                      repeat: RepeatDays.once(), priority: priority,
-                      notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                      id: extraId,
+                      title: title,
+                      dateTime: extraDates[i],
+                      repeat: RepeatDays.once(),
+                      priority: priority,
+                      notes: notesCtrl.text.trim().isEmpty
+                          ? null
+                          : notesCtrl.text.trim(),
                     );
                     await _svc.add(extra);
                   }
@@ -367,10 +487,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Future<void> _showAddDialogForDate(DateTime date) async {
     final notesCtrl = TextEditingController();
     final titleCtrl = TextEditingController();
-    DateTime?        picked   = DateTime(date.year, date.month, date.day, 9, 0);
-    RepeatDays       repeat   = RepeatDays.once();
+    DateTime? picked = DateTime(date.year, date.month, date.day, 9, 0);
+    RepeatDays repeat = RepeatDays.once();
     ReminderPriority priority = ReminderPriority.normal;
     ReminderGeofence? geofence;
+    String? groupId;
 
     await showModalBottomSheet(
       context: context,
@@ -378,7 +499,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
           child: _sheetWrap(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -386,24 +509,45 @@ class _RemindersScreenState extends State<RemindersScreen> {
               children: [
                 _sheetHandle(),
                 const SizedBox(height: 18),
-                const Text('New Reminder', style: TextStyle(
-                  color: Colors.white, fontSize: 20,
-                  fontWeight: FontWeight.w700, letterSpacing: -0.4,
-                )),
+                const Text(
+                  'New Reminder',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ),
+                ),
                 const SizedBox(height: 18),
-                _SheetField(controller: titleCtrl, hint: 'Reminder title', icon: CupertinoIcons.bell),
+                _SheetField(
+                  controller: titleCtrl,
+                  hint: 'Reminder title',
+                  icon: CupertinoIcons.bell,
+                ),
                 const SizedBox(height: 12),
-                _DateTimePicker(selected: picked, onPick: (dt) => ss(() => picked = dt)),
+                _DateTimePicker(
+                  selected: picked,
+                  onPick: (dt) => ss(() => picked = dt),
+                ),
                 const SizedBox(height: 16),
                 _SectionLabel('Repeat'),
                 const SizedBox(height: 8),
-                _RepeatPresets(repeat: repeat, onSelect: (r) => ss(() => repeat = r)),
+                _RepeatPresets(
+                  repeat: repeat,
+                  onSelect: (r) => ss(() => repeat = r),
+                ),
                 const SizedBox(height: 10),
-                _DayCheckboxGrid(repeat: repeat, onChanged: (r) => ss(() => repeat = r)),
+                _DayCheckboxGrid(
+                  repeat: repeat,
+                  onChanged: (r) => ss(() => repeat = r),
+                ),
                 const SizedBox(height: 16),
                 _SectionLabel('Priority'),
                 const SizedBox(height: 8),
-                _PrioritySelector(selected: priority, onSelect: (p) => ss(() => priority = p)),
+                _PrioritySelector(
+                  selected: priority,
+                  onSelect: (p) => ss(() => priority = p),
+                ),
                 const SizedBox(height: 12),
                 _SheetField(
                   controller: notesCtrl,
@@ -412,6 +556,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   maxLines: 3,
                 ),
                 const SizedBox(height: 14),
+                _GroupPicker(
+                  selectedGroupId: groupId,
+                  onSelect: (id) => ss(() => groupId = id),
+                ),
+                const SizedBox(height: 10),
                 _LocationToggle(
                   geofence: geofence,
                   onTap: () async {
@@ -432,9 +581,14 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   if (title.isEmpty || picked == null) return;
                   final id = '${DateTime.now().millisecondsSinceEpoch}';
                   final r = Reminder(
-                    id: id, title: title, dateTime: picked!,
-                    repeat: repeat, priority: priority,
-                    notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                    id: id,
+                    title: title,
+                    dateTime: picked!,
+                    repeat: repeat,
+                    priority: priority,
+                    notes: notesCtrl.text.trim().isEmpty
+                        ? null
+                        : notesCtrl.text.trim(),
                     geofence: geofence,
                   );
                   await _svc.add(r);
@@ -452,17 +606,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
   // ── View full reminder detail ─────────────────────────────────
 
   void _showDetailSheet(Reminder r) {
-    final diff      = r.dateTime.difference(_now);
-    final isPast    = diff.isNegative;
-    final hrs       = diff.inHours.abs();
-    final mins      = diff.inMinutes.abs();
+    final diff = r.dateTime.difference(_now);
+    final isPast = diff.isNegative;
+    final hrs = diff.inHours.abs();
+    final mins = diff.inMinutes.abs();
     final countdown = isPast
         ? 'Passed'
         : hrs < 1
-            ? 'In $mins min${mins == 1 ? '' : 's'}'
-            : hrs < 24
-                ? 'In $hrs hr${hrs == 1 ? '' : 's'}'
-                : 'In ${diff.inDays} day${diff.inDays == 1 ? '' : 's'}';
+        ? 'In $mins min${mins == 1 ? '' : 's'}'
+        : hrs < 24
+        ? 'In $hrs hr${hrs == 1 ? '' : 's'}'
+        : 'In ${diff.inDays} day${diff.inDays == 1 ? '' : 's'}';
 
     Color priorityColor;
     String priorityLabel;
@@ -486,7 +640,7 @@ class _RemindersScreenState extends State<RemindersScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        margin:  const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
         decoration: BoxDecoration(
           color: const Color(0xFF141414),
@@ -498,66 +652,80 @@ class _RemindersScreenState extends State<RemindersScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Handle
-            Center(child: Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            )),
+            ),
             const SizedBox(height: 20),
 
             // Header row: bell icon + countdown badge
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Container(
-                width: 48, height: 48,
-                decoration: BoxDecoration(
-                  color: isPast
-                      ? const Color(0xFF1E1E1E)
-                      : priorityColor.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: isPast
+                        ? const Color(0xFF1E1E1E)
+                        : priorityColor.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    CupertinoIcons.bell_fill,
+                    color: isPast ? Colors.white24 : priorityColor,
+                    size: 22,
+                  ),
                 ),
-                child: Icon(CupertinoIcons.bell_fill,
-                    color: isPast ? Colors.white24 : priorityColor, size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isPast
-                            ? Colors.white10
-                            : priorityColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
                           color: isPast
-                              ? Colors.white12
-                              : priorityColor.withOpacity(0.3),
+                              ? Colors.white10
+                              : priorityColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isPast
+                                ? Colors.white12
+                                : priorityColor.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Text(
+                          countdown,
+                          style: TextStyle(
+                            color: isPast ? Colors.white38 : priorityColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                      child: Text(
-                        countdown,
-                        style: TextStyle(
-                          color: isPast ? Colors.white38 : priorityColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      const SizedBox(height: 6),
+                      Text(
+                        DateFormat('EEE, MMM d · hh:mm a').format(r.dateTime),
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      DateFormat('EEE, MMM d · hh:mm a').format(r.dateTime),
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 13),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ]),
+              ],
+            ),
             const SizedBox(height: 20),
 
             // Full title — no line limit
@@ -597,90 +765,244 @@ class _RemindersScreenState extends State<RemindersScreen> {
             const SizedBox(height: 20),
 
             // Metadata chips row
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              // Priority
-              _DetailChip(
-                label: priorityLabel,
-                color: priorityColor,
-              ),
-              // Repeat
-              if (r.isRepeating)
-                _DetailChip(
-                  label: r.repeat.label,
-                  color: const Color(0xFF0A84FF),
-                ),
-              // Location
-              if (r.isLocationBased)
-                _DetailChip(
-                  label: r.geofence!.fullLabel,
-                  color: const Color(0xFF30D158),
-                ),
-            ]),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // Priority
+                _DetailChip(label: priorityLabel, color: priorityColor),
+                // Repeat
+                if (r.isRepeating)
+                  _DetailChip(
+                    label: r.repeat.label,
+                    color: const Color(0xFF0A84FF),
+                  ),
+                // Location
+                if (r.isLocationBased)
+                  _DetailChip(
+                    label: r.geofence!.fullLabel,
+                    color: const Color(0xFF30D158),
+                  ),
+              ],
+            ),
 
             const SizedBox(height: 24),
 
             // Action buttons
-            Row(children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    _showEditDialog(r);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1E),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(CupertinoIcons.pencil,
-                            color: Colors.white70, size: 16),
-                        SizedBox(width: 8),
-                        Text('Edit', style: TextStyle(
-                          color: Colors.white70, fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        )),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: GestureDetector(
-                  onTap: () async {
-                    Navigator.of(ctx).pop();
-                    await _svc.remove(r.id);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF3B30).withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: const Color(0xFFFF3B30).withOpacity(0.3)),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(CupertinoIcons.trash,
-                            color: Color(0xFFFF3B30), size: 16),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(
-                          color: Color(0xFFFF3B30), fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        )),
-                      ],
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _showEditDialog(r);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C1C1E),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            CupertinoIcons.pencil,
+                            color: Colors.white70,
+                            size: 16,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Edit',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ]),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () async {
+                      Navigator.of(ctx).pop();
+                      await _svc.remove(r.id);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF3B30).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFFFF3B30).withOpacity(0.3),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            CupertinoIcons.trash,
+                            color: Color(0xFFFF3B30),
+                            size: 16,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Delete',
+                            style: TextStyle(
+                              color: Color(0xFFFF3B30),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ── Smart time suggestions ────────────────────────────────────
+
+  static const _kSuggestions = <String, (int hour, int minute, String label)>{
+    'medication': (8, 0, 'Suggest 8:00 AM for medication?'),
+    'medicine': (8, 0, 'Suggest 8:00 AM for medicine?'),
+    'pill': (8, 0, 'Suggest 8:00 AM for pills?'),
+    'vitamins': (8, 0, 'Suggest 8:00 AM for vitamins?'),
+    'gym': (6, 0, 'Suggest 6:00 AM for gym?'),
+    'workout': (6, 30, 'Suggest 6:30 AM for workout?'),
+    'exercise': (7, 0, 'Suggest 7:00 AM for exercise?'),
+    'run': (6, 0, 'Suggest 6:00 AM for your run?'),
+    'jog': (6, 0, 'Suggest 6:00 AM for jogging?'),
+    'breakfast': (7, 30, 'Suggest 7:30 AM for breakfast?'),
+    'lunch': (13, 0, 'Suggest 1:00 PM for lunch?'),
+    'dinner': (19, 0, 'Suggest 7:00 PM for dinner?'),
+    'meeting': (9, 0, 'Suggest 9:00 AM for meeting?'),
+    'standup': (9, 0, 'Suggest 9:00 AM for standup?'),
+    'call': (10, 0, 'Suggest 10:00 AM for call?'),
+    'sleep': (22, 30, 'Suggest 10:30 PM for sleep?'),
+    'bed': (22, 0, 'Suggest 10:00 PM for bedtime?'),
+    'pray': (5, 0, 'Suggest 5:00 AM for prayer?'),
+    'prayer': (5, 0, 'Suggest 5:00 AM for prayer?'),
+    'morning': (7, 0, 'Suggest 7:00 AM?'),
+    'evening': (18, 0, 'Suggest 6:00 PM?'),
+    'night': (21, 0, 'Suggest 9:00 PM?'),
+    'water': (8, 0, 'Suggest 8:00 AM for hydration?'),
+    'journal': (21, 0, 'Suggest 9:00 PM for journaling?'),
+    'read': (21, 30, 'Suggest 9:30 PM for reading?'),
+    'reading': (21, 30, 'Suggest 9:30 PM for reading?'),
+    'school': (7, 0, 'Suggest 7:00 AM for school?'),
+    'class': (8, 0, 'Suggest 8:00 AM for class?'),
+  };
+
+  String? _smartTimeSuggestion(String title) {
+    if (title.length < 3) return null;
+    final lower = title.toLowerCase();
+    for (final key in _kSuggestions.keys) {
+      if (lower.contains(key)) {
+        return _kSuggestions[key]!.$3;
+      }
+    }
+    return null;
+  }
+
+  DateTime _smartTimeForSuggestion(String suggestion) {
+    for (final entry in _kSuggestions.values) {
+      if (entry.$3 == suggestion) {
+        final now = DateTime.now();
+        var dt = DateTime(now.year, now.month, now.day, entry.$1, entry.$2);
+        if (dt.isBefore(now)) dt = dt.add(const Duration(days: 1));
+        return dt;
+      }
+    }
+    return DateTime.now().add(const Duration(hours: 1));
+  }
+
+  // ── Move reminder to group ────────────────────────────────────
+
+  void _showMoveGroupSheet(Reminder reminder) {
+    final groups = ReminderGroupService.instance.groups.value;
+    showCupertinoModalPopup(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: Text('Move "${reminder.title}"'),
+        message: const Text('Select a group or remove from group'),
+        actions: [
+          // No group option
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _svc.update(reminder.copyWith(clearGroup: true));
+            },
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  CupertinoIcons.tray,
+                  size: 16,
+                  color: Colors.white54,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'No Group',
+                  style: TextStyle(
+                    color: reminder.groupId == null
+                        ? const Color(0xFF0A84FF)
+                        : Colors.white,
+                    fontWeight: reminder.groupId == null
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ...groups.map(
+            (g) => CupertinoActionSheetAction(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _svc.update(reminder.copyWith(groupId: g.id));
+              },
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(g.emoji, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  Text(
+                    g.name,
+                    style: TextStyle(
+                      color: reminder.groupId == g.id ? g.color : Colors.white,
+                      fontWeight: reminder.groupId == g.id
+                          ? FontWeight.w700
+                          : FontWeight.w400,
+                    ),
+                  ),
+                  if (reminder.groupId == g.id) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      CupertinoIcons.checkmark_alt,
+                      size: 14,
+                      color: g.color,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
         ),
       ),
     );
@@ -691,10 +1013,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
   Future<void> _showEditDialog(Reminder existing) async {
     final titleCtrl = TextEditingController(text: existing.title);
     final notesCtrl = TextEditingController(text: existing.notes ?? '');
-    DateTime?         picked   = existing.dateTime;
-    RepeatDays        repeat   = existing.repeat;
-    ReminderPriority  priority = existing.priority;
+    DateTime? picked = existing.dateTime;
+    RepeatDays repeat = existing.repeat;
+    ReminderPriority priority = existing.priority;
     ReminderGeofence? geofence = existing.geofence;
+    String? groupId = existing.groupId;
 
     await showModalBottomSheet(
       context: context,
@@ -702,7 +1025,9 @@ class _RemindersScreenState extends State<RemindersScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
           child: _sheetWrap(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -711,49 +1036,88 @@ class _RemindersScreenState extends State<RemindersScreen> {
                 _sheetHandle(),
                 const SizedBox(height: 18),
                 // Title row with delete button
-                Row(children: [
-                  const Text('Edit Reminder', style: TextStyle(
-                    color: Colors.white, fontSize: 20,
-                    fontWeight: FontWeight.w700, letterSpacing: -0.4,
-                  )),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () async {
-                      await _svc.remove(existing.id);
-                      if (ctx.mounted) Navigator.of(ctx).pop();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFF3B30).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFFF3B30).withOpacity(0.3)),
+                Row(
+                  children: [
+                    const Text(
+                      'Edit Reminder',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
                       ),
-                      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(CupertinoIcons.trash, color: Color(0xFFFF3B30), size: 13),
-                        SizedBox(width: 5),
-                        Text('Delete', style: TextStyle(
-                          color: Color(0xFFFF3B30), fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        )),
-                      ]),
                     ),
-                  ),
-                ]),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () async {
+                        await _svc.remove(existing.id);
+                        if (ctx.mounted) Navigator.of(ctx).pop();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF3B30).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: const Color(0xFFFF3B30).withOpacity(0.3),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.trash,
+                              color: Color(0xFFFF3B30),
+                              size: 13,
+                            ),
+                            SizedBox(width: 5),
+                            Text(
+                              'Delete',
+                              style: TextStyle(
+                                color: Color(0xFFFF3B30),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 18),
-                _SheetField(controller: titleCtrl, hint: 'Reminder title', icon: CupertinoIcons.bell),
+                _SheetField(
+                  controller: titleCtrl,
+                  hint: 'Reminder title',
+                  icon: CupertinoIcons.bell,
+                ),
                 const SizedBox(height: 12),
-                _DateTimePicker(selected: picked, onPick: (dt) => ss(() => picked = dt)),
+                _DateTimePicker(
+                  selected: picked,
+                  onPick: (dt) => ss(() => picked = dt),
+                ),
                 const SizedBox(height: 16),
                 _SectionLabel('Repeat'),
                 const SizedBox(height: 8),
-                _RepeatPresets(repeat: repeat, onSelect: (r) => ss(() => repeat = r)),
+                _RepeatPresets(
+                  repeat: repeat,
+                  onSelect: (r) => ss(() => repeat = r),
+                ),
                 const SizedBox(height: 10),
-                _DayCheckboxGrid(repeat: repeat, onChanged: (r) => ss(() => repeat = r)),
+                _DayCheckboxGrid(
+                  repeat: repeat,
+                  onChanged: (r) => ss(() => repeat = r),
+                ),
                 const SizedBox(height: 16),
                 _SectionLabel('Priority'),
                 const SizedBox(height: 8),
-                _PrioritySelector(selected: priority, onSelect: (p) => ss(() => priority = p)),
+                _PrioritySelector(
+                  selected: priority,
+                  onSelect: (p) => ss(() => priority = p),
+                ),
                 const SizedBox(height: 12),
                 _SheetField(
                   controller: notesCtrl,
@@ -762,6 +1126,11 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   maxLines: 3,
                 ),
                 const SizedBox(height: 14),
+                _GroupPicker(
+                  selectedGroupId: groupId,
+                  onSelect: (id) => ss(() => groupId = id),
+                ),
+                const SizedBox(height: 10),
                 _LocationToggle(
                   geofence: geofence,
                   onTap: () async {
@@ -781,15 +1150,17 @@ class _RemindersScreenState extends State<RemindersScreen> {
                   final title = titleCtrl.text.trim();
                   if (title.isEmpty || picked == null) return;
                   final updated = existing.copyWith(
-                    title:         title,
-                    dateTime:      picked,
-                    repeat:        repeat,
-                    priority:      priority,
-                    notes:         notesCtrl.text.trim().isEmpty
-                                       ? null
-                                       : notesCtrl.text.trim(),
-                    geofence:      geofence,
+                    title: title,
+                    dateTime: picked,
+                    repeat: repeat,
+                    priority: priority,
+                    notes: notesCtrl.text.trim().isEmpty
+                        ? null
+                        : notesCtrl.text.trim(),
+                    geofence: geofence,
                     clearGeofence: geofence == null,
+                    groupId: groupId,
+                    clearGroup: groupId == null,
                   );
                   await _svc.update(updated);
                   if (ctx.mounted) Navigator.of(ctx).pop();
@@ -809,68 +1180,90 @@ class _RemindersScreenState extends State<RemindersScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Row(children: [
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: const Icon(CupertinoIcons.back, color: Colors.white54, size: 26),
-              ),
-              const SizedBox(width: 8),
-              const Text('Reminders', style: TextStyle(
-                color: Colors.white, fontSize: 28,
-                fontWeight: FontWeight.w700, letterSpacing: -0.6,
-              )),
-              const Spacer(),
-              _TopIconBtn(icon: CupertinoIcons.plus, onTap: _showAddDialog),
-              const SizedBox(width: 4),
-              _TopIconBtn(icon: CupertinoIcons.ellipsis_vertical, onTap: _showOptionsMenu),
-            ]),
-          ),
-          Expanded(
-            child: ValueListenableBuilder<List<Reminder>>(
-              valueListenable: _svc.reminders,
-              builder: (_, reminders, __) => SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Column(children: [
-                  const SizedBox(height: 16),
-                  _ClockCalendarPanel(
-                    now:                 _now,
-                    timezoneLabel:       _timezoneLabel,
-                    onTimezoneTap:       _showTimezoneMenu,
-                    reminders:           reminders,
-                    onDateTap:           _showAddDialogForDate,
-                    lastAddedReminderId: _lastAddedReminderId,
-                    onDotBloomDone:      () => setState(() => _lastAddedReminderId = null),
-                  ),
-                  const SizedBox(height: 20),
-                  if (reminders.isEmpty)
-                    _EmptyReminders(onAdd: _showAddDialog)
-                  else
-                    ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: reminders.length,
-                      separatorBuilder: (_, __) => const Divider(
-                        height: 1, indent: 68, color: Color(0xFF1E1E1E),
-                      ),
-                      itemBuilder: (_, i) => _ReminderTile(
-                        key:          ValueKey(reminders[i].id),
-                        reminder:     reminders[i],
-                        now:          _now,
-                        onDelete:     () => _svc.remove(reminders[i].id),
-                        onEdit:       () => _showEditDialog(reminders[i]),
-                        onViewDetail: () => _showDetailSheet(reminders[i]),
-                      ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: const Icon(
+                      CupertinoIcons.back,
+                      color: Colors.white54,
+                      size: 26,
                     ),
-                  const SizedBox(height: 100),
-                ]),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Reminders',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.6,
+                    ),
+                  ),
+                  const Spacer(),
+                  _TopIconBtn(icon: CupertinoIcons.plus, onTap: _showAddDialog),
+                  const SizedBox(width: 4),
+                  _TopIconBtn(
+                    icon: CupertinoIcons.ellipsis_vertical,
+                    onTap: _showOptionsMenu,
+                  ),
+                ],
               ),
             ),
-          ),
-        ]),
+            Expanded(
+              child: ValueListenableBuilder<List<Reminder>>(
+                valueListenable: _svc.reminders,
+                builder: (_, reminders, __) => SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 16),
+                      _ClockCalendarPanel(
+                        now: _now,
+                        timezoneLabel: _timezoneLabel,
+                        onTimezoneTap: _showTimezoneMenu,
+                        reminders: reminders,
+                        onDateTap: _showAddDialogForDate,
+                        lastAddedReminderId: _lastAddedReminderId,
+                        onDotBloomDone: () =>
+                            setState(() => _lastAddedReminderId = null),
+                      ),
+                      const SizedBox(height: 20),
+                      // Always-on place awareness panel
+                      _PlacesAwarenessPanel(
+                        onManagePlaces: () => showModalBottomSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => LocationPickerSheet(
+                            onConfirm: (_) {}, // places-only management mode
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (reminders.isEmpty)
+                        _EmptyReminders(onAdd: _showAddDialog)
+                      else
+                        _GroupedReminderList(
+                          reminders: reminders,
+                          now: _now,
+                          onDelete: (r) => _svc.remove(r.id),
+                          onEdit: _showEditDialog,
+                          onViewDetail: _showDetailSheet,
+                          onMoveGroup: _showMoveGroupSheet,
+                        ),
+                      const SizedBox(height: 100),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
@@ -887,19 +1280,23 @@ class _RemindersScreenState extends State<RemindersScreen> {
 // ════════════════════════════════════════════════════════════════
 
 class _ReminderTile extends StatefulWidget {
-  final Reminder     reminder;
-  final DateTime     now;
+  final Reminder reminder;
+  final DateTime now;
+  final Color? groupColor;
   final VoidCallback onDelete;
   final VoidCallback onEdit;
   final VoidCallback onViewDetail;
+  final VoidCallback onMoveGroup;
 
   const _ReminderTile({
     super.key,
     required this.reminder,
     required this.now,
+    this.groupColor,
     required this.onDelete,
     required this.onEdit,
     required this.onViewDetail,
+    required this.onMoveGroup,
   });
 
   @override
@@ -908,28 +1305,30 @@ class _ReminderTile extends StatefulWidget {
 
 class _ReminderTileState extends State<_ReminderTile>
     with SingleTickerProviderStateMixin {
-
   static const double _kActionW = 72.0;
-  static const double _kThresh  = 44.0;
-  static const double _kMax     = _kActionW + 12.0;
+  static const double _kThresh = 44.0;
+  static const double _kMax = _kActionW + 12.0;
 
-  double _offset       = 0.0;  // positive = right (edit), negative = left (delete)
-  bool   _editOpen     = false;
-  bool   _deleteOpen   = false;
+  double _offset = 0.0; // positive = right (edit), negative = left (delete)
+  bool _editOpen = false;
+  bool _deleteOpen = false;
 
   late AnimationController _snapCtrl;
-  double _snapFrom   = 0.0;
+  double _snapFrom = 0.0;
   double _snapTarget = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _snapCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 250),
-    )..addListener(() {
-        setState(() => _offset = _lerp(_snapFrom, _snapTarget, _snapCtrl.value));
-      });
+    _snapCtrl =
+        AnimationController(
+          vsync: this,
+          duration: const Duration(milliseconds: 250),
+        )..addListener(() {
+          setState(
+            () => _offset = _lerp(_snapFrom, _snapTarget, _snapCtrl.value),
+          );
+        });
   }
 
   @override
@@ -939,22 +1338,21 @@ class _ReminderTileState extends State<_ReminderTile>
   }
 
   void _animateTo(double target) {
-    _snapFrom   = _offset;
+    _snapFrom = _offset;
     _snapTarget = target;
     _snapCtrl.forward(from: 0);
   }
 
   void _closeActions() {
     _animateTo(0);
-    _editOpen   = false;
+    _editOpen = false;
     _deleteOpen = false;
   }
 
   void _onDragUpdate(DragUpdateDetails d) {
     if (_editOpen || _deleteOpen) {
       // Already snapped — small drag closes
-      if ((_editOpen   && d.delta.dx < -6) ||
-          (_deleteOpen && d.delta.dx >  6)) {
+      if ((_editOpen && d.delta.dx < -6) || (_deleteOpen && d.delta.dx > 6)) {
         _closeActions();
       }
       return;
@@ -968,10 +1366,16 @@ class _ReminderTileState extends State<_ReminderTile>
     if (_editOpen || _deleteOpen) return;
     if (_offset > _kThresh) {
       _animateTo(_kActionW);
-      setState(() { _editOpen = true; _deleteOpen = false; });
+      setState(() {
+        _editOpen = true;
+        _deleteOpen = false;
+      });
     } else if (_offset < -_kThresh) {
       _animateTo(-_kActionW);
-      setState(() { _deleteOpen = true; _editOpen = false; });
+      setState(() {
+        _deleteOpen = true;
+        _editOpen = false;
+      });
     } else {
       _animateTo(0);
     }
@@ -979,41 +1383,43 @@ class _ReminderTileState extends State<_ReminderTile>
 
   Color get _priorityColor {
     switch (widget.reminder.priority) {
-      case ReminderPriority.high:   return const Color(0xFFFF453A);
-      case ReminderPriority.normal: return const Color(0xFF0A84FF);
-      case ReminderPriority.low:    return const Color(0xFF30D158);
+      case ReminderPriority.high:
+        return const Color(0xFFFF453A);
+      case ReminderPriority.normal:
+        return const Color(0xFF0A84FF);
+      case ReminderPriority.low:
+        return const Color(0xFF30D158);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final diff        = widget.reminder.dateTime.difference(widget.now);
-    final isPast      = diff.isNegative;
-    final hrs         = diff.inHours.abs();
-    final mins        = diff.inMinutes.abs();
+    final diff = widget.reminder.dateTime.difference(widget.now);
+    final isPast = diff.isNegative;
+    final hrs = diff.inHours.abs();
+    final mins = diff.inMinutes.abs();
     final shouldPulse = !isPast && diff.inMinutes < 10;
-    final countdown   = isPast
+    final countdown = isPast
         ? 'Passed'
         : hrs < 1
-            ? 'In $mins min${mins == 1 ? '' : 's'}'
-            : hrs < 24
-                ? 'In $hrs hr${hrs == 1 ? '' : 's'}'
-                : 'In ${diff.inDays} day${diff.inDays == 1 ? '' : 's'}';
+        ? 'In $mins min${mins == 1 ? '' : 's'}'
+        : hrs < 24
+        ? 'In $hrs hr${hrs == 1 ? '' : 's'}'
+        : 'In ${diff.inDays} day${diff.inDays == 1 ? '' : 's'}';
     final timeStr = DateFormat('hh:mm a').format(widget.reminder.dateTime);
     final dateStr = DateFormat('EEE, MMM d').format(widget.reminder.dateTime);
 
-    final editRatio   = (_offset / _kActionW).clamp(0.0, 1.0);
+    final editRatio = (_offset / _kActionW).clamp(0.0, 1.0);
     final deleteRatio = (-_offset / _kActionW).clamp(0.0, 1.0);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragUpdate: _onDragUpdate,
-      onHorizontalDragEnd:    _onDragEnd,
+      onHorizontalDragEnd: _onDragEnd,
       onTap: (_editOpen || _deleteOpen) ? _closeActions : null,
       child: ClipRect(
         child: Stack(
           children: [
-
             // ── Edit button (behind, revealed on swipe right) ───
             Positioned.fill(
               child: Align(
@@ -1023,7 +1429,10 @@ class _ReminderTileState extends State<_ReminderTile>
                   child: Transform.scale(
                     scale: 0.7 + 0.3 * editRatio,
                     child: GestureDetector(
-                      onTap: () { _closeActions(); widget.onEdit(); },
+                      onTap: () {
+                        _closeActions();
+                        widget.onEdit();
+                      },
                       child: Container(
                         width: _kActionW,
                         margin: const EdgeInsets.symmetric(vertical: 6),
@@ -1034,13 +1443,20 @@ class _ReminderTileState extends State<_ReminderTile>
                         child: const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(CupertinoIcons.pencil,
-                                color: Colors.white, size: 18),
+                            Icon(
+                              CupertinoIcons.pencil,
+                              color: Colors.white,
+                              size: 18,
+                            ),
                             SizedBox(height: 4),
-                            Text('Edit', style: TextStyle(
-                              color: Colors.white, fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            )),
+                            Text(
+                              'Edit',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1070,13 +1486,20 @@ class _ReminderTileState extends State<_ReminderTile>
                         child: const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.delete_outline_rounded,
-                                color: Colors.white, size: 20),
+                            Icon(
+                              Icons.delete_outline_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                             SizedBox(height: 4),
-                            Text('Delete', style: TextStyle(
-                              color: Colors.white, fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            )),
+                            Text(
+                              'Delete',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1089,148 +1512,178 @@ class _ReminderTileState extends State<_ReminderTile>
             // ── Main content — natural height, slides on drag ───
             Transform.translate(
               offset: Offset(_offset, 0),
-              child: Container(
-                color: const Color(0xFF0A0A0A),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Bell icon — fixed square, never resizes
-                    Container(
-                      width: 46, height: 46,
-                      decoration: BoxDecoration(
-                        color: isPast
-                            ? const Color(0xFF1E1E1E)
-                            : _priorityColor.withOpacity(0.14),
-                        borderRadius: BorderRadius.circular(13),
-                      ),
-                      child: Icon(CupertinoIcons.bell_fill,
-                          color: isPast ? Colors.white12 : _priorityColor,
-                          size: 20),
-                    ),
-                    const SizedBox(width: 14),
-
-                    // Title + subtitle — tap to view full detail
-                    Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: (_editOpen || _deleteOpen)
-                            ? _closeActions
-                            : widget.onViewDetail,
-                        child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            widget.reminder.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isPast ? Colors.white24 : Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
+              child: GestureDetector(
+                onLongPress: widget.onMoveGroup,
+                child: Container(
+                  color: const Color(0xFF0A0A0A),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Group colour stripe
+                      if (widget.groupColor != null)
+                        Container(
+                          width: 3,
+                          height: 46,
+                          margin: const EdgeInsets.only(right: 10),
+                          decoration: BoxDecoration(
+                            color: widget.groupColor!,
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          const SizedBox(height: 3),
-                          Row(children: [
-                            Flexible(
-                              child: Text(
-                                '$dateStr · $timeStr',
+                        ),
+                      // Bell icon — fixed square, never resizes
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: isPast
+                              ? const Color(0xFF1E1E1E)
+                              : _priorityColor.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                        child: Icon(
+                          CupertinoIcons.bell_fill,
+                          color: isPast ? Colors.white12 : _priorityColor,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+
+                      // Title + subtitle — tap to view full detail
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: (_editOpen || _deleteOpen)
+                              ? _closeActions
+                              : widget.onViewDetail,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                widget.reminder.title,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: Colors.white38, fontSize: 12),
-                              ),
-                            ),
-                            if (widget.reminder.isRepeating) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF0A84FF)
-                                      .withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(6),
+                                style: TextStyle(
+                                  color: isPast ? Colors.white24 : Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                child: Text(
-                                  widget.reminder.repeat.shortLabel,
-                                  style: const TextStyle(
-                                    color: Color(0xFF0A84FF),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
+                              ),
+                              const SizedBox(height: 3),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      '$dateStr · $timeStr',
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white38,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  if (widget.reminder.isRepeating) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(
+                                          0xFF0A84FF,
+                                        ).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        widget.reminder.repeat.shortLabel,
+                                        style: const TextStyle(
+                                          color: Color(0xFF0A84FF),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
-                            ],
-                          ]),
-                          if (widget.reminder.isLocationBased) ...[
-                            const SizedBox(height: 3),
-                            Row(children: [
-                              const Icon(CupertinoIcons.location_fill,
-                                  color: Color(0xFF30D158), size: 11),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  widget.reminder.geofence!.fullLabel,
+                              if (widget.reminder.isLocationBased) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      CupertinoIcons.location_fill,
+                                      color: Color(0xFF30D158),
+                                      size: 11,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        widget.reminder.geofence!.fullLabel,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Color(0xFF30D158),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (widget.reminder.notes != null &&
+                                  widget.reminder.notes!.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  widget.reminder.notes!,
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    color: Color(0xFF30D158),
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white24,
+                                    fontSize: 12,
                                   ),
                                 ),
-                              ),
-                            ]),
-                          ],
-                          if (widget.reminder.notes != null &&
-                              widget.reminder.notes!.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              widget.reminder.notes!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Colors.white24, fontSize: 12),
-                            ),
-                          ],
-                        ],
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
+                      const SizedBox(width: 8),
 
-                    // Time + countdown — FittedBox ensures text never wraps
-                    SizedBox(
-                      width: 88,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              timeStr,
-                              style: TextStyle(
-                                color: isPast ? Colors.white24 : Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w200,
-                                letterSpacing: -0.5,
+                      // Time + countdown — FittedBox ensures text never wraps
+                      SizedBox(
+                        width: 88,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                timeStr,
+                                style: TextStyle(
+                                  color: isPast ? Colors.white24 : Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w200,
+                                  letterSpacing: -0.5,
+                                ),
                               ),
                             ),
-                          ),
-                          _CountdownLabel(
-                            text:  countdown,
-                            color: isPast ? Colors.white24 : _priorityColor,
-                            pulse: shouldPulse,
-                          ),
-                        ],
+                            _CountdownLabel(
+                              text: countdown,
+                              color: isPast ? Colors.white24 : _priorityColor,
+                              pulse: shouldPulse,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-
           ],
         ),
       ),
@@ -1250,8 +1703,8 @@ class _RepeatPresets extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final presets = [
-      ('Once',     RepeatDays.once()),
-      ('Daily',    RepeatDays.daily()),
+      ('Once', RepeatDays.once()),
+      ('Daily', RepeatDays.daily()),
       ('Weekdays', RepeatDays.weekdays()),
       ('Weekends', RepeatDays.weekends()),
     ];
@@ -1266,17 +1719,22 @@ class _RepeatPresets extends StatelessWidget {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFF0A84FF) : const Color(0xFF1C1C1E),
+              color: isSelected
+                  ? const Color(0xFF0A84FF)
+                  : const Color(0xFF1C1C1E),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isSelected ? const Color(0xFF0A84FF) : Colors.white12,
               ),
             ),
-            child: Text(label, style: TextStyle(
-              color: isSelected ? Colors.white : Colors.white54,
-              fontSize: 13,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-            )),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.white54,
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
           ),
         );
       }).toList(),
@@ -1301,35 +1759,50 @@ class _DayCheckboxGrid extends StatelessWidget {
         final isOn = repeat.contains(day);
         return GestureDetector(
           onTap: () => onChanged(repeat.toggle(day)),
-          child: Column(children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 34, height: 34,
-              decoration: BoxDecoration(
-                color: isOn ? const Color(0xFF0A84FF) : const Color(0xFF1C1C1E),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: isOn ? const Color(0xFF0A84FF) : Colors.white12,
-                  width: 1.5,
+          child: Column(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: isOn
+                      ? const Color(0xFF0A84FF)
+                      : const Color(0xFF1C1C1E),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isOn ? const Color(0xFF0A84FF) : Colors.white12,
+                    width: 1.5,
+                  ),
+                ),
+                child: Center(
+                  child: isOn
+                      ? const Icon(
+                          Icons.check_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        )
+                      : Text(
+                          Weekday.shortName(day).substring(0, 1),
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                 ),
               ),
-              child: Center(
-                child: isOn
-                    ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
-                    : Text(Weekday.shortName(day).substring(0, 1),
-                        style: const TextStyle(
-                          color: Colors.white38, fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        )),
+              const SizedBox(height: 4),
+              Text(
+                Weekday.shortName(day),
+                style: TextStyle(
+                  color: isOn ? const Color(0xFF0A84FF) : Colors.white38,
+                  fontSize: 9,
+                  fontWeight: isOn ? FontWeight.w600 : FontWeight.w400,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(Weekday.shortName(day), style: TextStyle(
-              color: isOn ? const Color(0xFF0A84FF) : Colors.white38,
-              fontSize: 9,
-              fontWeight: isOn ? FontWeight.w600 : FontWeight.w400,
-            )),
-          ]),
+            ],
+          ),
         );
       }).toList(),
     );
@@ -1346,9 +1819,9 @@ class _PrioritySelector extends StatelessWidget {
   const _PrioritySelector({required this.selected, required this.onSelect});
 
   static const _items = [
-    (ReminderPriority.low,    '↓ Low',    Color(0xFF30D158)),
+    (ReminderPriority.low, '↓ Low', Color(0xFF30D158)),
     (ReminderPriority.normal, '→ Normal', Color(0xFF0A84FF)),
-    (ReminderPriority.high,   '↑ High',   Color(0xFFFF453A)),
+    (ReminderPriority.high, '↑ High', Color(0xFFFF453A)),
   ];
 
   @override
@@ -1365,15 +1838,22 @@ class _PrioritySelector extends StatelessWidget {
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: isSelected ? color.withOpacity(0.18) : const Color(0xFF1C1C1E),
+                color: isSelected
+                    ? color.withOpacity(0.18)
+                    : const Color(0xFF1C1C1E),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: isSelected ? color : Colors.white12),
               ),
-              child: Center(child: Text(label, style: TextStyle(
-                color: isSelected ? color : Colors.white38,
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-              ))),
+              child: Center(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected ? color : Colors.white38,
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ),
             ),
           ),
         );
@@ -1390,10 +1870,15 @@ class _SectionLabel extends StatelessWidget {
   final String text;
   const _SectionLabel(this.text);
   @override
-  Widget build(BuildContext context) => Text(text, style: const TextStyle(
-    color: Colors.white38, fontSize: 12,
-    fontWeight: FontWeight.w600, letterSpacing: 0.8,
-  ));
+  Widget build(BuildContext context) => Text(
+    text,
+    style: const TextStyle(
+      color: Colors.white38,
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.8,
+    ),
+  );
 }
 
 class _SheetField extends StatelessWidget {
@@ -1402,6 +1887,7 @@ class _SheetField extends StatelessWidget {
   final IconData icon;
   final TextInputType keyboardType;
   final int maxLines;
+  final ValueChanged<String>? onChanged;
 
   const _SheetField({
     required this.controller,
@@ -1409,6 +1895,7 @@ class _SheetField extends StatelessWidget {
     required this.icon,
     this.keyboardType = TextInputType.text,
     this.maxLines = 1,
+    this.onChanged,
   });
 
   @override
@@ -1419,27 +1906,33 @@ class _SheetField extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white10),
       ),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 14, top: 14),
-          child: Icon(icon, color: Colors.white38, size: 18),
-        ),
-        Expanded(
-          child: TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            maxLines: maxLines,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle: const TextStyle(color: Colors.white24),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 14, top: 14),
+            child: Icon(icon, color: Colors.white38, size: 18),
+          ),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              maxLines: maxLines,
+              onChanged: onChanged,
+              style: const TextStyle(color: Colors.white, fontSize: 15),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: const TextStyle(color: Colors.white24),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 14,
+                ),
+              ),
             ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -1457,10 +1950,20 @@ class _TogglePill extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
-      child: Row(children: [
-        _Pill(label: 'Set time',   selected: !useMinutes, onTap: () => onToggle(false)),
-        _Pill(label: 'In minutes', selected: useMinutes,  onTap: () => onToggle(true)),
-      ]),
+      child: Row(
+        children: [
+          _Pill(
+            label: 'Set time',
+            selected: !useMinutes,
+            onTap: () => onToggle(false),
+          ),
+          _Pill(
+            label: 'In minutes',
+            selected: useMinutes,
+            onTap: () => onToggle(true),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1469,7 +1972,11 @@ class _Pill extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _Pill({required this.label, required this.selected, required this.onTap});
+  const _Pill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1483,11 +1990,16 @@ class _Pill extends StatelessWidget {
             color: selected ? const Color(0xFF0A84FF) : Colors.transparent,
             borderRadius: BorderRadius.circular(11),
           ),
-          child: Center(child: Text(label, style: TextStyle(
-            color: selected ? Colors.white : Colors.white38,
-            fontSize: 14,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-          ))),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : Colors.white38,
+                fontSize: 14,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -1526,25 +2038,27 @@ class _TimeOnlyPicker extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.white10),
         ),
-        child: Row(children: [
-          const Icon(CupertinoIcons.clock, color: Colors.white38, size: 18),
-          const SizedBox(width: 12),
-          Text(
-            selected == null
-                ? 'Pick time'
-                : DateFormat('hh:mm a').format(selected!),
-            style: TextStyle(
-              color: selected == null ? Colors.white24 : Colors.white,
-              fontSize: 15,
-            ),
-          ),
-          const Spacer(),
-          if (selected != null)
+        child: Row(
+          children: [
+            const Icon(CupertinoIcons.clock, color: Colors.white38, size: 18),
+            const SizedBox(width: 12),
             Text(
-              'repeats on selected days',
-              style: const TextStyle(color: Colors.white24, fontSize: 11),
+              selected == null
+                  ? 'Pick time'
+                  : DateFormat('hh:mm a').format(selected!),
+              style: TextStyle(
+                color: selected == null ? Colors.white24 : Colors.white,
+                fontSize: 15,
+              ),
             ),
-        ]),
+            const Spacer(),
+            if (selected != null)
+              Text(
+                'repeats on selected days',
+                style: const TextStyle(color: Colors.white24, fontSize: 11),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1556,9 +2070,9 @@ class _TimeOnlyPicker extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════
 
 class _MultiDateTimePicker extends StatelessWidget {
-  final DateTime?        selected;
-  final List<DateTime>   extraDates;
-  final ValueChanged<DateTime>       onPick;
+  final DateTime? selected;
+  final List<DateTime> extraDates;
+  final ValueChanged<DateTime> onPick;
   final ValueChanged<List<DateTime>> onExtraDatesChanged;
 
   const _MultiDateTimePicker({
@@ -1573,7 +2087,7 @@ class _MultiDateTimePicker extends StatelessWidget {
       context: context,
       initialDate: selected ?? DateTime.now(),
       firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate:  DateTime.now().add(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (date == null || !context.mounted) return;
     final time = await showTimePicker(
@@ -1595,18 +2109,26 @@ class _MultiDateTimePicker extends StatelessWidget {
       context: context,
       initialDate: DateTime.now().add(const Duration(days: 1)),
       firstDate: DateTime.now(),
-      lastDate:  DateTime.now().add(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (date == null) return;
 
     // Check not already in list or primary
-    final dt = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    final alreadyPrimary = selected != null &&
-        date.year  == selected!.year &&
+    final dt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    final alreadyPrimary =
+        selected != null &&
+        date.year == selected!.year &&
         date.month == selected!.month &&
-        date.day   == selected!.day;
-    final alreadyExtra = extraDates.any((d) =>
-        d.year == date.year && d.month == date.month && d.day == date.day);
+        date.day == selected!.day;
+    final alreadyExtra = extraDates.any(
+      (d) => d.year == date.year && d.month == date.month && d.day == date.day,
+    );
     if (alreadyPrimary || alreadyExtra) return;
 
     onExtraDatesChanged([...extraDates, dt]);
@@ -1632,43 +2154,63 @@ class _MultiDateTimePicker extends StatelessWidget {
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: Colors.white10),
             ),
-            child: Row(children: [
-              const Icon(CupertinoIcons.calendar, color: Colors.white38, size: 18),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  selected == null
-                      ? 'Pick date & time'
-                      : DateFormat('EEE, MMM d · hh:mm a').format(selected!),
-                  style: TextStyle(
-                    color: selected == null ? Colors.white24 : Colors.white,
-                    fontSize: 15,
-                  ),
+            child: Row(
+              children: [
+                const Icon(
+                  CupertinoIcons.calendar,
+                  color: Colors.white38,
+                  size: 18,
                 ),
-              ),
-              if (selected != null)
-                GestureDetector(
-                  onTap: () => _addExtraDate(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0A84FF).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: const Color(0xFF0A84FF).withOpacity(0.3)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    selected == null
+                        ? 'Pick date & time'
+                        : DateFormat('EEE, MMM d · hh:mm a').format(selected!),
+                    style: TextStyle(
+                      color: selected == null ? Colors.white24 : Colors.white,
+                      fontSize: 15,
                     ),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(CupertinoIcons.plus, color: Color(0xFF0A84FF), size: 11),
-                      SizedBox(width: 4),
-                      Text('Add date', style: TextStyle(
-                        color: Color(0xFF0A84FF), fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      )),
-                    ]),
                   ),
                 ),
-            ]),
+                if (selected != null)
+                  GestureDetector(
+                    onTap: () => _addExtraDate(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0A84FF).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF0A84FF).withOpacity(0.3),
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            CupertinoIcons.plus,
+                            color: Color(0xFF0A84FF),
+                            size: 11,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Add date',
+                            style: TextStyle(
+                              color: Color(0xFF0A84FF),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
 
@@ -1676,7 +2218,8 @@ class _MultiDateTimePicker extends StatelessWidget {
         if (extraDates.isNotEmpty) ...[
           const SizedBox(height: 8),
           Wrap(
-            spacing: 6, runSpacing: 6,
+            spacing: 6,
+            runSpacing: 6,
             children: List.generate(extraDates.length, (i) {
               return Container(
                 padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
@@ -1684,23 +2227,31 @@ class _MultiDateTimePicker extends StatelessWidget {
                   color: const Color(0xFF0A84FF).withOpacity(0.10),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                      color: const Color(0xFF0A84FF).withOpacity(0.3)),
+                    color: const Color(0xFF0A84FF).withOpacity(0.3),
+                  ),
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(
-                    DateFormat('MMM d').format(extraDates[i]),
-                    style: const TextStyle(
-                      color: Color(0xFF0A84FF), fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      DateFormat('MMM d').format(extraDates[i]),
+                      style: const TextStyle(
+                        color: Color(0xFF0A84FF),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                    onTap: () => _removeExtra(i),
-                    child: const Icon(CupertinoIcons.xmark_circle_fill,
-                        color: Color(0xFF0A84FF), size: 14),
-                  ),
-                ]),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () => _removeExtra(i),
+                      child: const Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: Color(0xFF0A84FF),
+                        size: 14,
+                      ),
+                    ),
+                  ],
+                ),
               );
             }),
           ),
@@ -1734,7 +2285,7 @@ class _DateTimePicker extends StatelessWidget {
           context: context,
           initialDate: selected ?? DateTime.now(),
           firstDate: DateTime.now().subtract(const Duration(days: 1)),
-          lastDate:  DateTime.now().add(const Duration(days: 365)),
+          lastDate: DateTime.now().add(const Duration(days: 365)),
         );
         if (date == null || !context.mounted) return;
         final time = await showTimePicker(
@@ -1742,7 +2293,9 @@ class _DateTimePicker extends StatelessWidget {
           initialTime: TimeOfDay.fromDateTime(selected ?? DateTime.now()),
         );
         if (time == null) return;
-        onPick(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+        onPick(
+          DateTime(date.year, date.month, date.day, time.hour, time.minute),
+        );
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -1751,19 +2304,25 @@ class _DateTimePicker extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.white10),
         ),
-        child: Row(children: [
-          const Icon(CupertinoIcons.calendar, color: Colors.white38, size: 18),
-          const SizedBox(width: 12),
-          Text(
-            selected == null
-                ? 'Pick date & time'
-                : DateFormat('EEE, MMM d · hh:mm a').format(selected!),
-            style: TextStyle(
-              color: selected == null ? Colors.white24 : Colors.white,
-              fontSize: 15,
+        child: Row(
+          children: [
+            const Icon(
+              CupertinoIcons.calendar,
+              color: Colors.white38,
+              size: 18,
             ),
-          ),
-        ]),
+            const SizedBox(width: 12),
+            Text(
+              selected == null
+                  ? 'Pick date & time'
+                  : DateFormat('EEE, MMM d · hh:mm a').format(selected!),
+              style: TextStyle(
+                color: selected == null ? Colors.white24 : Colors.white,
+                fontSize: 15,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1787,31 +2346,322 @@ class _TopIconBtn extends StatelessWidget {
 }
 
 // ════════════════════════════════════════════════════════════════
-// Empty state
+// Places Awareness Panel
+// Shows watched places with live inside/outside status.
+// Tapping "Manage" opens the LocationPickerSheet.
+// ════════════════════════════════════════════════════════════════
+
+class _PlacesAwarenessPanel extends StatefulWidget {
+  final VoidCallback onManagePlaces;
+  const _PlacesAwarenessPanel({required this.onManagePlaces});
+
+  @override
+  State<_PlacesAwarenessPanel> createState() => _PlacesAwarenessPanelState();
+}
+
+class _PlacesAwarenessPanelState extends State<_PlacesAwarenessPanel> {
+  @override
+  void initState() {
+    super.initState();
+    SavedPlacesService.instance.places.addListener(_rebuild);
+  }
+
+  @override
+  void dispose() {
+    SavedPlacesService.instance.places.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
+
+  void _confirmDeletePlace(BuildContext context, SavedPlace place) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (_) => CupertinoActionSheet(
+        title: Text('Remove ${place.name}?'),
+        message: const Text(
+          'This will stop watching this place for arrivals and departures.',
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await SavedPlacesService.instance.remove(place.id);
+            },
+            child: const Text('Remove Place'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final watched = SavedPlacesService.instance.watchedPlaces;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Section header
+          Row(
+            children: [
+              const Text(
+                'Places',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(width: 6),
+              if (watched.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF30D158).withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${watched.length} watching',
+                    style: const TextStyle(
+                      color: Color(0xFF30D158),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              const Spacer(),
+              GestureDetector(
+                onTap: widget.onManagePlaces,
+                child: const Text(
+                  'Manage',
+                  style: TextStyle(
+                    color: Color(0xFF0A84FF),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          if (watched.isEmpty)
+            GestureDetector(
+              onTap: widget.onManagePlaces,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF141414),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.06)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      CupertinoIcons.location_slash,
+                      color: Colors.white24,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'No places watched',
+                        style: TextStyle(color: Colors.white38, fontSize: 14),
+                      ),
+                    ),
+                    const Icon(
+                      CupertinoIcons.chevron_right,
+                      color: Colors.white12,
+                      size: 14,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            // Horizontal scrollable list of watched places — no fixed height
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: List.generate(watched.length, (i) {
+                  final place = watched[i];
+                  final inside = GeofenceService.instance.isInsidePlace(
+                    place.id,
+                  );
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      right: i < watched.length - 1 ? 10 : 0,
+                    ),
+                    child: GestureDetector(
+                      onTap: widget.onManagePlaces,
+                      // Long-press to delete
+                      onLongPress: () => _confirmDeletePlace(context, place),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 96,
+                        padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
+                        decoration: BoxDecoration(
+                          color: inside
+                              ? const Color(0xFF30D158).withOpacity(0.12)
+                              : const Color(0xFF141414),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: inside
+                                ? const Color(0xFF30D158).withOpacity(0.4)
+                                : Colors.white.withOpacity(0.06),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              place.emoji,
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              place.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: inside
+                                    ? const Color(0xFF30D158)
+                                    : Colors.white54,
+                                fontSize: 11,
+                                fontWeight: inside
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: inside
+                                    ? const Color(0xFF30D158)
+                                    : Colors.white12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Empty state — time-aware contextual message
 // ════════════════════════════════════════════════════════════════
 
 class _EmptyReminders extends StatelessWidget {
   final VoidCallback onAdd;
   const _EmptyReminders({required this.onAdd});
 
+  static (String emoji, String headline, String sub) _contextFor(DateTime now) {
+    final h = now.hour;
+    if (h >= 5 && h < 9)
+      return ('🌅', 'Good morning!', 'Start your day with a reminder.');
+    if (h >= 9 && h < 12)
+      return ('☀️', 'Morning\'s rolling.', 'Nothing on your plate yet.');
+    if (h >= 12 && h < 14)
+      return ('🌤️', 'Midday check-in.', 'All clear — enjoy your lunch.');
+    if (h >= 14 && h < 17)
+      return ('🧠', 'Deep work hours.', 'No interruptions scheduled.');
+    if (h >= 17 && h < 20)
+      return ('🌇', 'Evening is yours.', 'Add something to look forward to.');
+    if (h >= 20 && h < 23)
+      return ('🌙', 'Winding down.', 'Nothing tonight. Rest well.');
+    return ('🌌', 'Late night.', 'Everything is quiet. You should sleep.');
+  }
+
   @override
   Widget build(BuildContext context) {
+    final (emoji, headline, sub) = _contextFor(DateTime.now());
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 40),
-      child: Column(children: [
-        const Divider(color: Color(0xFF1E1E1E)),
-        const SizedBox(height: 40),
-        const Icon(CupertinoIcons.bell_slash, size: 48, color: Color(0xFF2C2C2C)),
-        const SizedBox(height: 14),
-        const Text('No reminders yet', style: TextStyle(
-            color: Colors.white38, fontSize: 17, fontWeight: FontWeight.w500)),
-        const SizedBox(height: 6),
-        const Text(
-          'Tap + to add a reminder\nby time, minutes, or recurring day.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white24, fontSize: 14, height: 1.5),
-        ),
-      ]),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
+      child: Column(
+        children: [
+          const Divider(color: Color(0xFF1E1E1E)),
+          const SizedBox(height: 36),
+          Text(emoji, style: const TextStyle(fontSize: 48)),
+          const SizedBox(height: 16),
+          Text(
+            headline,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            sub,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white38,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 28),
+          GestureDetector(
+            onTap: onAdd,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A84FF).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: const Color(0xFF0A84FF).withOpacity(0.3),
+                ),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(CupertinoIcons.plus, color: Color(0xFF0A84FF), size: 15),
+                  SizedBox(width: 8),
+                  Text(
+                    'Add a reminder',
+                    style: TextStyle(
+                      color: Color(0xFF0A84FF),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1822,9 +2672,13 @@ class _EmptyReminders extends StatelessWidget {
 
 class _CountdownLabel extends StatefulWidget {
   final String text;
-  final Color  color;
-  final bool   pulse;
-  const _CountdownLabel({required this.text, required this.color, required this.pulse});
+  final Color color;
+  final bool pulse;
+  const _CountdownLabel({
+    required this.text,
+    required this.color,
+    required this.pulse,
+  });
 
   @override
   State<_CountdownLabel> createState() => _CountdownLabelState();
@@ -1833,16 +2687,19 @@ class _CountdownLabel extends StatefulWidget {
 class _CountdownLabelState extends State<_CountdownLabel>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
-  late Animation<double>   _anim;
+  late Animation<double> _anim;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
-    _anim = Tween<double>(begin: 1.0, end: 0.4).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(
+      begin: 1.0,
+      end: 0.4,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
   }
 
   @override
@@ -1854,16 +2711,23 @@ class _CountdownLabelState extends State<_CountdownLabel>
   @override
   Widget build(BuildContext context) {
     if (!widget.pulse) {
-      return Text(widget.text,
-          style: TextStyle(color: widget.color, fontSize: 12));
+      return Text(
+        widget.text,
+        style: TextStyle(color: widget.color, fontSize: 12),
+      );
     }
     return AnimatedBuilder(
       animation: _anim,
       builder: (_, __) => Opacity(
         opacity: _anim.value,
-        child: Text(widget.text, style: TextStyle(
-          color: widget.color, fontSize: 12, fontWeight: FontWeight.w700,
-        )),
+        child: Text(
+          widget.text,
+          style: TextStyle(
+            color: widget.color,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
@@ -1874,15 +2738,15 @@ class _CountdownLabelState extends State<_CountdownLabel>
 // ════════════════════════════════════════════════════════════════
 
 class _AnalogClock extends StatefulWidget {
-  final DateTime   now;
-  final bool       sweepIn;
-  final bool       resync;
+  final DateTime now;
+  final bool sweepIn;
+  final bool resync;
   final VoidCallback? onSweepDone;
 
   const _AnalogClock({
     required this.now,
-    this.sweepIn     = false,
-    this.resync      = false,
+    this.sweepIn = false,
+    this.resync = false,
     this.onSweepDone,
   });
 
@@ -1893,22 +2757,30 @@ class _AnalogClock extends StatefulWidget {
 class _AnalogClockState extends State<_AnalogClock>
     with TickerProviderStateMixin {
   late AnimationController _sweepCtrl;
-  late Animation<double>   _sweepAnim;
+  late Animation<double> _sweepAnim;
   late AnimationController _resyncCtrl;
-  late Animation<double>   _resyncAnim;
+  late Animation<double> _resyncAnim;
 
   @override
   void initState() {
     super.initState();
     _sweepCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 900));
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     _sweepAnim = CurvedAnimation(
-        parent: _sweepCtrl, curve: Curves.easeOutCubic);
+      parent: _sweepCtrl,
+      curve: Curves.easeOutCubic,
+    );
 
     _resyncCtrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 800));
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
     _resyncAnim = CurvedAnimation(
-        parent: _resyncCtrl, curve: Curves.easeInOutCubic);
+      parent: _resyncCtrl,
+      curve: Curves.easeInOutCubic,
+    );
 
     if (widget.sweepIn) {
       _sweepCtrl.forward().then((_) => widget.onSweepDone?.call());
@@ -1938,9 +2810,9 @@ class _AnalogClockState extends State<_AnalogClock>
       animation: Listenable.merge([_sweepAnim, _resyncAnim]),
       builder: (_, __) => CustomPaint(
         painter: _ClockPainter(
-          now:        widget.now,
-          sweepT:     _sweepAnim.value,
-          resyncT:    _resyncAnim.value,
+          now: widget.now,
+          sweepT: _sweepAnim.value,
+          resyncT: _resyncAnim.value,
           resyncDone: !_resyncCtrl.isAnimating,
         ),
         child: const SizedBox.expand(),
@@ -1951,9 +2823,9 @@ class _AnalogClockState extends State<_AnalogClock>
 
 class _ClockPainter extends CustomPainter {
   final DateTime now;
-  final double   sweepT;
-  final double   resyncT;
-  final bool     resyncDone;
+  final double sweepT;
+  final double resyncT;
+  final bool resyncDone;
 
   const _ClockPainter({
     required this.now,
@@ -1964,77 +2836,119 @@ class _ClockPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cx = size.width  / 2;
+    final cx = size.width / 2;
     final cy = size.height / 2;
-    final r  = math.min(cx, cy);
+    final r = math.min(cx, cy);
 
-    canvas.drawCircle(Offset(cx, cy), r,
-        Paint()..color = const Color(0xFF1A1A1A));
-    canvas.drawCircle(Offset(cx, cy), r,
-        Paint()
-          ..color = const Color(0xFF2C2C2C)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5);
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r,
+      Paint()..color = const Color(0xFF1A1A1A),
+    );
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r,
+      Paint()
+        ..color = const Color(0xFF2C2C2C)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
 
     for (int i = 0; i < 12; i++) {
-      final angle  = (i / 12) * 2 * math.pi - math.pi / 2;
+      final angle = (i / 12) * 2 * math.pi - math.pi / 2;
       final isMain = i % 3 == 0;
-      final len    = isMain ? r * 0.12 : r * 0.06;
+      final len = isMain ? r * 0.12 : r * 0.06;
       canvas.drawLine(
-        Offset(cx + (r - 10) * math.cos(angle),
-               cy + (r - 10) * math.sin(angle)),
-        Offset(cx + (r - 10 - len) * math.cos(angle),
-               cy + (r - 10 - len) * math.sin(angle)),
+        Offset(
+          cx + (r - 10) * math.cos(angle),
+          cy + (r - 10) * math.sin(angle),
+        ),
+        Offset(
+          cx + (r - 10 - len) * math.cos(angle),
+          cy + (r - 10 - len) * math.sin(angle),
+        ),
         Paint()
-          ..color      = isMain ? Colors.white54 : Colors.white24
+          ..color = isMain ? Colors.white54 : Colors.white24
           ..strokeWidth = isMain ? 2.0 : 1.2
-          ..strokeCap  = StrokeCap.round,
+          ..strokeCap = StrokeCap.round,
       );
     }
 
-    final tHour = ((now.hour % 12 + now.minute / 60) / 12) * 2 * math.pi - math.pi / 2;
-    final tMin  = ((now.minute + now.second / 60) / 60) * 2 * math.pi - math.pi / 2;
-    final tSec  = (now.second / 60) * 2 * math.pi - math.pi / 2;
+    final tHour =
+        ((now.hour % 12 + now.minute / 60) / 12) * 2 * math.pi - math.pi / 2;
+    final tMin =
+        ((now.minute + now.second / 60) / 60) * 2 * math.pi - math.pi / 2;
+    final tSec = (now.second / 60) * 2 * math.pi - math.pi / 2;
     const start = -math.pi / 2;
 
     final hourAngle = _lerp(start, tHour, sweepT);
-    final minAngle  = _lerp(start, tMin,  sweepT);
-    double secAngle = _lerp(start, tSec,  sweepT);
+    final minAngle = _lerp(start, tMin, sweepT);
+    double secAngle = _lerp(start, tSec, sweepT);
     if (!resyncDone) secAngle = tSec + resyncT * 2 * math.pi;
 
-    _hand(canvas, cx, cy, angle: hourAngle, length: r * 0.50, width: 5.0,
-        color: Colors.white);
-    _hand(canvas, cx, cy, angle: minAngle,  length: r * 0.68, width: 3.5,
-        color: Colors.white70);
-    _hand(canvas, cx, cy, angle: secAngle,  length: r * 0.74, width: 1.8,
-        color: const Color(0xFF0A84FF), tail: r * 0.18);
+    _hand(
+      canvas,
+      cx,
+      cy,
+      angle: hourAngle,
+      length: r * 0.50,
+      width: 5.0,
+      color: Colors.white,
+    );
+    _hand(
+      canvas,
+      cx,
+      cy,
+      angle: minAngle,
+      length: r * 0.68,
+      width: 3.5,
+      color: Colors.white70,
+    );
+    _hand(
+      canvas,
+      cx,
+      cy,
+      angle: secAngle,
+      length: r * 0.74,
+      width: 1.8,
+      color: const Color(0xFF0A84FF),
+      tail: r * 0.18,
+    );
 
     canvas.drawCircle(Offset(cx, cy), 5.5, Paint()..color = Colors.white);
-    canvas.drawCircle(Offset(cx, cy), 3.0,
-        Paint()..color = const Color(0xFF0A84FF));
+    canvas.drawCircle(
+      Offset(cx, cy),
+      3.0,
+      Paint()..color = const Color(0xFF0A84FF),
+    );
   }
 
-  void _hand(Canvas canvas, double cx, double cy, {
+  void _hand(
+    Canvas canvas,
+    double cx,
+    double cy, {
     required double angle,
     required double length,
     required double width,
-    required Color  color,
+    required Color color,
     double tail = 0,
   }) {
     canvas.drawLine(
       Offset(cx - tail * math.cos(angle), cy - tail * math.sin(angle)),
       Offset(cx + length * math.cos(angle), cy + length * math.sin(angle)),
       Paint()
-        ..color      = color
+        ..color = color
         ..strokeWidth = width
-        ..strokeCap  = StrokeCap.round,
+        ..strokeCap = StrokeCap.round,
     );
   }
 
   @override
   bool shouldRepaint(_ClockPainter old) =>
-      old.now != now || old.sweepT != sweepT ||
-      old.resyncT != resyncT || old.resyncDone != resyncDone;
+      old.now != now ||
+      old.sweepT != sweepT ||
+      old.resyncT != resyncT ||
+      old.resyncDone != resyncDone;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2042,13 +2956,13 @@ class _ClockPainter extends CustomPainter {
 // ════════════════════════════════════════════════════════════════
 
 class _ClockCalendarPanel extends StatefulWidget {
-  final DateTime       now;
-  final String         timezoneLabel;
-  final VoidCallback   onTimezoneTap;
+  final DateTime now;
+  final String timezoneLabel;
+  final VoidCallback onTimezoneTap;
   final List<Reminder> reminders;
   final void Function(DateTime) onDateTap;
-  final String?        lastAddedReminderId;
-  final VoidCallback   onDotBloomDone;
+  final String? lastAddedReminderId;
+  final VoidCallback onDotBloomDone;
 
   const _ClockCalendarPanel({
     required this.now,
@@ -2066,14 +2980,13 @@ class _ClockCalendarPanel extends StatefulWidget {
 
 class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
     with TickerProviderStateMixin {
-
-  int      _page        = 0;
-  DateTime _calMonth    = DateTime.now();
+  int _page = 0;
+  DateTime _calMonth = DateTime.now();
   DateTime? _selectedDay;
-  int      _monthSlideDir = 1;
+  int _monthSlideDir = 1;
 
-  bool    _clockSweptIn  = false;
-  bool    _triggerResync = false;
+  bool _clockSweptIn = false;
+  bool _triggerResync = false;
   String? _prevTzLabel;
 
   final Map<String, AnimationController> _bloomCtrls = {};
@@ -2092,7 +3005,10 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
     super.didUpdateWidget(old);
 
     if (widget.timezoneLabel != _prevTzLabel) {
-      setState(() { _triggerResync = true; _prevTzLabel = widget.timezoneLabel; });
+      setState(() {
+        _triggerResync = true;
+        _prevTzLabel = widget.timezoneLabel;
+      });
       Future.delayed(const Duration(milliseconds: 900), () {
         if (mounted) setState(() => _triggerResync = false);
       });
@@ -2101,7 +3017,9 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
     if (widget.lastAddedReminderId != null &&
         !_bloomCtrls.containsKey(widget.lastAddedReminderId)) {
       final ctrl = AnimationController(
-          vsync: this, duration: const Duration(milliseconds: 600));
+        vsync: this,
+        duration: const Duration(milliseconds: 600),
+      );
       _bloomCtrls[widget.lastAddedReminderId!] = ctrl;
       ctrl.forward().then((_) {
         widget.onDotBloomDone();
@@ -2131,19 +3049,44 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
     _calMonth = DateTime(_calMonth.year, _calMonth.month + 1);
   });
 
-  bool _hasReminder(DateTime day) => widget.reminders.any((r) =>
-      r.dateTime.year  == day.year &&
-      r.dateTime.month == day.month &&
-      r.dateTime.day   == day.day);
+  bool _hasReminder(DateTime day) => widget.reminders.any(
+    (r) =>
+        r.dateTime.year == day.year &&
+        r.dateTime.month == day.month &&
+        r.dateTime.day == day.day,
+  );
+
+  /// Returns up to 3 distinct colours for reminders on this day.
+  /// Group colour if grouped, fallback to blue for ungrouped.
+  List<Color> _dotsForDay(DateTime day) {
+    final rs = widget.reminders
+        .where(
+          (r) =>
+              r.dateTime.year == day.year &&
+              r.dateTime.month == day.month &&
+              r.dateTime.day == day.day,
+        )
+        .toList();
+    if (rs.isEmpty) return [];
+    final colors = <Color>{};
+    for (final r in rs) {
+      final g = ReminderGroupService.instance.findById(r.groupId);
+      colors.add(g?.color ?? const Color(0xFF0A84FF));
+      if (colors.length >= 3) break;
+    }
+    return colors.toList();
+  }
 
   Reminder? _lastAddedOnDay(DateTime day) {
     if (widget.lastAddedReminderId == null) return null;
     try {
-      return widget.reminders.firstWhere((r) =>
-          r.id == widget.lastAddedReminderId &&
-          r.dateTime.year  == day.year &&
-          r.dateTime.month == day.month &&
-          r.dateTime.day   == day.day);
+      return widget.reminders.firstWhere(
+        (r) =>
+            r.id == widget.lastAddedReminderId &&
+            r.dateTime.year == day.year &&
+            r.dateTime.month == day.month &&
+            r.dateTime.day == day.day,
+      );
     } catch (_) {
       return null;
     }
@@ -2151,77 +3094,96 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      // AnimatedCrossFade lets each child size itself naturally —
-      // no fixed pixel heights, so 6-row months never overflow.
-      AnimatedCrossFade(
-        duration:       const Duration(milliseconds: 320),
-        sizeCurve:      Curves.easeOutCubic,
-        firstCurve:     Curves.easeOutCubic,
-        secondCurve:    Curves.easeOutCubic,
-        crossFadeState: _page == 0
-            ? CrossFadeState.showFirst
-            : CrossFadeState.showSecond,
-        firstChild: GestureDetector(
-          onHorizontalDragEnd: (d) {
-            if (d.primaryVelocity != null && d.primaryVelocity! < -300) {
-              setState(() => _page = 1);
-            }
-          },
-          child: _buildClockPage(),
-        ),
-        secondChild: GestureDetector(
-          onHorizontalDragEnd: (d) {
-            if (d.primaryVelocity == null) return;
-            if (d.primaryVelocity! > 600) {
-              setState(() => _page = 0);
-            } else if (d.primaryVelocity! > 300) {
-              _prevMonth();
-            } else if (d.primaryVelocity! < -300) {
-              _nextMonth();
-            }
-          },
-          child: _buildCalendarPage(),
-        ),
-      ),
-      const SizedBox(height: 10),
-      // Page dots — tappable
-      Row(mainAxisSize: MainAxisSize.min, children: [
-        GestureDetector(
-          onTap: () => setState(() => _page = 0),
-          child: _PageDot(active: _page == 0),
-        ),
-        const SizedBox(width: 6),
-        GestureDetector(
-          onTap: () => setState(() => _page = 1),
-          child: _PageDot(active: _page == 1),
-        ),
-      ]),
-      // Swipe hint (only on calendar page)
-      AnimatedOpacity(
-        opacity:  _page == 1 ? 1 : 0,
-        duration: const Duration(milliseconds: 200),
-        child: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: GestureDetector(
+    return Column(
+      children: [
+        // AnimatedCrossFade lets each child size itself naturally —
+        // no fixed pixel heights, so 6-row months never overflow.
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 320),
+          sizeCurve: Curves.easeOutCubic,
+          firstCurve: Curves.easeOutCubic,
+          secondCurve: Curves.easeOutCubic,
+          crossFadeState: _page == 0
+              ? CrossFadeState.showFirst
+              : CrossFadeState.showSecond,
+          firstChild: GestureDetector(
             onHorizontalDragEnd: (d) {
-              if (d.primaryVelocity != null && d.primaryVelocity!.abs() > 200) {
-                setState(() => _page = 0);
+              if (d.primaryVelocity != null && d.primaryVelocity! < -300) {
+                setState(() => _page = 1);
               }
             },
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(CupertinoIcons.arrow_left,  color: Colors.white12, size: 10),
-              SizedBox(width: 4),
-              Text('swipe to clock',
-                  style: TextStyle(color: Colors.white12, fontSize: 10)),
-              SizedBox(width: 4),
-              Icon(CupertinoIcons.arrow_right, color: Colors.white12, size: 10),
-            ]),
+            child: _buildClockPage(),
+          ),
+          secondChild: GestureDetector(
+            onHorizontalDragEnd: (d) {
+              if (d.primaryVelocity == null) return;
+              if (d.primaryVelocity! > 600) {
+                setState(() => _page = 0);
+              } else if (d.primaryVelocity! > 300) {
+                _prevMonth();
+              } else if (d.primaryVelocity! < -300) {
+                _nextMonth();
+              }
+            },
+            child: _buildCalendarPage(),
           ),
         ),
-      ),
-      const SizedBox(height: 4),
-    ]);
+        const SizedBox(height: 10),
+        // Page dots — tappable
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              onTap: () => setState(() => _page = 0),
+              child: _PageDot(active: _page == 0),
+            ),
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => setState(() => _page = 1),
+              child: _PageDot(active: _page == 1),
+            ),
+          ],
+        ),
+        // Swipe hint (only on calendar page)
+        AnimatedOpacity(
+          opacity: _page == 1 ? 1 : 0,
+          duration: const Duration(milliseconds: 200),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: GestureDetector(
+              onHorizontalDragEnd: (d) {
+                if (d.primaryVelocity != null &&
+                    d.primaryVelocity!.abs() > 200) {
+                  setState(() => _page = 0);
+                }
+              },
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    CupertinoIcons.arrow_left,
+                    color: Colors.white12,
+                    size: 10,
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'swipe to clock',
+                    style: TextStyle(color: Colors.white12, fontSize: 10),
+                  ),
+                  SizedBox(width: 4),
+                  Icon(
+                    CupertinoIcons.arrow_right,
+                    color: Colors.white12,
+                    size: 10,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+      ],
+    );
   }
 
   // ── Clock page ────────────────────────────────────────────────
@@ -2232,58 +3194,77 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
       children: [
         const SizedBox(height: 12),
         AnimatedScale(
-          scale:    _clockSweptIn ? 1.0 : 0.88,
+          scale: _clockSweptIn ? 1.0 : 0.88,
           duration: const Duration(milliseconds: 700),
-          curve:    Curves.easeOutBack,
+          curve: Curves.easeOutBack,
           child: Center(
             child: SizedBox(
-              width: 190, height: 190,
+              width: 190,
+              height: 190,
               child: _AnalogClock(
-                now:     widget.now,
+                now: widget.now,
                 sweepIn: true,
-                resync:  _triggerResync,
+                resync: _triggerResync,
               ),
             ),
           ),
         ),
         const SizedBox(height: 14),
         AnimatedOpacity(
-          opacity:  _clockSweptIn ? 1.0 : 0.0,
+          opacity: _clockSweptIn ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 500),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
-              child: Text(
-                DateFormat('hh:mm:ss a').format(widget.now),
-                key: ValueKey(widget.timezoneLabel),
-                style: const TextStyle(
-                  color: Colors.white, fontSize: 38,
-                  fontWeight: FontWeight.w200, letterSpacing: -1.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(DateFormat('EEE, MMM d').format(widget.now),
-                style: const TextStyle(color: Colors.white54, fontSize: 15)),
-            const SizedBox(height: 4),
-            GestureDetector(
-              onTap: widget.onTimezoneTap,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Text(
-                    widget.timezoneLabel.isEmpty ? ' ' : widget.timezoneLabel,
-                    key: ValueKey(widget.timezoneLabel),
-                    style: const TextStyle(color: Colors.white38, fontSize: 13),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                child: Text(
+                  DateFormat('hh:mm:ss a').format(widget.now),
+                  key: ValueKey(widget.timezoneLabel),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w200,
+                    letterSpacing: -1.5,
                   ),
                 ),
-                const SizedBox(width: 4),
-                const Icon(CupertinoIcons.chevron_down,
-                    color: Colors.white24, size: 11),
-              ]),
-            ),
-            const SizedBox(height: 16),
-          ]),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                DateFormat('EEE, MMM d').format(widget.now),
+                style: const TextStyle(color: Colors.white54, fontSize: 15),
+              ),
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: widget.onTimezoneTap,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      child: Text(
+                        widget.timezoneLabel.isEmpty
+                            ? ' '
+                            : widget.timezoneLabel,
+                        key: ValueKey(widget.timezoneLabel),
+                        style: const TextStyle(
+                          color: Colors.white38,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      CupertinoIcons.chevron_down,
+                      color: Colors.white24,
+                      size: 11,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ],
     );
@@ -2292,197 +3273,333 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
   // ── Calendar page ─────────────────────────────────────────────
 
   Widget _buildCalendarPage() {
-    final firstDay  = DateTime(_calMonth.year, _calMonth.month, 1);
+    final firstDay = DateTime(_calMonth.year, _calMonth.month, 1);
     final daysInMon = DateTime(_calMonth.year, _calMonth.month + 1, 0).day;
-    final startWd   = (firstDay.weekday - 1) % 7;
-    final today     = DateTime.now();
+    final startWd = (firstDay.weekday - 1) % 7;
+    final today = DateTime.now();
 
     final List<DateTime?> cells = [
       ...List.filled(startWd, null),
-      ...List.generate(daysInMon,
-          (i) => DateTime(_calMonth.year, _calMonth.month, i + 1)),
+      ...List.generate(
+        daysInMon,
+        (i) => DateTime(_calMonth.year, _calMonth.month, i + 1),
+      ),
     ];
     while (cells.length % 7 != 0) cells.add(null);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-
-        // Month navigation
-        SizedBox(
-          height: 44,
-          child: Row(children: [
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _prevMonth,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Month navigation
+          SizedBox(
+            height: 44,
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _prevMonth,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.chevron_left,
+                          color: Colors.white70,
+                          size: 16,
+                        ),
+                      ),
                     ),
-                    child: const Icon(CupertinoIcons.chevron_left,
-                        color: Colors.white70, size: 16),
                   ),
                 ),
-              ),
-            ),
-            Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 280),
-                transitionBuilder: (child, anim) {
-                  final slide = Tween<Offset>(
-                    begin: Offset(_monthSlideDir * 0.3, 0),
-                    end:   Offset.zero,
-                  ).animate(CurvedAnimation(
-                      parent: anim, curve: Curves.easeOutCubic));
-                  return FadeTransition(opacity: anim,
-                      child: SlideTransition(position: slide, child: child));
-                },
-                child: Text(
-                  DateFormat('MMMM yyyy').format(_calMonth),
-                  key: ValueKey(_calMonth),
-                  style: const TextStyle(
-                    color: Colors.white, fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                DateFormat('hh:mm a').format(widget.now),
-                style: const TextStyle(
-                  color: Colors.white38, fontSize: 11,
-                  fontWeight: FontWeight.w300, letterSpacing: 0.5,
-                ),
-              ),
-            ]),
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _nextMonth,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(10),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 280),
+                      transitionBuilder: (child, anim) {
+                        final slide =
+                            Tween<Offset>(
+                              begin: Offset(_monthSlideDir * 0.3, 0),
+                              end: Offset.zero,
+                            ).animate(
+                              CurvedAnimation(
+                                parent: anim,
+                                curve: Curves.easeOutCubic,
+                              ),
+                            );
+                        return FadeTransition(
+                          opacity: anim,
+                          child: SlideTransition(position: slide, child: child),
+                        );
+                      },
+                      child: Text(
+                        DateFormat('MMMM yyyy').format(_calMonth),
+                        key: ValueKey(_calMonth),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
-                    child: const Icon(CupertinoIcons.chevron_right,
-                        color: Colors.white70, size: 16),
+                    const SizedBox(height: 2),
+                    Text(
+                      DateFormat('hh:mm a').format(widget.now),
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w300,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _nextMonth,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.chevron_right,
+                          color: Colors.white70,
+                          size: 16,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ]),
-        ),
+          ),
 
-        const SizedBox(height: 4),
-        // Day-of-week headers
-        Row(
-          children: ['Mo','Tu','We','Th','Fr','Sa','Su'].map((d) =>
-            Expanded(child: Center(child: Text(d, style: const TextStyle(
-              color: Colors.white24, fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ))))).toList(),
-        ),
-        const SizedBox(height: 6),
+          const SizedBox(height: 4),
+          // Day-of-week headers
+          Row(
+            children: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+                .map(
+                  (d) => Expanded(
+                    child: Center(
+                      child: Text(
+                        d,
+                        style: const TextStyle(
+                          color: Colors.white24,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 6),
 
-        // Calendar grid rows
-        ...List.generate(cells.length ~/ 7, (row) => Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Row(
-            children: List.generate(7, (col) {
-              final day = cells[row * 7 + col];
-              if (day == null) return const Expanded(child: SizedBox());
+          // Calendar grid rows
+          ...List.generate(
+            cells.length ~/ 7,
+            (row) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: List.generate(7, (col) {
+                  final day = cells[row * 7 + col];
+                  if (day == null) return const Expanded(child: SizedBox());
 
-              final isToday = day.year  == today.year &&
-                              day.month == today.month &&
-                              day.day   == today.day;
-              final isSelected = _selectedDay != null &&
-                                 day.year  == _selectedDay!.year &&
-                                 day.month == _selectedDay!.month &&
-                                 day.day   == _selectedDay!.day;
-              final hasRem  = _hasReminder(day);
-              final isPast  = day.isBefore(
-                  DateTime(today.year, today.month, today.day));
-              final bloomCtrl  = _bloomCtrls[widget.lastAddedReminderId];
-              final isBloomDay = _lastAddedOnDay(day) != null &&
-                                 bloomCtrl != null;
-              final staggerMs  = (row * 7 + col) * 18;
+                  final isToday =
+                      day.year == today.year &&
+                      day.month == today.month &&
+                      day.day == today.day;
+                  final isSelected =
+                      _selectedDay != null &&
+                      day.year == _selectedDay!.year &&
+                      day.month == _selectedDay!.month &&
+                      day.day == _selectedDay!.day;
+                  final hasRem = _hasReminder(day);
+                  final isPast = day.isBefore(
+                    DateTime(today.year, today.month, today.day),
+                  );
+                  final bloomCtrl = _bloomCtrls[widget.lastAddedReminderId];
+                  final isBloomDay =
+                      _lastAddedOnDay(day) != null && bloomCtrl != null;
+                  final staggerMs = (row * 7 + col) * 18;
+                  final dotColors = _dotsForDay(day);
 
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() => _selectedDay = day);
-                    widget.onDateTap(day);
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: const EdgeInsets.symmetric(
-                        horizontal: 2, vertical: 1),
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? const Color(0xFF0A84FF)
-                          : isToday
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() => _selectedDay = day);
+                        widget.onDateTap(day);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 2,
+                          vertical: 1,
+                        ),
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? const Color(0xFF0A84FF)
+                              : isToday
                               ? const Color(0xFF0A84FF).withOpacity(0.15)
                               : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                      border: isToday && !isSelected
-                          ? Border.all(
-                              color: const Color(0xFF0A84FF).withOpacity(0.5),
-                              width: 1)
-                          : null,
-                    ),
-                    child: Stack(alignment: Alignment.center, children: [
-                      Text('${day.day}', style: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : isPast
-                                ? Colors.white24
-                                : isToday
+                          borderRadius: BorderRadius.circular(10),
+                          border: isToday && !isSelected
+                              ? Border.all(
+                                  color: const Color(
+                                    0xFF0A84FF,
+                                  ).withOpacity(0.5),
+                                  width: 1,
+                                )
+                              : null,
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Text(
+                              '${day.day}',
+                              style: TextStyle(
+                                color: isSelected
+                                    ? Colors.white
+                                    : isPast
+                                    ? Colors.white24
+                                    : isToday
                                     ? const Color(0xFF0A84FF)
                                     : Colors.white70,
-                        fontSize: 15,
-                        fontWeight: isToday || isSelected
-                            ? FontWeight.w700
-                            : FontWeight.w400,
-                      )),
-                      if (hasRem)
-                        Positioned(
-                          bottom: 3,
-                          child: isBloomDay
-                              ? _BloomDot(
-                                  controller: bloomCtrl!,
-                                  isSelected: isSelected)
-                              : _StaggerDot(
-                                  delay: Duration(milliseconds: staggerMs),
-                                  isSelected: isSelected),
+                                fontSize: 15,
+                                fontWeight: isToday || isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                            // Multi-colour group dots
+                            if (hasRem)
+                              Positioned(
+                                bottom: 3,
+                                child: isBloomDay
+                                    ? _BloomDot(
+                                        controller: bloomCtrl!,
+                                        isSelected: isSelected,
+                                        color: dotColors.isNotEmpty
+                                            ? dotColors.first
+                                            : const Color(0xFF0A84FF),
+                                      )
+                                    : _MultiDot(
+                                        colors: dotColors,
+                                        isSelected: isSelected,
+                                        delay: Duration(
+                                          milliseconds: staggerMs,
+                                        ),
+                                      ),
+                              ),
+                          ],
                         ),
-                    ]),
-                  ),
-                ),
-              );
-            }),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
           ),
-        )),
-      ]),
+        ],
+      ),
     );
   }
 }
 
 // ════════════════════════════════════════════════════════════════
-// Staggered dot pop-in (Effect #2)
+// Multi-colour group dot row — up to 3 dots, colour-coded by group
+// ════════════════════════════════════════════════════════════════
+
+class _MultiDot extends StatefulWidget {
+  final List<Color> colors;
+  final bool isSelected;
+  final Duration delay;
+
+  const _MultiDot({
+    required this.colors,
+    required this.isSelected,
+    required this.delay,
+  });
+
+  @override
+  State<_MultiDot> createState() => _MultiDotState();
+}
+
+class _MultiDotState extends State<_MultiDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
+    Future.delayed(widget.delay, () {
+      if (mounted) _ctrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.colors.isEmpty) return const SizedBox.shrink();
+    return ScaleTransition(
+      scale: _scale,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: widget.colors.asMap().entries.map((e) {
+          final idx = e.key;
+          final color = widget.isSelected ? Colors.white70 : e.value;
+          return Padding(
+            padding: EdgeInsets.only(left: idx == 0 ? 0 : 2),
+            child: Container(
+              width: 4,
+              height: 4,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                boxShadow: widget.isSelected
+                    ? null
+                    : [BoxShadow(color: color.withOpacity(0.5), blurRadius: 3)],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Staggered dot pop-in (Effect #2) — kept for legacy callers
 // ════════════════════════════════════════════════════════════════
 
 class _StaggerDot extends StatefulWidget {
   final Duration delay;
-  final bool     isSelected;
+  final bool isSelected;
   const _StaggerDot({required this.delay, required this.isSelected});
 
   @override
@@ -2492,26 +3609,34 @@ class _StaggerDot extends StatefulWidget {
 class _StaggerDotState extends State<_StaggerDot>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
-  late Animation<double>   _scale;
+  late Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _ctrl  = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 350));
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
     _scale = CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut);
-    Future.delayed(widget.delay, () { if (mounted) _ctrl.forward(); });
+    Future.delayed(widget.delay, () {
+      if (mounted) _ctrl.forward();
+    });
   }
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return ScaleTransition(
       scale: _scale,
       child: Container(
-        width: 4, height: 4,
+        width: 4,
+        height: 4,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: widget.isSelected ? Colors.white70 : const Color(0xFF0A84FF),
@@ -2527,51 +3652,410 @@ class _StaggerDotState extends State<_StaggerDot>
 
 class _BloomDot extends StatelessWidget {
   final AnimationController controller;
-  final bool                isSelected;
-  const _BloomDot({required this.controller, required this.isSelected});
+  final bool isSelected;
+  final Color color;
+
+  const _BloomDot({
+    required this.controller,
+    required this.isSelected,
+    this.color = const Color(0xFF0A84FF),
+  });
 
   @override
   Widget build(BuildContext context) {
+    final dotColor = isSelected ? Colors.white : color;
     final scale = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: controller,
-          curve: const Interval(0.0, 0.5, curve: Curves.elasticOut)));
+      CurvedAnimation(
+        parent: controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.elasticOut),
+      ),
+    );
     final glowOpacity = Tween<double>(begin: 1.0, end: 0.0).animate(
-      CurvedAnimation(parent: controller,
-          curve: const Interval(0.4, 1.0, curve: Curves.easeOut)));
+      CurvedAnimation(
+        parent: controller,
+        curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+      ),
+    );
     final glowSize = Tween<double>(begin: 4.0, end: 20.0).animate(
-      CurvedAnimation(parent: controller,
-          curve: const Interval(0.4, 1.0, curve: Curves.easeOut)));
+      CurvedAnimation(
+        parent: controller,
+        curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+      ),
+    );
 
     return AnimatedBuilder(
       animation: controller,
-      builder: (_, __) => Stack(alignment: Alignment.center, children: [
-        Opacity(
-          opacity: glowOpacity.value,
-          child: Container(
-            width: glowSize.value, height: glowSize.value,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: const Color(0xFF0A84FF).withOpacity(0.3),
+      builder: (_, __) => Stack(
+        alignment: Alignment.center,
+        children: [
+          Opacity(
+            opacity: glowOpacity.value,
+            child: Container(
+              width: glowSize.value,
+              height: glowSize.value,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color.withOpacity(0.3),
+              ),
             ),
           ),
-        ),
-        ScaleTransition(
-          scale: scale,
-          child: Container(
-            width: 5, height: 5,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isSelected ? Colors.white : const Color(0xFF0A84FF),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF0A84FF).withOpacity(0.6),
-                  blurRadius: 6, spreadRadius: 1,
+          ScaleTransition(
+            scale: scale,
+            child: Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: dotColor,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withOpacity(0.6),
+                    blurRadius: 6,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Grouped reminder list
+// ════════════════════════════════════════════════════════════════
+
+class _GroupedReminderList extends StatefulWidget {
+  final List<Reminder> reminders;
+  final DateTime now;
+  final void Function(Reminder) onDelete;
+  final void Function(Reminder) onEdit;
+  final void Function(Reminder) onViewDetail;
+  final void Function(Reminder) onMoveGroup;
+
+  const _GroupedReminderList({
+    required this.reminders,
+    required this.now,
+    required this.onDelete,
+    required this.onEdit,
+    required this.onViewDetail,
+    required this.onMoveGroup,
+  });
+
+  @override
+  State<_GroupedReminderList> createState() => _GroupedReminderListState();
+}
+
+class _GroupedReminderListState extends State<_GroupedReminderList> {
+  // Which group sections are collapsed
+  final Set<String> _collapsed = {};
+
+  @override
+  void initState() {
+    super.initState();
+    ReminderGroupService.instance.groups.addListener(_rebuild);
+  }
+
+  @override
+  void dispose() {
+    ReminderGroupService.instance.groups.removeListener(_rebuild);
+    super.dispose();
+  }
+
+  void _rebuild() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = ReminderGroupService.instance.groups.value;
+    final all = widget.reminders;
+
+    // Build sections: one per group + ungrouped at end
+    final sections = <(ReminderGroup?, List<Reminder>)>[];
+
+    for (final g in groups) {
+      final rs = all.where((r) => r.groupId == g.id).toList();
+      if (rs.isNotEmpty) sections.add((g, rs));
+    }
+    final ungrouped = all.where((r) => r.groupId == null).toList();
+    if (ungrouped.isNotEmpty) sections.add((null, ungrouped));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: sections.map((section) {
+        final (group, reminders) = section;
+        final sectionId = group?.id ?? '__ungrouped__';
+        final isCollapsed = _collapsed.contains(sectionId);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Section header ──────────────────────────────
+              GestureDetector(
+                onTap: () => setState(() {
+                  if (isCollapsed)
+                    _collapsed.remove(sectionId);
+                  else
+                    _collapsed.add(sectionId);
+                }),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Row(
+                    children: [
+                      if (group != null) ...[
+                        // Coloured dot
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: group.color,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: group.color.withOpacity(0.4),
+                                blurRadius: 6,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(group.emoji, style: const TextStyle(fontSize: 14)),
+                        const SizedBox(width: 6),
+                        Text(
+                          group.name,
+                          style: TextStyle(
+                            color: group.color,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ] else ...[
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: const BoxDecoration(
+                            color: Colors.white24,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Ungrouped',
+                          style: TextStyle(
+                            color: Colors.white38,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: (group?.color ?? Colors.white24).withOpacity(
+                            0.12,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '${reminders.length}',
+                          style: TextStyle(
+                            color: group?.color ?? Colors.white38,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      AnimatedRotation(
+                        turns: isCollapsed ? -0.25 : 0,
+                        duration: const Duration(milliseconds: 200),
+                        child: const Icon(
+                          CupertinoIcons.chevron_down,
+                          color: Colors.white24,
+                          size: 13,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
+
+              // ── Reminder tiles ──────────────────────────────
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 250),
+                sizeCurve: Curves.easeOutCubic,
+                firstCurve: Curves.easeOutCubic,
+                secondCurve: Curves.easeInCubic,
+                crossFadeState: isCollapsed
+                    ? CrossFadeState.showSecond
+                    : CrossFadeState.showFirst,
+                firstChild: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111111),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: group != null
+                          ? group.color.withOpacity(0.15)
+                          : Colors.white.withOpacity(0.05),
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Column(
+                      children: List.generate(reminders.length, (i) {
+                        final r = reminders[i];
+                        final isLast = i == reminders.length - 1;
+                        return Column(
+                          children: [
+                            _ReminderTile(
+                              key: ValueKey(r.id),
+                              reminder: r,
+                              now: widget.now,
+                              groupColor: group?.color,
+                              onDelete: () => widget.onDelete(r),
+                              onEdit: () => widget.onEdit(r),
+                              onViewDetail: () => widget.onViewDetail(r),
+                              onMoveGroup: () => widget.onMoveGroup(r),
+                            ),
+                            if (!isLast)
+                              const Divider(
+                                height: 1,
+                                indent: 68,
+                                color: Color(0xFF1E1E1E),
+                              ),
+                          ],
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+                secondChild: const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Group picker — horizontal pill row for Add/Edit sheets
+// ════════════════════════════════════════════════════════════════
+
+class _GroupPicker extends StatelessWidget {
+  final String? selectedGroupId;
+  final ValueChanged<String?> onSelect;
+
+  const _GroupPicker({required this.selectedGroupId, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<List<ReminderGroup>>(
+      valueListenable: ReminderGroupService.instance.groups,
+      builder: (_, groups, __) {
+        if (groups.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _SectionLabel('GROUP'),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 38,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  // "None" pill
+                  _GroupPill(
+                    label: 'None',
+                    emoji: '—',
+                    color: Colors.white24,
+                    isSelected: selectedGroupId == null,
+                    onTap: () => onSelect(null),
+                  ),
+                  const SizedBox(width: 8),
+                  ...groups.map(
+                    (g) => Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _GroupPill(
+                        label: g.name,
+                        emoji: g.emoji,
+                        color: g.color,
+                        isSelected: selectedGroupId == g.id,
+                        onTap: () => onSelect(g.id),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _GroupPill extends StatelessWidget {
+  final String label;
+  final String emoji;
+  final Color color;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _GroupPill({
+    required this.label,
+    required this.emoji,
+    required this.color,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.18) : const Color(0xFF1C1C1E),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? color : Colors.white12,
+            width: isSelected ? 1.5 : 1,
           ),
         ),
-      ]),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (emoji != '—') ...[
+              Text(emoji, style: const TextStyle(fontSize: 12)),
+              const SizedBox(width: 5),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? color : Colors.white54,
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -2582,7 +4066,7 @@ class _BloomDot extends StatelessWidget {
 
 class _LocationToggle extends StatelessWidget {
   final ReminderGeofence? geofence;
-  final VoidCallback       onTap;
+  final VoidCallback onTap;
   const _LocationToggle({required this.geofence, required this.onTap});
 
   @override
@@ -2604,40 +4088,44 @@ class _LocationToggle extends StatelessWidget {
                 : Colors.white10,
           ),
         ),
-        child: Row(children: [
-          Icon(
-            hasGeo ? CupertinoIcons.location_fill : CupertinoIcons.location,
-            color: hasGeo ? const Color(0xFF30D158) : Colors.white38,
-            size: 18,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  hasGeo ? 'Location reminder set' : 'Add location trigger',
-                  style: TextStyle(
-                    color: hasGeo ? const Color(0xFF30D158) : Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  hasGeo
-                      ? geofence!.fullLabel
-                      : 'Fire when you arrive or leave a place',
-                  style: const TextStyle(color: Colors.white38, fontSize: 12),
-                ),
-              ],
+        child: Row(
+          children: [
+            Icon(
+              hasGeo ? CupertinoIcons.location_fill : CupertinoIcons.location,
+              color: hasGeo ? const Color(0xFF30D158) : Colors.white38,
+              size: 18,
             ),
-          ),
-          Icon(
-            hasGeo ? CupertinoIcons.xmark_circle : CupertinoIcons.chevron_right,
-            color: Colors.white24,
-            size: 16,
-          ),
-        ]),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasGeo ? 'Location reminder set' : 'Add location trigger',
+                    style: TextStyle(
+                      color: hasGeo ? const Color(0xFF30D158) : Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  Text(
+                    hasGeo
+                        ? geofence!.fullLabel
+                        : 'Fire when you arrive or leave a place',
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              hasGeo
+                  ? CupertinoIcons.xmark_circle
+                  : CupertinoIcons.chevron_right,
+              color: Colors.white24,
+              size: 16,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2649,7 +4137,7 @@ class _LocationToggle extends StatelessWidget {
 
 class _DetailChip extends StatelessWidget {
   final String label;
-  final Color  color;
+  final Color color;
   const _DetailChip({required this.label, required this.color});
 
   @override
@@ -2661,11 +4149,14 @@ class _DetailChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
-      child: Text(label, style: TextStyle(
-        color: color,
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-      )),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 }
@@ -2682,9 +4173,9 @@ class _PageDot extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
-      curve:    Curves.easeOutCubic,
-      width:    active ? 20 : 6,
-      height:   6,
+      curve: Curves.easeOutCubic,
+      width: active ? 20 : 6,
+      height: 6,
       decoration: BoxDecoration(
         color: active ? const Color(0xFF0A84FF) : Colors.white12,
         borderRadius: BorderRadius.circular(3),
@@ -2698,12 +4189,12 @@ class _PageDot extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════
 
 class _TzPickerSheet extends StatefulWidget {
-  final String                   selectedTz;
-  final bool                     useDeviceTz;
-  final String                   deviceTz;
-  final String Function(String)  gmtOffset;
-  final void Function(TzCity)    onPick;
-  final VoidCallback             onUseDevice;
+  final String selectedTz;
+  final bool useDeviceTz;
+  final String deviceTz;
+  final String Function(String) gmtOffset;
+  final void Function(TzCity) onPick;
+  final VoidCallback onUseDevice;
 
   const _TzPickerSheet({
     required this.selectedTz,
@@ -2722,16 +4213,16 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
   final _searchCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
-  List<TzCity> _filtered     = List.from(kAllCities);
-  String       _activeLetter = '';
-  bool         _isDragging   = false;
-  String       _dragLetter   = '';
-  bool         _isSearching  = false;
+  List<TzCity> _filtered = List.from(kAllCities);
+  String _activeLetter = '';
+  bool _isDragging = false;
+  String _dragLetter = '';
+  bool _isSearching = false;
 
   late Map<String, int> _letterIndex;
-  late List<String>     _letters;
+  late List<String> _letters;
 
-  static const double _itemH   = 62.0;
+  static const double _itemH = 62.0;
   static const double _headerH = 32.0;
 
   @override
@@ -2760,7 +4251,7 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
 
   void _onScroll() {
     if (_isSearching || _letters.isEmpty) return;
-    final offset  = _scrollCtrl.offset;
+    final offset = _scrollCtrl.offset;
     String current = _letters.first;
     for (final letter in _letters) {
       if (_estimatedOffset(_letterIndex[letter]!) <= offset + 80) {
@@ -2775,7 +4266,10 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
     String? last;
     for (int i = 0; i < idx && i < kAllCities.length; i++) {
       final l = kAllCities[i].city[0].toUpperCase();
-      if (l != last) { headers++; last = l; }
+      if (l != last) {
+        headers++;
+        last = l;
+      }
     }
     return idx * _itemH + headers * _headerH;
   }
@@ -2783,30 +4277,41 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
   void _jumpToLetter(String letter) {
     final idx = _letterIndex[letter];
     if (idx == null) return;
-    final target = _estimatedOffset(idx)
-        .clamp(0.0, _scrollCtrl.position.maxScrollExtent);
-    _scrollCtrl.animateTo(target,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic);
-    setState(() { _activeLetter = letter; _dragLetter = letter; });
+    final target = _estimatedOffset(
+      idx,
+    ).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+    _scrollCtrl.animateTo(
+      target,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+    setState(() {
+      _activeLetter = letter;
+      _dragLetter = letter;
+    });
   }
 
   String? _letterFromY(double y, double totalH) {
     if (_letters.isEmpty) return null;
-    final i = (y / totalH * _letters.length)
-        .floor()
-        .clamp(0, _letters.length - 1);
+    final i = (y / totalH * _letters.length).floor().clamp(
+      0,
+      _letters.length - 1,
+    );
     return _letters[i];
   }
 
   void _onSearch(String q) {
     setState(() {
       _isSearching = q.isNotEmpty;
-      _filtered    = q.isEmpty
+      _filtered = q.isEmpty
           ? List.from(kAllCities)
-          : kAllCities.where((c) =>
-              c.city.toLowerCase().contains(q.toLowerCase()) ||
-              c.country.toLowerCase().contains(q.toLowerCase())).toList();
+          : kAllCities
+                .where(
+                  (c) =>
+                      c.city.toLowerCase().contains(q.toLowerCase()) ||
+                      c.country.toLowerCase().contains(q.toLowerCase()),
+                )
+                .toList();
     });
   }
 
@@ -2820,313 +4325,401 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
         borderRadius: BorderRadius.circular(28),
         border: Border.all(color: Colors.white10),
       ),
-      child: Column(children: [
-        const SizedBox(height: 12),
-        Center(child: Container(
-          width: 40, height: 4,
-          decoration: BoxDecoration(
-            color: Colors.white24, borderRadius: BorderRadius.circular(2),
+      child: Column(
+        children: [
+          const SizedBox(height: 12),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
           ),
-        )),
-        const SizedBox(height: 16),
-        // Header
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(children: [
-            const Text('Select City', style: TextStyle(
-              color: Colors.white, fontSize: 18,
-              fontWeight: FontWeight.w700, letterSpacing: -0.4,
-            )),
-            const Spacer(),
-            GestureDetector(
-              onTap: () { widget.onUseDevice(); Navigator.of(context).pop(); },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: widget.useDeviceTz
-                      ? const Color(0xFF0A84FF).withOpacity(0.18)
-                      : const Color(0xFF1C1C1E),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: widget.useDeviceTz
-                        ? const Color(0xFF0A84FF)
-                        : Colors.white12,
+          const SizedBox(height: 16),
+          // Header
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              children: [
+                const Text(
+                  'Select City',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
                   ),
                 ),
-                child: Text('Use device', style: TextStyle(
-                  color: widget.useDeviceTz
-                      ? const Color(0xFF0A84FF)
-                      : Colors.white38,
-                  fontSize: 12, fontWeight: FontWeight.w600,
-                )),
-              ),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 12),
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: Row(children: [
-              const Padding(
-                padding: EdgeInsets.only(left: 14),
-                child: Icon(CupertinoIcons.search, color: Colors.white38, size: 18),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: _onSearch,
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
-                  decoration: const InputDecoration(
-                    hintText: 'Search cities or countries...',
-                    hintStyle: TextStyle(color: Colors.white24),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 12),
-                  ),
-                ),
-              ),
-              if (_isSearching)
+                const Spacer(),
                 GestureDetector(
-                  onTap: () { _searchCtrl.clear(); _onSearch(''); },
-                  child: const Padding(
-                    padding: EdgeInsets.only(right: 12),
-                    child: Icon(CupertinoIcons.xmark_circle_fill,
-                        color: Colors.white24, size: 18),
+                  onTap: () {
+                    widget.onUseDevice();
+                    Navigator.of(context).pop();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: widget.useDeviceTz
+                          ? const Color(0xFF0A84FF).withOpacity(0.18)
+                          : const Color(0xFF1C1C1E),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: widget.useDeviceTz
+                            ? const Color(0xFF0A84FF)
+                            : Colors.white12,
+                      ),
+                    ),
+                    child: Text(
+                      'Use device',
+                      style: TextStyle(
+                        color: widget.useDeviceTz
+                            ? const Color(0xFF0A84FF)
+                            : Colors.white38,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ),
-            ]),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        // City list + A–Z scrubber
-        Expanded(
-          child: Stack(children: [
-            ListView.builder(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.only(left: 12, right: 44, bottom: 20),
-              itemCount: _filtered.length,
-              itemBuilder: (_, i) {
-                final item       = _filtered[i];
-                final isSelected = item.tzName == widget.selectedTz &&
-                                   !widget.useDeviceTz;
-                final offset     = widget.gmtOffset(item.tzName);
-                final showHeader = !_isSearching &&
-                    (i == 0 ||
-                     _filtered[i].city[0].toUpperCase() !=
-                     _filtered[i - 1].city[0].toUpperCase());
-                final letter   = item.city[0].toUpperCase();
-                final isActive = letter == _activeLetter && !_isSearching;
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (showHeader)
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                        padding: const EdgeInsets.fromLTRB(4, 12, 0, 4),
-                        child: Row(children: [
-                          AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 250),
-                            style: TextStyle(
-                              color: isActive
-                                  ? const Color(0xFF0A84FF)
-                                  : Colors.white24,
-                              fontSize: isActive ? 14 : 12,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1,
-                            ),
-                            child: Text(letter),
-                          ),
-                          if (isActive) ...[
-                            const SizedBox(width: 6),
-                            AnimatedContainer(
-                              duration: const Duration(milliseconds: 250),
-                              width: 24, height: 1.5,
-                              color: const Color(0xFF0A84FF).withOpacity(0.4),
-                            ),
-                          ],
-                        ]),
+          const SizedBox(height: 12),
+          // Search bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF1C1C1E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white10),
+              ),
+              child: Row(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(left: 14),
+                    child: Icon(
+                      CupertinoIcons.search,
+                      color: Colors.white38,
+                      size: 18,
+                    ),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchCtrl,
+                      onChanged: _onSearch,
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                      decoration: const InputDecoration(
+                        hintText: 'Search cities or countries...',
+                        hintStyle: TextStyle(color: Colors.white24),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                       ),
+                    ),
+                  ),
+                  if (_isSearching)
                     GestureDetector(
                       onTap: () {
-                        widget.onPick(item);
-                        Navigator.of(context).pop();
+                        _searchCtrl.clear();
+                        _onSearch('');
                       },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        margin: const EdgeInsets.symmetric(vertical: 1),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 11),
-                        decoration: BoxDecoration(
-                          color: isSelected
-                              ? const Color(0xFF0A84FF).withOpacity(0.12)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected
-                                ? const Color(0xFF0A84FF).withOpacity(0.3)
-                                : Colors.transparent,
-                          ),
+                      child: const Padding(
+                        padding: EdgeInsets.only(right: 12),
+                        child: Icon(
+                          CupertinoIcons.xmark_circle_fill,
+                          color: Colors.white24,
+                          size: 18,
                         ),
-                        child: Row(children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // City list + A–Z scrubber
+          Expanded(
+            child: Stack(
+              children: [
+                ListView.builder(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.only(
+                    left: 12,
+                    right: 44,
+                    bottom: 20,
+                  ),
+                  itemCount: _filtered.length,
+                  itemBuilder: (_, i) {
+                    final item = _filtered[i];
+                    final isSelected =
+                        item.tzName == widget.selectedTz && !widget.useDeviceTz;
+                    final offset = widget.gmtOffset(item.tzName);
+                    final showHeader =
+                        !_isSearching &&
+                        (i == 0 ||
+                            _filtered[i].city[0].toUpperCase() !=
+                                _filtered[i - 1].city[0].toUpperCase());
+                    final letter = item.city[0].toUpperCase();
+                    final isActive = letter == _activeLetter && !_isSearching;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (showHeader)
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeOut,
+                            padding: const EdgeInsets.fromLTRB(4, 12, 0, 4),
+                            child: Row(
                               children: [
-                                Text(item.city, style: TextStyle(
-                                  color: isSelected
-                                      ? const Color(0xFF0A84FF)
-                                      : Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                )),
-                                Text('${item.country}, $offset',
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? const Color(0xFF0A84FF)
-                                              .withOpacity(0.7)
-                                          : Colors.white38,
-                                      fontSize: 12,
-                                    )),
+                                AnimatedDefaultTextStyle(
+                                  duration: const Duration(milliseconds: 250),
+                                  style: TextStyle(
+                                    color: isActive
+                                        ? const Color(0xFF0A84FF)
+                                        : Colors.white24,
+                                    fontSize: isActive ? 14 : 12,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1,
+                                  ),
+                                  child: Text(letter),
+                                ),
+                                if (isActive) ...[
+                                  const SizedBox(width: 6),
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 250),
+                                    width: 24,
+                                    height: 1.5,
+                                    color: const Color(
+                                      0xFF0A84FF,
+                                    ).withOpacity(0.4),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
-                          AnimatedOpacity(
-                            opacity:  isSelected ? 1 : 0,
+                        GestureDetector(
+                          onTap: () {
+                            widget.onPick(item);
+                            Navigator.of(context).pop();
+                          },
+                          child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            child: const Icon(Icons.check_rounded,
-                                color: Color(0xFF0A84FF), size: 18),
-                          ),
-                        ]),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            // A–Z scrubber
-            if (!_isSearching)
-              Positioned(
-                right: 0, top: 0, bottom: 0, width: 28,
-                child: LayoutBuilder(
-                  builder: (ctx, constraints) {
-                    final totalH = constraints.maxHeight;
-                    return GestureDetector(
-                      onTapDown: (d) {
-                        final l = _letterFromY(d.localPosition.dy, totalH);
-                        if (l != null) _jumpToLetter(l);
-                      },
-                      onVerticalDragStart: (d) {
-                        setState(() => _isDragging = true);
-                        final l = _letterFromY(d.localPosition.dy, totalH);
-                        if (l != null) { _dragLetter = l; _jumpToLetter(l); }
-                      },
-                      onVerticalDragUpdate: (d) {
-                        final l = _letterFromY(d.localPosition.dy, totalH);
-                        if (l != null && l != _dragLetter) {
-                          setState(() => _dragLetter = l);
-                          _jumpToLetter(l);
-                        }
-                      },
-                      onVerticalDragEnd: (_) {
-                        Future.delayed(const Duration(milliseconds: 600), () {
-                          if (mounted) setState(() => _isDragging = false);
-                        });
-                      },
-                      child: Stack(alignment: Alignment.center, children: [
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: _letters.map((letter) {
-                            final isActive     = letter == _activeLetter;
-                            final isDragTarget = _isDragging &&
-                                                 letter == _dragLetter;
-                            return GestureDetector(
-                              onTap: () => _jumpToLetter(letter),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                width:  isDragTarget ? 24 : 18,
-                                height: isDragTarget ? 24 : 16,
-                                margin: const EdgeInsets.symmetric(
-                                    vertical: 0.5),
-                                decoration: isDragTarget
-                                    ? const BoxDecoration(
-                                        color: Color(0xFF0A84FF),
-                                        shape: BoxShape.circle,
-                                      )
-                                    : null,
-                                child: Center(
-                                  child: AnimatedDefaultTextStyle(
-                                    duration: const Duration(milliseconds: 180),
-                                    style: TextStyle(
-                                      color: isDragTarget
-                                          ? Colors.white
-                                          : isActive
-                                              ? const Color(0xFF0A84FF)
-                                              : Colors.white38,
-                                      fontSize: isDragTarget || isActive
-                                          ? 12 : 10,
-                                      fontWeight: isActive || isDragTarget
-                                          ? FontWeight.w800
-                                          : FontWeight.w500,
-                                    ),
-                                    child: Text(letter),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                        if (_isDragging && _dragLetter.isNotEmpty &&
-                            _letters.length > 1)
-                          Positioned(
-                            right: 32,
-                            top: (_letters.indexOf(_dragLetter) /
-                                    (_letters.length - 1) *
-                                    (totalH - 48))
-                                .clamp(0.0, totalH - 48),
-                            child: Container(
-                              width: 48, height: 48,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF0A84FF),
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFF0A84FF)
-                                        .withOpacity(0.4),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: Text(_dragLetter,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                    )),
+                            margin: const EdgeInsets.symmetric(vertical: 1),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 11,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? const Color(0xFF0A84FF).withOpacity(0.12)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected
+                                    ? const Color(0xFF0A84FF).withOpacity(0.3)
+                                    : Colors.transparent,
                               ),
                             ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.city,
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? const Color(0xFF0A84FF)
+                                              : Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w600
+                                              : FontWeight.w400,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${item.country}, $offset',
+                                        style: TextStyle(
+                                          color: isSelected
+                                              ? const Color(
+                                                  0xFF0A84FF,
+                                                ).withOpacity(0.7)
+                                              : Colors.white38,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                AnimatedOpacity(
+                                  opacity: isSelected ? 1 : 0,
+                                  duration: const Duration(milliseconds: 200),
+                                  child: const Icon(
+                                    Icons.check_rounded,
+                                    color: Color(0xFF0A84FF),
+                                    size: 18,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                      ]),
+                        ),
+                      ],
                     );
                   },
                 ),
-              ),
-          ]),
-        ),
-      ]),
+                // A–Z scrubber
+                if (!_isSearching)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 28,
+                    child: LayoutBuilder(
+                      builder: (ctx, constraints) {
+                        final totalH = constraints.maxHeight;
+                        return GestureDetector(
+                          onTapDown: (d) {
+                            final l = _letterFromY(d.localPosition.dy, totalH);
+                            if (l != null) _jumpToLetter(l);
+                          },
+                          onVerticalDragStart: (d) {
+                            setState(() => _isDragging = true);
+                            final l = _letterFromY(d.localPosition.dy, totalH);
+                            if (l != null) {
+                              _dragLetter = l;
+                              _jumpToLetter(l);
+                            }
+                          },
+                          onVerticalDragUpdate: (d) {
+                            final l = _letterFromY(d.localPosition.dy, totalH);
+                            if (l != null && l != _dragLetter) {
+                              setState(() => _dragLetter = l);
+                              _jumpToLetter(l);
+                            }
+                          },
+                          onVerticalDragEnd: (_) {
+                            Future.delayed(
+                              const Duration(milliseconds: 600),
+                              () {
+                                if (mounted)
+                                  setState(() => _isDragging = false);
+                              },
+                            );
+                          },
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: _letters.map((letter) {
+                                  final isActive = letter == _activeLetter;
+                                  final isDragTarget =
+                                      _isDragging && letter == _dragLetter;
+                                  return GestureDetector(
+                                    onTap: () => _jumpToLetter(letter),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 180,
+                                      ),
+                                      width: isDragTarget ? 24 : 18,
+                                      height: isDragTarget ? 24 : 16,
+                                      margin: const EdgeInsets.symmetric(
+                                        vertical: 0.5,
+                                      ),
+                                      decoration: isDragTarget
+                                          ? const BoxDecoration(
+                                              color: Color(0xFF0A84FF),
+                                              shape: BoxShape.circle,
+                                            )
+                                          : null,
+                                      child: Center(
+                                        child: AnimatedDefaultTextStyle(
+                                          duration: const Duration(
+                                            milliseconds: 180,
+                                          ),
+                                          style: TextStyle(
+                                            color: isDragTarget
+                                                ? Colors.white
+                                                : isActive
+                                                ? const Color(0xFF0A84FF)
+                                                : Colors.white38,
+                                            fontSize: isDragTarget || isActive
+                                                ? 12
+                                                : 10,
+                                            fontWeight: isActive || isDragTarget
+                                                ? FontWeight.w800
+                                                : FontWeight.w500,
+                                          ),
+                                          child: Text(letter),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                              if (_isDragging &&
+                                  _dragLetter.isNotEmpty &&
+                                  _letters.length > 1)
+                                Positioned(
+                                  right: 32,
+                                  top:
+                                      (_letters.indexOf(_dragLetter) /
+                                              (_letters.length - 1) *
+                                              (totalH - 48))
+                                          .clamp(0.0, totalH - 48),
+                                  child: Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0A84FF),
+                                      borderRadius: BorderRadius.circular(12),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFF0A84FF,
+                                          ).withOpacity(0.4),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 4),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        _dragLetter,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

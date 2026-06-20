@@ -161,6 +161,7 @@ class Reminder {
   final ReminderPriority  priority;
   final String?           notes;
   final ReminderGeofence? geofence;   // null = time-based only
+  final String?           groupId;    // null = ungrouped
 
   const Reminder({
     required this.id,
@@ -170,11 +171,13 @@ class Reminder {
     this.priority = ReminderPriority.normal,
     this.notes,
     this.geofence,
+    this.groupId,
   }) : repeat = repeat ?? const RepeatDays({});
 
   bool get isPast       => DateTime.now().isAfter(dateTime);
   bool get isRepeating  => repeat.isRepeating;
   bool get isLocationBased => geofence != null;
+  bool get isGrouped        => groupId != null;
   int  get minutesFromNow => dateTime.difference(DateTime.now()).inMinutes;
 
   DateTime nextOccurrence([DateTime? from]) =>
@@ -189,6 +192,8 @@ class Reminder {
     String? notes,
     ReminderGeofence? geofence,
     bool clearGeofence = false,
+    String? groupId,
+    bool clearGroup = false,
   }) => Reminder(
     id:       id       ?? this.id,
     title:    title    ?? this.title,
@@ -197,6 +202,7 @@ class Reminder {
     priority: priority ?? this.priority,
     notes:    notes    ?? this.notes,
     geofence: clearGeofence ? null : (geofence ?? this.geofence),
+    groupId: clearGroup ? null : (groupId ?? this.groupId),
   );
 
   Map<String, dynamic> toJson() => {
@@ -207,6 +213,7 @@ class Reminder {
     'priority': priority.name,
     'notes':    notes,
     'geofence': geofence?.toJson(),
+    'group_id': groupId,
   };
 
   factory Reminder.fromJson(Map<String, dynamic> j) => Reminder(
@@ -222,5 +229,6 @@ class Reminder {
     geofence: j['geofence'] != null
         ? ReminderGeofence.fromJson(j['geofence'] as Map<String, dynamic>)
         : null,
+    groupId: j['group_id'] as String?,
   );
 }

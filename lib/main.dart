@@ -6,6 +6,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:focusbell/services/alarm_service.dart';
 import 'package:focusbell/services/focus_timer_service.dart';
 import 'package:focusbell/services/geofence_service.dart';
+import 'package:focusbell/services/reminder_group_service.dart';
 import 'package:focusbell/services/saved_places_service.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'services/app_controller.dart';
@@ -36,6 +37,9 @@ void _initServices() {
 
     // ReminderService.init() boots GeofenceService internally after
     // loading reminders, so geofences are registered on first poll.
+    await _safe('ReminderGroupService',
+        () => ReminderGroupService.instance.init());
+
     await _safe('ReminderService',
         () => ReminderService.instance.init());
 
