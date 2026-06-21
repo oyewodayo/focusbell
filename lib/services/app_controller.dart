@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:focusbell/services/continuity_service.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/project.dart';
@@ -117,6 +118,8 @@ class AppController extends ChangeNotifier {
     _projects = [..._projects, project];
     notifyListeners();
     await _storage?.saveProject(project);
+     ContinuityService.instance.track(
+      ContinuityActionType.addedProject, detail: name); 
   }
 
   Future<void> setActive(String id) async {
@@ -147,9 +150,14 @@ class AppController extends ChangeNotifier {
       unawaited(_safeInit('foreground',
           () => ForegroundServiceManager.instance.startOrUpdate(active, _settings)));
     }
+    if (active != null) {
+      ContinuityService.instance.track(
+          ContinuityActionType.switchedProject, detail: active.name); // ← ADD
+    }
   }
 
   Future<void> removeProject(String id) async {
+    final removedName = _projects.firstWhere((p) => p.id == id).name; // ← ADD
     final wasActive = _projects.firstWhere((p) => p.id == id).isActive;
     _projects = _projects.where((p) => p.id != id).toList();
 
@@ -164,6 +172,8 @@ class AppController extends ChangeNotifier {
 
     await _storage?.deleteProject(id);
     unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
+    ContinuityService.instance.track(
+        ContinuityActionType.deletedProject, detail: removedName);  // ← ADD
   }
 
   Future<void> archiveProject(String id) async {
@@ -178,6 +188,8 @@ class AppController extends ChangeNotifier {
     final updated = _projects.firstWhere((p) => p.id == id);
     await _storage?.updateProject(updated);
     unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
+    ContinuityService.instance.track(
+        ContinuityActionType.archivedProject, detail: updated.name); // ← ADD
   }
 
   Future<void> unarchiveProject(String id) async {
@@ -215,6 +227,9 @@ class AppController extends ChangeNotifier {
       unawaited(_safeInit('foreground',
           () => ForegroundServiceManager.instance.updateData(activeProject!, _settings)));
     }
+
+     ContinuityService.instance.track(
+      ContinuityActionType.editedProject, detail: name); 
   }
 
   Future<void> updateProjectPriority(String id, Priority priority) async {
@@ -283,6 +298,10 @@ class AppController extends ChangeNotifier {
 
     if (activeProject?.id == projectId) _pushWidget();
     await _storage?.saveTask(task, projectId);
+    final projectName = findProject(projectId)?.name;          
+    ContinuityService.instance.track(                         
+        ContinuityActionType.addedTask,
+        detail: projectName != null ? '$title ($projectName)' : title);
   }
 
   Future<void> updateTask(
@@ -314,9 +333,22 @@ class AppController extends ChangeNotifier {
 
     if (activeProject?.id == projectId) _pushWidget();
     if (updated != null) await _storage?.updateTask(updated!, projectId);
+
+    if (status == TaskStatus.completed && updated != null) {        // ← ADD
+      final projectName = findProject(projectId)?.name;        // ← ADD
+      ContinuityService.instance.track(                        // ← ADD
+          ContinuityActionType.completedTask,
+          detail: projectName != null
+              ? '${updated!.title} ($projectName)'
+              : updated!.title);
+    }
   }
 
   Future<void> removeTask(String projectId, String taskId) async {
+    final project = findProject(projectId);                              // ← ADD
+    final removedTitle = project?.tasks
+        .where((t) => t.id == taskId).firstOrNull?.title;                // ← ADD
+
     _projects = _projects.map((p) {
       if (p.id != projectId) return p;
       return p.copyWith(
@@ -326,6 +358,14 @@ class AppController extends ChangeNotifier {
 
     if (activeProject?.id == projectId) _pushWidget();
     await _storage?.deleteTask(taskId);
+
+    if (removedTitle != null) {                                          // ← ADD
+      ContinuityService.instance.track(
+          ContinuityActionType.deletedTask,
+          detail: project != null
+              ? '$removedTitle (${project.name})'
+              : removedTitle);
+    }
   }
 
   // ── Settings ──────────────────────────────────────────────────────────────

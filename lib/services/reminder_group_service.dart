@@ -90,14 +90,25 @@ class ReminderGroupService {
   }
 
   Future<void> _seedDefaults() async {
-    final db   = await DatabaseHelper.instance.database;
-    final rows = await db.query('reminder_groups', limit: 1);
-    if (rows.isNotEmpty) return;
-    for (final g in ReminderGroup.defaults) {
-      await db.insert('reminder_groups', g.toRow(),
+    final db = await DatabaseHelper.instance.database;
+
+    final existingRows = await db.query('reminder_groups', columns: ['id']);
+    final existingIds = existingRows.map((r) => r['id'] as String).toSet();
+
+    final missing = ReminderGroup.defaults
+        .where((g) => !existingIds.contains(g.id))
+        .toList();
+
+    if (missing.isEmpty) return;
+
+    final batch = db.batch();
+    for (final g in missing) {
+      batch.insert('reminder_groups', g.toRow(),
           conflictAlgorithm: ConflictAlgorithm.ignore);
     }
-    debugPrint('[GroupService] seeded defaults.');
+    await batch.commit(noResult: true);
+
+    debugPrint('[GroupService] seeded ${missing.length} new default group(s).');
   }
 
   Future<void> _load() async {

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:focusbell/services/alarm_service.dart';
 import 'package:focusbell/services/focus_timer_service.dart';
+import 'package:focusbell/services/continuity_service.dart';
 import 'package:focusbell/services/geofence_service.dart';
 import 'package:focusbell/services/reminder_group_service.dart';
 import 'package:focusbell/services/saved_places_service.dart';
@@ -32,6 +33,16 @@ void main() async {
 /// All service initialization — fully fire-and-forget.
 void _initServices() {
   Future(() async {
+    await _safe('ContinuityService',
+        () => ContinuityService.instance.init());
+
+    // Cold start counts as "returning" for continuity purposes —
+    // didChangeAppLifecycleState only fires on paused→resumed
+    // transitions, never on a fresh process launch, so we trigger
+    // it manually here once init() has loaded _lastActiveAt.
+    await _safe('ContinuityService.onAppResumed',
+        () => ContinuityService.instance.onAppResumed());
+
     await _safe('NotificationService',
         () => NotificationService.instance.initialize());
 

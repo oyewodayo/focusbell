@@ -26,6 +26,9 @@ import '../widgets/project_view_sheet.dart';
 import '../widgets/projects_bottom_sheet.dart';
 import '../widgets/settings_bottom_sheet.dart';
 
+import '../services/continuity_service.dart';
+import '../widgets/continuity_card.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -34,7 +37,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin,WidgetsBindingObserver {
   final _ctrl     = AppController.instance;
   final _timerSvc = FocusTimerService.instance;
   late AnimationController _pulseCtrl;
@@ -43,6 +46,8 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+     WidgetsBinding.instance.addObserver(this);       // ← ADD
+    ContinuityService.instance.addListener(_onContinuityChanged); 
     _pulseCtrl = AnimationController(
       vsync:    this,
       duration: const Duration(seconds: 2),
@@ -68,8 +73,38 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+     WidgetsBinding.instance.removeObserver(this);    // ← ADD
+    ContinuityService.instance.removeListener(_onContinuityChanged);
     _pulseCtrl.dispose();
     super.dispose();
+  }
+
+
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      ContinuityService.instance.onAppResumed();
+    } else if (state == AppLifecycleState.paused ||
+               state == AppLifecycleState.inactive) {
+      ContinuityService.instance.onAppPaused();
+    }
+  }
+
+  void _onContinuityChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _resumeFocusSession() {
+    final active = _ctrl.activeProject;
+    if (active != null) {
+      showFocusTimerSheet(context, active);
+    } else {
+      // No active project — navigate to project picker or home tab
+      // so user can select one and resume
+      setState(() {}); // just dismiss card and let user pick manually
+    }
   }
 
   void _openProjects() {
@@ -109,140 +144,154 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final snapshot = ContinuityService.instance.pendingSnapshot;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
-      body: ListenableBuilder(
-        listenable: _ctrl,
-        builder: (context, _) {
-          final active   = _ctrl.activeProject;
-          final settings = _ctrl.settings;
-
-          // LayoutBuilder gives us the real available height for this
-          // render context (full screen OR a constrained overlay/webview).
-          // We use that to build a Column that is allowed to scroll
-          // instead of overflow when content doesn't fit.
-          return SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight,
-                    ),
-                    child: IntrinsicHeight(
-                      child: Column(
-                        children: [
-                          // ── Top bar ─────────────────────────
-                          Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                            child: Row(
-                              children: [
-                                const Text(
-                                  'FocusBell',
-                                  style: TextStyle(
-                                    color:         Colors.white30,
-                                    fontSize:      13,
-                                    fontWeight:    FontWeight.w600,
-                                    letterSpacing: 1.5,
-                                  ),
-                                ),
-                                const Spacer(),
-                                _NotifBadge(
-                                    enabled: settings.notificationsEnabled),
-                                const SizedBox(width: 8),
-                                // Settings icon now lives here ↓
-                                GestureDetector(
-                                  onTap: _openSettings,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(7),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF1C1C1C),
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                      border:
-                                          Border.all(color: Colors.white10),
-                                    ),
-                                    child: const Icon(
-                                      CupertinoIcons.settings,
-                                      color: Colors.white38,
-                                      size:  16,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+       body: Column(
+      children: [
+         if (snapshot != null)
+          ContinuityCard(
+            snapshot:        snapshot,
+            onDismiss:       ContinuityService.instance.dismissSnapshot,
+            onResumeSession: snapshot.activeSessionProject != null
+                ? _resumeFocusSession
+                : null,
+          ),
+        Expanded(
+          child: ListenableBuilder(
+            listenable: _ctrl,
+              builder: (context, _) {
+                final active   = _ctrl.activeProject;
+                final settings = _ctrl.settings;            
+                // LayoutBuilder gives us the real available height for this
+                // render context (full screen OR a constrained overlay/webview).
+                // We use that to build a Column that is allowed to scroll
+                // instead of overflow when content doesn't fit.
+                return SafeArea(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
                           ),
-
-                          // ── Main content ─────────────────────
-                          // Expanded only works inside a bounded Column,
-                          // which we no longer always have once this is
-                          // wrapped in a scroll view. Flexible + a min
-                          // height keeps the empty/active states centered
-                          // when there's slack space, but lets them size
-                          // naturally (and scroll) when space is tight.
-                          Flexible(
-                            child: Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 28, vertical: 16),
-                                child: active == null
-                                    ? _EmptyState(onAdd: _openProjects)
-                                    : _ActiveCard(
-                                        project:   active,
-                                        pulseAnim: _pulse,
+                          child: IntrinsicHeight(
+                            child: Column(
+                              children: [
+                                // ── Top bar ─────────────────────────
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                                  child: Row(
+                                    children: [
+                                      const Text(
+                                        'FocusBell',
+                                        style: TextStyle(
+                                          color:         Colors.white30,
+                                          fontSize:      13,
+                                          fontWeight:    FontWeight.w600,
+                                          letterSpacing: 1.5,
+                                        ),
                                       ),
-                              ),
-                            ),
-                          ),
-
-                          // ── Bottom actions ───────────────────
-                          Padding(
-                            padding:
-                                const EdgeInsets.fromLTRB(24, 8, 24, 20),
-                            child: Row(
-                              children: [
-                                _IconOnlyButton(
-                                  icon:  CupertinoIcons.square_pencil,
-                                  size:  28,
-                                  onTap: _openNotes,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _ActionButton(
-                                    icon:  CupertinoIcons.layers,
-                                    label: 'Projects',
-                                    onTap: _openProjects,
+                                      const Spacer(),
+                                      _NotifBadge(
+                                          enabled: settings.notificationsEnabled),
+                                      const SizedBox(width: 8),
+                                      // Settings icon now lives here ↓
+                                      GestureDetector(
+                                        onTap: _openSettings,
+                                        child: Container(
+                                          padding: const EdgeInsets.all(7),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF1C1C1C),
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            border:
+                                                Border.all(color: Colors.white10),
+                                          ),
+                                          child: const Icon(
+                                            CupertinoIcons.settings,
+                                            color: Colors.white38,
+                                            size:  16,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _ActionButton(
-                                    icon:  CupertinoIcons.chart_bar,
-                                    label: 'Analytics',
-                                    onTap: _openAnalytics,
+            
+                                // ── Main content ─────────────────────
+                                // Expanded only works inside a bounded Column,
+                                // which we no longer always have once this is
+                                // wrapped in a scroll view. Flexible + a min
+                                // height keeps the empty/active states centered
+                                // when there's slack space, but lets them size
+                                // naturally (and scroll) when space is tight.
+                                Flexible(
+                                  child: Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 28, vertical: 16),
+                                      child: active == null
+                                          ? _EmptyState(onAdd: _openProjects)
+                                          : _ActiveCard(
+                                              project:   active,
+                                              pulseAnim: _pulse,
+                                            ),
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                // Reminders replaces the old Settings button ↓
-                                _IconOnlyButton(
-                                  icon:  CupertinoIcons.bell,
-                                  size:  28,
-                                  onTap: _openReminders,
+            
+                                // ── Bottom actions ───────────────────
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                                  child: Row(
+                                    children: [
+                                      _IconOnlyButton(
+                                        icon:  CupertinoIcons.square_pencil,
+                                        size:  28,
+                                        onTap: _openNotes,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _ActionButton(
+                                          icon:  CupertinoIcons.layers,
+                                          label: 'Projects',
+                                          onTap: _openProjects,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _ActionButton(
+                                          icon:  CupertinoIcons.chart_bar,
+                                          label: 'Analytics',
+                                          onTap: _openAnalytics,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      // Reminders replaces the old Settings button ↓
+                                      _IconOnlyButton(
+                                        icon:  CupertinoIcons.bell,
+                                        size:  28,
+                                        onTap: _openReminders,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
+                      );
+                    },
                   ),
                 );
               },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

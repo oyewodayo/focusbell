@@ -18,6 +18,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart'
     hide Priority;
+import 'package:focusbell/services/continuity_service.dart';
 import 'package:focusbell/services/database_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -334,6 +335,10 @@ class FocusTimerService extends ChangeNotifier {
 
   void start() {
     if (_state.phase == TimerPhase.running) return;
+
+     ContinuityService.instance.track(
+     ContinuityActionType.startedFocusSession,
+     detail: _state.projectName);
     _segmentStart ??= DateTime.now();
     _prefs?.setString(_kStartedAt, _segmentStart!.toIso8601String());
     _state = _state.copyWith(phase: TimerPhase.running);
@@ -542,6 +547,9 @@ class FocusTimerService extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────
 
   Future<void> _onSegmentComplete() async {
+    ContinuityService.instance.track(
+      ContinuityActionType.completedFocusSession,
+      detail: _state.projectName);
     // 1. Snap to 00:00.
     _state = _state.copyWith(remainingSeconds: 0);
     notifyListeners();

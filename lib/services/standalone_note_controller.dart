@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:focusbell/services/continuity_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -551,6 +552,8 @@ class StandaloneNoteController extends ChangeNotifier {
       n.toRow(),
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    ContinuityService.instance.track(
+      ContinuityActionType.addedNote, detail: n.title);   // ← ADD
     return n;
   }
 
@@ -576,9 +579,13 @@ class StandaloneNoteController extends ChangeNotifier {
       where:     'id = ?',
       whereArgs: [id],
     );
+    ContinuityService.instance.track(
+      ContinuityActionType.editedNote, detail: title);     // ← ADD
   }
 
   Future<void> deleteNote(String id) async {
+    final deletedTitle =
+        _notes.where((n) => n.id == id).firstOrNull?.title;   // ← ADD
     _notes = _notes.where((n) => n.id != id).toList();
     notifyListeners();
     final db = await _getDb();
@@ -587,6 +594,8 @@ class StandaloneNoteController extends ChangeNotifier {
       where:     'id = ?',
       whereArgs: [id],
     );
+    ContinuityService.instance.track(
+      ContinuityActionType.deletedNote, detail: deletedTitle); // ← ADD
   }
 
   StandaloneNote? find(String id) =>

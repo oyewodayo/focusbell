@@ -4,6 +4,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:focusbell/services/continuity_service.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/reminder_model.dart';
@@ -34,6 +35,8 @@ class ReminderService {
     await db.insert('reminders', _toRow(reminder),
         conflictAlgorithm: ConflictAlgorithm.replace);
 
+    ContinuityService.instance.track(
+        ContinuityActionType.addedReminder, detail: reminder.title);
     // Schedule alarm only for time-based reminders
     if (!reminder.isLocationBased) {
       await AlarmService.instance.scheduleForReminder(reminder);
@@ -84,6 +87,9 @@ class ReminderService {
     if (old.geofence != null && updated.geofence == null) {
       GeofenceService.instance.removeGeofence(updated.id);
     }
+
+    ContinuityService.instance.track(
+      ContinuityActionType.editedReminder, detail: updated.title);
 
     final list = List<Reminder>.from(reminders.value);
     list[idx] = updated;
