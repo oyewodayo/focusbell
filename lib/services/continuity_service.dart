@@ -31,6 +31,8 @@ enum ContinuityActionType {
   startedFocusSession,
   pausedFocusSession,
   completedFocusSession,
+  stoppedFocusSession, 
+  skippedFocusSession,
   addedReminder,
   editedReminder,
   deletedReminder,
@@ -335,44 +337,74 @@ class ContinuityService {
     return 'You\'ve been away for ${away.inDays} days.';
   }
 
-  String? _actionPhrase(ContinuityAction action) {
-    switch (action.type) {
-      case ContinuityActionType.addedReminder:
-        return 'Last thing you did: added a reminder${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.editedReminder:
-        return 'You were editing a reminder${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.startedFocusSession:
-        return 'You started a focus session${action.detail != null ? ' on "${action.detail}"' : ''}.';
-      case ContinuityActionType.addedNote:
-        return 'You were working on a note${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.deletedNote:
-        return action.detail != null
-            ? 'You deleted a note — "${action.detail}".'
-            : 'You deleted a note.';
-      case ContinuityActionType.openedScreen:
-        return action.detail != null
-            ? 'You were on the ${action.detail} screen.'
-            : null;
-      case ContinuityActionType.addedProject:
-        return 'You added a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.editedProject:
-        return 'You were editing a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.deletedProject:
-        return 'You deleted a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.archivedProject:
-        return 'You archived a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.switchedProject:
-        return 'You switched to "${action.detail}".';
-      case ContinuityActionType.addedTask:
-        return 'You added a task${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.completedTask:
-        return 'You completed a task${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      case ContinuityActionType.deletedTask:
-        return 'You deleted a task${action.detail != null ? ' — "${action.detail}"' : ''}.';
-      default:
-        return null;
-    }
+ String? _actionPhrase(ContinuityAction action) {
+  switch (action.type) {
+    // ── Focus sessions ──────────────────────────────────────
+    case ContinuityActionType.startedFocusSession:
+      return 'You started a focus session${action.detail != null ? ' on "${action.detail}"' : ''}.';
+    case ContinuityActionType.pausedFocusSession:
+      return 'You paused a focus session${action.detail != null ? ' on "${action.detail}"' : ''}.';
+    case ContinuityActionType.completedFocusSession:
+      return 'You completed a focus session${action.detail != null ? ' on "${action.detail}"' : ''}.';
+    case ContinuityActionType.stoppedFocusSession:
+      return 'You stopped a focus session${action.detail != null ? ' on "${action.detail}"' : ''} early.';
+    case ContinuityActionType.skippedFocusSession:
+      return 'You skipped a segment${action.detail != null ? ' on "${action.detail}"' : ''}.';
+
+    // ── Reminders ────────────────────────────────────────────
+    case ContinuityActionType.addedReminder:
+      return 'Last thing you did: added a reminder${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.editedReminder:
+      return 'You were editing a reminder${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.deletedReminder:
+      return 'You deleted a reminder${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.completedReminder:
+      return 'You completed a reminder${action.detail != null ? ' — "${action.detail}"' : ''}.';
+
+    // ── Notes ────────────────────────────────────────────────
+    case ContinuityActionType.addedNote:
+      return 'You were working on a note${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.editedNote:
+      return 'You were editing a note${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.deletedNote:
+      return 'You deleted a note${action.detail != null ? ' — "${action.detail}"' : ''}.';
+
+    // ── Projects ─────────────────────────────────────────────
+    case ContinuityActionType.addedProject:
+      return 'You added a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.editedProject:
+      return 'You were editing a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.deletedProject:
+      return 'You deleted a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.archivedProject:
+      return 'You archived a project${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.switchedProject:
+      return action.detail != null ? 'You switched to "${action.detail}".' : null;
+
+    // ── Tasks ────────────────────────────────────────────────
+    case ContinuityActionType.addedTask:
+      return 'You added a task${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.completedTask:
+      return 'You completed a task${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.deletedTask:
+      return 'You deleted a task${action.detail != null ? ' — "${action.detail}"' : ''}.';
+
+    // ── Misc ─────────────────────────────────────────────────
+    case ContinuityActionType.openedScreen:
+      return action.detail != null
+          ? 'You were on the ${action.detail} screen.'
+          : null;
+    case ContinuityActionType.addedPlace:
+      return 'You added a saved place${action.detail != null ? ' — "${action.detail}"' : ''}.';
+    case ContinuityActionType.changedTimezone:
+      return 'Your timezone changed${action.detail != null ? ' to ${action.detail}' : ''}.';
+
+    case ContinuityActionType.openedApp:
+      // Opening the app is the action that *triggers* the briefing —
+      // never meaningful as "the last thing you did."
+      return null;
   }
+}
 
   // ── Persistence ────────────────────────────────────────────────
 

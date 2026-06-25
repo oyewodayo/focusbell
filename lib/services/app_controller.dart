@@ -39,12 +39,10 @@ class AppController extends ChangeNotifier {
   /// Returns immediately. All heavy work runs in the background.
   /// The UI will rebuild when [_loading] flips to false.
   Future<void> boot() async {
-    // Kick off background init — never await this in main()
     _bootInBackground();
   }
 
   void _bootInBackground() {
-    // Each step is individually guarded. One failure never kills the rest.
     Future(() async {
       // ① Storage — the only truly required step
       try {
@@ -58,26 +56,22 @@ class AppController extends ChangeNotifier {
         bootError = e;
         _loading  = false;
         notifyListeners();
-        return; // Can't continue without storage
+        return;
       }
 
       // ② Mark ready — UI unblocks here
       _loading = false;
       notifyListeners();
 
-      // ③ Non-critical services — all fire-and-forget after UI is shown
+      // ③ Non-critical services — fire-and-forget after UI is shown
       unawaited(_safeInit('WidgetService',
           () => WidgetService.instance.init()));
-
       unawaited(_safeInit('ForegroundService',
           () async => ForegroundServiceManager.instance.configure(_settings)));
-
       unawaited(_safeInit('reschedule',
           () => rescheduleIfNeeded()));
-
       unawaited(_safeInit('pushWidget',
           () async => _pushWidget()));
-
     });
   }
 
@@ -90,7 +84,7 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// Legacy escape hatch — kept for compatibility but no longer needed.
+  /// Legacy escape hatch — kept for compatibility.
   void forceReady() {
     if (_loading) {
       _loading  = false;
@@ -118,8 +112,8 @@ class AppController extends ChangeNotifier {
     _projects = [..._projects, project];
     notifyListeners();
     await _storage?.saveProject(project);
-     ContinuityService.instance.track(
-      ContinuityActionType.addedProject, detail: name); 
+    ContinuityService.instance.track(
+        ContinuityActionType.addedProject, detail: name);
   }
 
   Future<void> setActive(String id) async {
@@ -152,13 +146,13 @@ class AppController extends ChangeNotifier {
     }
     if (active != null) {
       ContinuityService.instance.track(
-          ContinuityActionType.switchedProject, detail: active.name); // ← ADD
+          ContinuityActionType.switchedProject, detail: active.name);
     }
   }
 
   Future<void> removeProject(String id) async {
-    final removedName = _projects.firstWhere((p) => p.id == id).name; // ← ADD
-    final wasActive = _projects.firstWhere((p) => p.id == id).isActive;
+    final removedName = _projects.firstWhere((p) => p.id == id).name;
+    final wasActive   = _projects.firstWhere((p) => p.id == id).isActive;
     _projects = _projects.where((p) => p.id != id).toList();
 
     if (wasActive && _projects.isNotEmpty) {
@@ -173,7 +167,7 @@ class AppController extends ChangeNotifier {
     await _storage?.deleteProject(id);
     unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
     ContinuityService.instance.track(
-        ContinuityActionType.deletedProject, detail: removedName);  // ← ADD
+        ContinuityActionType.deletedProject, detail: removedName);
   }
 
   Future<void> archiveProject(String id) async {
@@ -189,7 +183,7 @@ class AppController extends ChangeNotifier {
     await _storage?.updateProject(updated);
     unawaited(_safeInit('reschedule', () => rescheduleIfNeeded()));
     ContinuityService.instance.track(
-        ContinuityActionType.archivedProject, detail: updated.name); // ← ADD
+        ContinuityActionType.archivedProject, detail: updated.name);
   }
 
   Future<void> unarchiveProject(String id) async {
@@ -225,11 +219,33 @@ class AppController extends ChangeNotifier {
 
     if (activeProject?.id == id) {
       unawaited(_safeInit('foreground',
-          () => ForegroundServiceManager.instance.updateData(activeProject!, _settings)));
+          () => ForegroundServiceManager.instance
+              .updateData(activeProject!, _settings)));
     }
 
-     ContinuityService.instance.track(
-      ContinuityActionType.editedProject, detail: name); 
+    ContinuityService.instance.track(
+        ContinuityActionType.editedProject, detail: name);
+  }
+
+  /// Toggles [isNoteLocked] on a single project without touching any other
+  /// field. Callers (NoteLockButton, tryOpenLockedNote) use this instead of
+  /// the full [updateProject] to avoid supplying all required named params
+  /// just to change one boolean.
+  Future<void> updateProjectLockState(
+    String id, {
+    required bool isNoteLocked,
+  }) async {
+    _projects = _projects.map((p) {
+      if (p.id != id) return p;
+      return p.copyWith(isNoteLocked: isNoteLocked);
+    }).toList().cast<Project>();
+
+    notifyListeners();
+    // Keep the home-screen widget in sync (lock icon may appear on tiles).
+    _pushWidget();
+
+    final updated = _projects.firstWhere((p) => p.id == id);
+    await _storage?.updateProject(updated);
   }
 
   Future<void> updateProjectPriority(String id, Priority priority) async {
@@ -281,7 +297,11 @@ class AppController extends ChangeNotifier {
   Project? findProject(String projectId) =>
       _projects.where((p) => p.id == projectId).firstOrNull;
 
-  Future<void> addTask(String projectId, String title, {DateTime? dueDate}) async {
+  Future<void> addTask(
+    String projectId,
+    String title, {
+    DateTime? dueDate,
+  }) async {
     final task = Task(
       id:        const Uuid().v4(),
       title:     title,
@@ -298,8 +318,9 @@ class AppController extends ChangeNotifier {
 
     if (activeProject?.id == projectId) _pushWidget();
     await _storage?.saveTask(task, projectId);
-    final projectName = findProject(projectId)?.name;          
-    ContinuityService.instance.track(                         
+
+    final projectName = findProject(projectId)?.name;
+    ContinuityService.instance.track(
         ContinuityActionType.addedTask,
         detail: projectName != null ? '$title ($projectName)' : title);
   }
@@ -334,9 +355,9 @@ class AppController extends ChangeNotifier {
     if (activeProject?.id == projectId) _pushWidget();
     if (updated != null) await _storage?.updateTask(updated!, projectId);
 
-    if (status == TaskStatus.completed && updated != null) {        // ← ADD
-      final projectName = findProject(projectId)?.name;        // ← ADD
-      ContinuityService.instance.track(                        // ← ADD
+    if (status == TaskStatus.completed && updated != null) {
+      final projectName = findProject(projectId)?.name;
+      ContinuityService.instance.track(
           ContinuityActionType.completedTask,
           detail: projectName != null
               ? '${updated!.title} ($projectName)'
@@ -345,9 +366,11 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> removeTask(String projectId, String taskId) async {
-    final project = findProject(projectId);                              // ← ADD
+    final project      = findProject(projectId);
     final removedTitle = project?.tasks
-        .where((t) => t.id == taskId).firstOrNull?.title;                // ← ADD
+        .where((t) => t.id == taskId)
+        .firstOrNull
+        ?.title;
 
     _projects = _projects.map((p) {
       if (p.id != projectId) return p;
@@ -359,7 +382,7 @@ class AppController extends ChangeNotifier {
     if (activeProject?.id == projectId) _pushWidget();
     await _storage?.deleteTask(taskId);
 
-    if (removedTitle != null) {                                          // ← ADD
+    if (removedTitle != null) {
       ContinuityService.instance.track(
           ContinuityActionType.deletedTask,
           detail: project != null

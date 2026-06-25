@@ -63,6 +63,8 @@ class ReminderService {
     GeofenceService.instance.removeGeofence(id);
 
     reminders.value = reminders.value.where((r) => r.id != id).toList();
+    ContinuityService.instance.track(                              // ← ADD
+        ContinuityActionType.deletedReminder, detail: reminder.title);
     debugPrint('[ReminderService] removed "$id"');
   }
 

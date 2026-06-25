@@ -375,6 +375,8 @@ class FocusTimerService extends ChangeNotifier {
     _cancelNotif(1);
     // Paused — push widget so timer text freezes at current value.    ← NEW
     _pushWidgetThrottled(force: true); // ← NEW
+    ContinuityService.instance.track(                                  // ← ADD
+        ContinuityActionType.pausedFocusSession, detail: _state.projectName);
   }
 
   void resume() => start();
@@ -383,6 +385,7 @@ class FocusTimerService extends ChangeNotifier {
     _cancelTicker();
     _stopTick();
     _stopAlarm();
+    final projectName = _state.projectName;                            // ← ADD (capture before reset)
     _state = FocusTimerState.initial(
       _state.preset,
     ).copyWith(projectId: _state.projectId, projectName: _state.projectName);
@@ -398,9 +401,12 @@ class FocusTimerService extends ChangeNotifier {
       // ← NEW
       activeProject: AppController.instance.activeProject, // ← NEW
     ); // ← NEW
+    ContinuityService.instance.track(                                  // ← ADD
+        ContinuityActionType.stoppedFocusSession, detail: projectName);
   }
 
   Future<void> skip() async {
+    final projectName = _state.projectName;                            // ← ADD (capture before advance)
     _completedSegmentType = null;
     _cancelTicker();
     _stopTick();
@@ -412,12 +418,15 @@ class FocusTimerService extends ChangeNotifier {
       // ← NEW
       activeProject: AppController.instance.activeProject, // ← NEW
     ); // ← NEW
+    ContinuityService.instance.track(                                  // ← ADD
+        ContinuityActionType.skippedFocusSession, detail: projectName);
   }
 
   void stop() {
     _cancelTicker();
     _stopTick();
     _stopAlarm();
+    final projectName = _state.projectName;                            // ← ADD (capture before reset)
     _state = FocusTimerState.initial(
       _state.preset,
     ).copyWith(projectId: _state.projectId, projectName: _state.projectName);
@@ -433,7 +442,11 @@ class FocusTimerService extends ChangeNotifier {
       // ← NEW
       activeProject: AppController.instance.activeProject, // ← NEW
     ); // ← NEW
+    ContinuityService.instance.track(                                  // ← ADD
+        ContinuityActionType.stoppedFocusSession, detail: projectName);
   }
+
+
   Future<List<FocusSession>> fetchSessionsForProject({
     required String projectId,
     required int    days,

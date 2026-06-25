@@ -1,17 +1,9 @@
 // home_screen.dart  — FULL REPLACEMENT
-//
-// Changes from previous version:
-//   • Settings icon moved to top bar (beside the ON/OFF notif badge)
-//   • Bottom bar: Notes | Projects | Analytics | Reminders  (4 items)
-//   • _openReminders() added → opens RemindersScreen as a full-screen route
-//   • FIX: Bottom action row no longer overflows on short/constrained
-//     viewports (e.g. small screens, embedded overlays). Body is now
-//     wrapped in a LayoutBuilder + scrollable, height-constrained Column
-//     so content can scroll instead of overflowing when space is tight.
 
 import 'package:flutter/material.dart';
 import 'package:focusbell/screens/notes_screen.dart';
 import 'package:focusbell/screens/reminders_screen.dart';
+import 'package:focusbell/widgets/note_lock_button.dart';
 import 'package:focusbell/widgets/project_note_sheet.dart';
 import 'package:flutter/cupertino.dart';
 import '../models/project.dart';
@@ -46,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-     WidgetsBinding.instance.addObserver(this);       // ← ADD
+     WidgetsBinding.instance.addObserver(this);
     ContinuityService.instance.addListener(_onContinuityChanged); 
     _pulseCtrl = AnimationController(
       vsync:    this,
@@ -73,14 +65,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
-     WidgetsBinding.instance.removeObserver(this);    // ← ADD
+     WidgetsBinding.instance.removeObserver(this);
     ContinuityService.instance.removeListener(_onContinuityChanged);
     _pulseCtrl.dispose();
     super.dispose();
   }
 
-
-  
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -101,9 +91,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (active != null) {
       showFocusTimerSheet(context, active);
     } else {
-      // No active project — navigate to project picker or home tab
-      // so user can select one and resume
-      setState(() {}); // just dismiss card and let user pick manually
+      setState(() {});
     }
   }
 
@@ -135,7 +123,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Opens the new Reminders screen.
   void _openReminders() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const RemindersScreen()),
@@ -147,28 +134,24 @@ class _HomeScreenState extends State<HomeScreen>
     final snapshot = ContinuityService.instance.pendingSnapshot;
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
-       body: Column(
-      children: [
-         if (snapshot != null)
-          ContinuityCard(
-            snapshot:        snapshot,
-            onDismiss:       ContinuityService.instance.dismissSnapshot,
-            onResumeSession: snapshot.activeSessionProject != null
-                ? _resumeFocusSession
-                : null,
-          ),
-        Expanded(
-          child: ListenableBuilder(
-            listenable: _ctrl,
-              builder: (context, _) {
-                final active   = _ctrl.activeProject;
-                final settings = _ctrl.settings;            
-                // LayoutBuilder gives us the real available height for this
-                // render context (full screen OR a constrained overlay/webview).
-                // We use that to build a Column that is allowed to scroll
-                // instead of overflow when content doesn't fit.
-                return SafeArea(
-                  child: LayoutBuilder(
+      body: SafeArea(
+        child: Column(
+          children: [
+            if (snapshot != null)
+              ContinuityCard(
+                snapshot:        snapshot,
+                onDismiss:       ContinuityService.instance.dismissSnapshot,
+                onResumeSession: snapshot.activeSessionProject != null
+                    ? _resumeFocusSession
+                    : null,
+              ),
+            Expanded(
+              child: ListenableBuilder(
+                listenable: _ctrl,
+                builder: (context, _) {
+                  final active   = _ctrl.activeProject;
+                  final settings = _ctrl.settings;
+                  return LayoutBuilder(
                     builder: (context, constraints) {
                       return SingleChildScrollView(
                         physics: const ClampingScrollPhysics(),
@@ -179,7 +162,6 @@ class _HomeScreenState extends State<HomeScreen>
                           child: IntrinsicHeight(
                             child: Column(
                               children: [
-                                // ── Top bar ─────────────────────────
                                 Padding(
                                   padding:
                                       const EdgeInsets.fromLTRB(24, 20, 24, 0),
@@ -198,7 +180,6 @@ class _HomeScreenState extends State<HomeScreen>
                                       _NotifBadge(
                                           enabled: settings.notificationsEnabled),
                                       const SizedBox(width: 8),
-                                      // Settings icon now lives here ↓
                                       GestureDetector(
                                         onTap: _openSettings,
                                         child: Container(
@@ -220,14 +201,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     ],
                                   ),
                                 ),
-            
-                                // ── Main content ─────────────────────
-                                // Expanded only works inside a bounded Column,
-                                // which we no longer always have once this is
-                                // wrapped in a scroll view. Flexible + a min
-                                // height keeps the empty/active states centered
-                                // when there's slack space, but lets them size
-                                // naturally (and scroll) when space is tight.
+
                                 Flexible(
                                   child: Center(
                                     child: Padding(
@@ -242,8 +216,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     ),
                                   ),
                                 ),
-            
-                                // ── Bottom actions ───────────────────
+
                                 Padding(
                                   padding:
                                       const EdgeInsets.fromLTRB(24, 8, 24, 20),
@@ -271,7 +244,6 @@ class _HomeScreenState extends State<HomeScreen>
                                         ),
                                       ),
                                       const SizedBox(width: 10),
-                                      // Reminders replaces the old Settings button ↓
                                       _IconOnlyButton(
                                         icon:  CupertinoIcons.bell,
                                         size:  28,
@@ -286,18 +258,16 @@ class _HomeScreenState extends State<HomeScreen>
                         ),
                       );
                     },
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
-
-// ── Active project card ───────────────────────────────────────────
 
 class _ActiveCard extends StatelessWidget {
   final Project            project;
@@ -326,7 +296,6 @@ class _ActiveCard extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ── Pulsing priority orb ──────────────────────────
         ScaleTransition(
           scale: pulseAnim,
           child: Container(
@@ -353,7 +322,6 @@ class _ActiveCard extends StatelessWidget {
         ),
         const SizedBox(height: 28),
 
-        // Priority badge
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
@@ -373,7 +341,6 @@ class _ActiveCard extends StatelessWidget {
         ),
         const SizedBox(height: 16),
 
-        // Project name
         Text(
           project.name,
           textAlign: TextAlign.center,
@@ -394,7 +361,6 @@ class _ActiveCard extends StatelessWidget {
         ),
         const SizedBox(height: 16),
 
-        // ── View / task / overdue pills ───────────────────
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -411,8 +377,10 @@ class _ActiveCard extends StatelessWidget {
                 icon:  Icons.sticky_note_2_outlined,
                 label: 'Note',
                 color: const Color(0xFF0A84FF),
-                onTap: () {
-                  showProjectNoteSheet(context, project: project);
+                 onTap: () async {
+                    final canOpen = await tryOpenLockedNote(context, project);
+                    if (!canOpen || !context.mounted) return;
+                    showProjectNoteSheet(context, project: project);
                 },
               ),
               if (hasTasks) ...[
@@ -443,12 +411,10 @@ class _ActiveCard extends StatelessWidget {
 
         const SizedBox(height: 16),
 
-        // ── Live focus banner / start button ──────────────
         FocusSessionButton(project: project),
 
         const SizedBox(height: 32),
 
-        // ── Priority switcher ─────────────────────────────
         _PrioritySwitcher(project: project),
       ],
     );
@@ -738,8 +704,6 @@ class _IconOnlyButton extends StatelessWidget {
     );
   }
 }
-
-// ── Notification badge ────────────────────────────────────────────
 
 class _NotifBadge extends StatelessWidget {
   final bool enabled;

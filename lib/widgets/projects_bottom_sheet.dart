@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:focusbell/screens/home_screen.dart' hide showProjectNoteSheet;
 import 'package:focusbell/widgets/project_note_sheet.dart';
 import '../models/project.dart';
+import '../models/settings.dart';
 import '../services/app_controller.dart';
+import '../services/pin_service.dart';
 import '../utils/app_toast.dart';
+import 'pin_entry_sheet.dart';
 import 'project_add_dialog.dart';
 import 'project_edit_sheet.dart';
 import 'project_view_sheet.dart';
@@ -24,16 +28,13 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
   final _ctrl = AppController.instance;
   _SortMode _sortMode = _SortMode.manual;
 
-  // ── Feature 1: Priority filter dropdown ──────────────────────
-  Priority? _filterPriority;        // null = show all
+  Priority? _filterPriority;
   bool      _priorityDropOpen = false;
 
-  // ── Feature 2: Search ────────────────────────────────────────
-  bool                        _searchOpen = false;
+  bool                        _searchOpen  = false;
   String                      _searchQuery = '';
   final TextEditingController _searchCtrl  = TextEditingController();
 
-  // ── Feature 3: Archive toggle ─────────────────────────────────
   bool _showArchive = false;
 
   static const _priorityOrder = {
@@ -49,28 +50,21 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
     super.dispose();
   }
 
-  // ── Filtering + sorting pipeline ─────────────────────────────
-
   List<Project> _process(List<Project> raw) {
-    // 1. Split archive vs live
     var pool = _showArchive
         ? raw.where((p) => p.isArchived).toList()
         : raw.where((p) => !p.isArchived).toList();
 
-    // 2. Priority filter (Feature 1 — dropdown)
     if (_filterPriority != null) {
       pool = pool.where((p) => p.priority == _filterPriority).toList();
     }
-
-    // 3. Search filter (Feature 2)
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       pool = pool.where((p) => p.name.toLowerCase().contains(q)).toList();
     }
 
-    if (_showArchive) return pool; // archive list: no active pinning
+    if (_showArchive) return pool;
 
-    // 4. Active-first + sort (only for live projects)
     final active = pool.where((p) => p.isActive).toList();
     final rest   = pool.where((p) => !p.isActive).toList();
 
@@ -89,8 +83,6 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
             : _SortMode.manual;
       });
 
-  // ── Priority labels for the dropdown ─────────────────────────
-
   static const _priorityMeta = [
     (priority: Priority.critical, emoji: '🔴', label: 'Critical'),
     (priority: Priority.high,     emoji: '🟠', label: 'High'),
@@ -98,14 +90,12 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
     (priority: Priority.low,      emoji: '🟢', label: 'Low'),
   ];
 
-  // ── Build ─────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: _ctrl,
       builder: (context, _) {
-        final projects = _process(_ctrl.projects);
+        final projects     = _process(_ctrl.projects);
         final archivedCount =
             _ctrl.projects.where((p) => p.isArchived).length;
 
@@ -121,10 +111,8 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 12),
-              // Handle
               Container(
-                width: 40,
-                height: 4,
+                width: 40, height: 4,
                 decoration: BoxDecoration(
                   color: Colors.white24,
                   borderRadius: BorderRadius.circular(2),
@@ -133,227 +121,241 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
               const SizedBox(height: 20),
 
               // ── Header row ──────────────────────────────────
-             Padding(
+              Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
-                    children: [
-                    // Title + archive toggle
+                  children: [
                     GestureDetector(
-                        onTap: () => setState(() {
-                        _showArchive = !_showArchive;
+                      onTap: () => setState(() {
+                        _showArchive      = !_showArchive;
                         _filterPriority   = null;
                         _searchQuery      = '';
                         _searchCtrl.clear();
                         _searchOpen       = false;
                         _priorityDropOpen = false;
-                        }),
-                        child: Row(
+                      }),
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                            AnimatedSwitcher(
+                          AnimatedSwitcher(
                             duration: const Duration(milliseconds: 200),
                             child: Text(
-                                _showArchive ? 'Archive' : 'Projects',
-                                key: ValueKey(_showArchive),
-                                style: const TextStyle(
+                              _showArchive ? 'Archive' : 'Projects',
+                              key: ValueKey(_showArchive),
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -0.5,
-                                ),
+                              ),
                             ),
-                            ),
-                            const SizedBox(width: 6),
-                            AnimatedContainer(
+                          ),
+                          const SizedBox(width: 6),
+                          AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 3),
                             decoration: BoxDecoration(
-                                color: _showArchive
-                                    ? const Color(0xFFFF9F0A).withValues(alpha: 0.2)
-                                    : Colors.white.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                color: _showArchive
-                                    ? const Color(0xFFFF9F0A).withValues(alpha: 0.5)
-                                    : Colors.white12,
-                                ),
-                            ),
-                            child: Icon(
-                                _showArchive
-                                    ? Icons.inventory_2_rounded
-                                    : Icons.inventory_2_outlined,
-                                size: 13,
+                              color: _showArchive
+                                  ? const Color(0xFFFF9F0A)
+                                      .withValues(alpha: 0.2)
+                                  : Colors.white.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
                                 color: _showArchive
                                     ? const Color(0xFFFF9F0A)
-                                    : Colors.white38,
+                                        .withValues(alpha: 0.5)
+                                    : Colors.white12,
+                              ),
                             ),
+                            child: Icon(
+                              _showArchive
+                                  ? Icons.inventory_2_rounded
+                                  : Icons.inventory_2_outlined,
+                              size: 13,
+                              color: _showArchive
+                                  ? const Color(0xFFFF9F0A)
+                                  : Colors.white38,
                             ),
-                            if (archivedCount > 0 && !_showArchive) ...[
+                          ),
+                          if (archivedCount > 0 && !_showArchive) ...[
                             const SizedBox(width: 4),
                             Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                decoration: BoxDecoration(
-                                color: const Color(0xFFFF9F0A).withValues(alpha: 0.2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF9F0A)
+                                    .withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
+                              ),
+                              child: Text(
                                 '$archivedCount',
                                 style: const TextStyle(
-                                    color: Color(0xFFFF9F0A),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
+                                  color: Color(0xFFFF9F0A),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
                                 ),
-                                ),
+                              ),
                             ),
-                            ],
+                          ],
                         ],
-                        ),
+                      ),
                     ),
-
                     const SizedBox(width: 6),
 
-                    // Sort toggle
                     if (!_showArchive)
-                        GestureDetector(
+                      GestureDetector(
                         onTap: _toggleSort,
                         child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
                             color: _sortMode == _SortMode.priority
-                                ? const Color(0xFFFFD60A).withValues(alpha: 0.15)
+                                ? const Color(0xFFFFD60A)
+                                    .withValues(alpha: 0.15)
                                 : Colors.transparent,
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                                color: _sortMode == _SortMode.priority
-                                    ? const Color(0xFFFFD60A).withValues(alpha: 0.4)
-                                    : Colors.white12,
+                              color: _sortMode == _SortMode.priority
+                                  ? const Color(0xFFFFD60A)
+                                      .withValues(alpha: 0.4)
+                                  : Colors.white12,
                             ),
-                            ),
-                            child: Row(
+                          ),
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                                Icon(
+                              Icon(
                                 Icons.sort_rounded,
                                 size: 14,
                                 color: _sortMode == _SortMode.priority
                                     ? const Color(0xFFFFD60A)
                                     : Colors.white38,
-                                ),
-                                if (_sortMode == _SortMode.priority) ...[
+                              ),
+                              if (_sortMode == _SortMode.priority) ...[
                                 const SizedBox(width: 4),
                                 const Text(
-                                    'Priority',
-                                    style: TextStyle(
+                                  'Priority',
+                                  style: TextStyle(
                                     color: Color(0xFFFFD60A),
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
-                                    ),
+                                  ),
                                 ),
-                                ],
+                              ],
                             ],
-                            ),
+                          ),
                         ),
-                        ),
+                      ),
 
                     const SizedBox(width: 6),
 
-                    // Priority filter caret
                     GestureDetector(
-                        onTap: () =>
-                            setState(() => _priorityDropOpen = !_priorityDropOpen),
-                        child: AnimatedContainer(
+                      onTap: () => setState(
+                          () => _priorityDropOpen = !_priorityDropOpen),
+                      child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
+                          color: _filterPriority != null
+                              ? _filterPriority!.color
+                                  .withValues(alpha: 0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
                             color: _filterPriority != null
-                                ? _filterPriority!.color.withValues(alpha: 0.15)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                            color: _filterPriority != null
-                                ? _filterPriority!.color.withValues(alpha: 0.45)
+                                ? _filterPriority!.color
+                                    .withValues(alpha: 0.45)
                                 : Colors.white12,
-                            ),
+                          ),
                         ),
                         child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             if (_filterPriority != null) ...[
-                                Text(
+                              Text(
                                 _priorityMeta
-                                    .firstWhere((m) => m.priority == _filterPriority)
+                                    .firstWhere(
+                                        (m) => m.priority == _filterPriority)
                                     .emoji,
                                 style: const TextStyle(fontSize: 11),
-                                ),
-                                const SizedBox(width: 3),
+                              ),
+                              const SizedBox(width: 3),
                             ],
                             AnimatedRotation(
-                                turns: _priorityDropOpen ? 0.5 : 0,
-                                duration: const Duration(milliseconds: 200),
-                                child: Icon(
+                              turns: _priorityDropOpen ? 0.5 : 0,
+                              duration: const Duration(milliseconds: 200),
+                              child: Icon(
                                 Icons.keyboard_arrow_down_rounded,
                                 size: 16,
                                 color: _filterPriority != null
                                     ? _filterPriority!.color
                                     : Colors.white38,
-                                ),
+                              ),
                             ),
-                            ],
+                          ],
                         ),
-                        ),
+                      ),
                     ),
 
                     const SizedBox(width: 6),
 
-                    // Search icon
                     GestureDetector(
-                        onTap: () {
+                      onTap: () {
                         setState(() {
-                            _searchOpen = !_searchOpen;
-                            if (!_searchOpen) {
+                          _searchOpen = !_searchOpen;
+                          if (!_searchOpen) {
                             _searchQuery = '';
                             _searchCtrl.clear();
-                            }
+                          }
                         });
-                        },
-                        child: AnimatedContainer(
+                      },
+                      child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
+                          color: _searchOpen
+                              ? const Color(0xFF0A84FF).withValues(alpha: 0.15)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
                             color: _searchOpen
-                                ? const Color(0xFF0A84FF).withValues(alpha: 0.15)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                            color: _searchOpen
-                                ? const Color(0xFF0A84FF).withValues(alpha: 0.45)
+                                ? const Color(0xFF0A84FF)
+                                    .withValues(alpha: 0.45)
                                 : Colors.white12,
-                            ),
+                          ),
                         ),
                         child: Icon(
-                            _searchOpen ? Icons.search_off_rounded : Icons.search_rounded,
-                            size: 15,
-                            color: _searchOpen ? const Color(0xFF0A84FF) : Colors.white38,
+                          _searchOpen
+                              ? Icons.search_off_rounded
+                              : Icons.search_rounded,
+                          size: 15,
+                          color: _searchOpen
+                              ? const Color(0xFF0A84FF)
+                              : Colors.white38,
                         ),
-                        ),
+                      ),
                     ),
 
                     const Spacer(),
 
                     if (!_showArchive)
-                        _AddButton(onAdded: () => setState(() {})),
-                    ],
+                      _AddButton(onAdded: () => setState(() {})),
+                  ],
                 ),
-            ),
+              ),
 
-              // ── Feature 1: Priority dropdown ──────────────
+              // ── Priority dropdown ──────────────────────────
               AnimatedSize(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeInOut,
                 child: _priorityDropOpen
                     ? Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        padding:
+                            const EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: Container(
                           decoration: BoxDecoration(
                             color: const Color(0xFF1A1A1A),
@@ -362,7 +364,6 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                           ),
                           child: Column(
                             children: [
-                              // "All" option
                               _PriorityFilterOption(
                                 emoji: '🔘',
                                 label: 'All Priorities',
@@ -373,17 +374,14 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                                   _priorityDropOpen = false;
                                 }),
                               ),
-                              const Divider(
-                                  height: 1, color: Colors.white10),
-                              ..._priorityMeta.map((m) =>
-                                  _PriorityFilterOption(
-                                    emoji: m.emoji,
-                                    label: m.label,
-                                    selected:
-                                        _filterPriority == m.priority,
-                                    color: m.priority.color,
+                              const Divider(height: 1, color: Colors.white10),
+                              ..._priorityMeta.map((m) => _PriorityFilterOption(
+                                    emoji:    m.emoji,
+                                    label:    m.label,
+                                    selected: _filterPriority == m.priority,
+                                    color:    m.priority.color,
                                     onTap: () => setState(() {
-                                      _filterPriority = m.priority;
+                                      _filterPriority   = m.priority;
                                       _priorityDropOpen = false;
                                     }),
                                   )),
@@ -394,18 +392,20 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                     : const SizedBox.shrink(),
               ),
 
-              // ── Feature 2: Search bar ──────────────────────
+              // ── Search bar ─────────────────────────────────
               AnimatedSize(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeInOut,
                 child: _searchOpen
                     ? Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                        padding:
+                            const EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: TextField(
                           controller: _searchCtrl,
                           autofocus: true,
                           style: const TextStyle(
-                              color: Color.fromARGB(255, 204, 201, 201), fontSize: 14),
+                              color: Color.fromARGB(255, 204, 201, 201),
+                              fontSize: 14),
                           onChanged: (v) =>
                               setState(() => _searchQuery = v),
                           decoration: InputDecoration(
@@ -426,8 +426,8 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                                 : null,
                             filled: true,
                             fillColor: const Color(0xFF1C1C1C),
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 10),
+                            contentPadding:
+                                const EdgeInsets.symmetric(vertical: 10),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: BorderSide.none,
@@ -435,8 +435,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: const BorderSide(
-                                  color: Color(0xFF0A84FF),
-                                  width: 1.5),
+                                  color: Color(0xFF0A84FF), width: 1.5),
                             ),
                           ),
                         ),
@@ -506,36 +505,40 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                   ),
                 )
               else
-               ConstrainedBox(
-                constraints: BoxConstraints(
-                    maxHeight: (MediaQuery.of(context).size.height * 0.5) -
-                        MediaQuery.of(context).viewInsets.bottom,
-                ),
-                child: ReorderableListView.builder(
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight:
+                        (MediaQuery.of(context).size.height * 0.5) -
+                            MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: ReorderableListView.builder(
                     shrinkWrap: true,
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     itemCount: projects.length,
                     proxyDecorator: (child, index, animation) =>
                         Material(color: Colors.transparent, child: child),
                     onReorder: (oldIndex, newIndex) {
-                    if (_showArchive) return;
-                    final hasActive = projects.any((p) => p.isActive);
-                    if (hasActive && (oldIndex == 0 || newIndex == 0)) return;
-                    if (newIndex > oldIndex) newIndex--;
-                    final reordered = [...projects];
-                    final moved = reordered.removeAt(oldIndex);
-                    reordered.insert(newIndex, moved);
-                    _ctrl.reorderProjects(reordered.map((p) => p.id).toList());
+                      if (_showArchive) return;
+                      final hasActive =
+                          projects.any((p) => p.isActive);
+                      if (hasActive &&
+                          (oldIndex == 0 || newIndex == 0)) return;
+                      if (newIndex > oldIndex) newIndex--;
+                      final reordered = [...projects];
+                      final moved = reordered.removeAt(oldIndex);
+                      reordered.insert(newIndex, moved);
+                      _ctrl.reorderProjects(
+                          reordered.map((p) => p.id).toList());
                     },
                     itemBuilder: (ctx, i) {
-                    final project = projects[i];
-                    return _ProjectTile(
+                      final project = projects[i];
+                      return _ProjectTile(
                         key: ValueKey(project.id),
                         project: project,
                         isArchiveView: _showArchive,
-                    );
+                      );
                     },
-                ),
+                  ),
                 ),
               const SizedBox(height: 12),
             ],
@@ -546,13 +549,13 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
   }
 }
 
-// ── Priority filter option row ────────────────────────────────────
+// ── Priority filter option ────────────────────────────────────────
 
 class _PriorityFilterOption extends StatelessWidget {
-  final String emoji;
-  final String label;
-  final bool selected;
-  final Color color;
+  final String       emoji;
+  final String       label;
+  final bool         selected;
+  final Color        color;
   final VoidCallback onTap;
 
   const _PriorityFilterOption({
@@ -570,12 +573,9 @@ class _PriorityFilterOption extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          color: selected
-              ? color.withValues(alpha: 0.12)
-              : Colors.transparent,
+          color: selected ? color.withValues(alpha: 0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -602,11 +602,11 @@ class _PriorityFilterOption extends StatelessWidget {
   }
 }
 
-// ── Single project row ────────────────────────────────────────────
+// ── Single project tile ───────────────────────────────────────────
 
 class _ProjectTile extends StatefulWidget {
   final Project project;
-  final bool isArchiveView;
+  final bool    isArchiveView;
 
   const _ProjectTile({
     Key? key,
@@ -623,7 +623,7 @@ class _ProjectTileState extends State<_ProjectTile> {
 
   void _closeTray() => setState(() => _actionTrayOpen = false);
 
-  void _showViewSheet(BuildContext context) {
+  void _showViewSheet() {
     _closeTray();
     showModalBottomSheet(
       context: context,
@@ -633,18 +633,149 @@ class _ProjectTileState extends State<_ProjectTile> {
     );
   }
 
-  void _showEditSheet(BuildContext context) {
+  void _showEditSheet() {
     _closeTray();
     showProjectEditSheet(context, widget.project);
   }
 
+  // ── PIN-gated note open ─────────────────────────────────────────
+  //
+  // Always read the LIVE project from AppController so we never act
+  // on a stale `isNoteLocked` captured at widget construction time.
+  Future<void> _openNote() async {
+    _closeTray();
+
+    // Re-read from controller — widget.project may be stale.
+    final live = AppController.instance.projects
+        .where((p) => p.id == widget.project.id)
+        .firstOrNull;
+    if (live == null) return;
+
+    if (live.isNoteLocked) {
+      final settings = AppController.instance.settings;
+
+      // Edge case: note locked but PIN was later removed — auto-unlock.
+      if (!PinService.isSet(settings.pinHash) || !settings.pinEnabled) {
+        await AppController.instance.updateProjectLockState(
+          live.id,
+          isNoteLocked: false,
+        );
+        if (!mounted) return;
+        showProjectNoteSheet(context, project: live);
+        return;
+      }
+
+      final ok = await showPinEntry<bool>(
+        context,
+        mode:       PinEntryMode.verify,
+        storedHash: settings.pinHash,
+        title:      'Enter PIN to open note',
+        subtitle:   live.name,
+      );
+      if (ok != true || !mounted) return;
+    }
+
+    if (!mounted) return;
+    showProjectNoteSheet(context, project: live);
+  }
+
+  // ── Lock / Unlock from the action tray ─────────────────────────
+
+  Future<void> _toggleLock() async {
+    _closeTray();
+
+    // Always read live state to avoid stale captures.
+    final live = AppController.instance.projects
+        .where((p) => p.id == widget.project.id)
+        .firstOrNull;
+    if (live == null || !mounted) return;
+
+    final settings = AppController.instance.settings;
+
+    if (!PinService.isSet(settings.pinHash) || !settings.pinEnabled) {
+      _showNoPinDialog();
+      return;
+    }
+
+    if (live.isNoteLocked) {
+      // Unlock: verify PIN first.
+      final ok = await showPinEntry<bool>(
+        context,
+        mode:       PinEntryMode.verify,
+        storedHash: settings.pinHash,
+        title:      'Enter PIN to unlock note',
+      );
+      if (ok != true || !mounted) return;
+
+      await AppController.instance.updateProjectLockState(
+        live.id,
+        isNoteLocked: false,
+      );
+
+      if (mounted) {
+        AppToast.show(
+          context,
+          msg: '🔓 Note unlocked',
+          backgroundColor: const Color(0xFF1A2E1A),
+          textColor: const Color(0xFF4CAF50),
+        );
+      }
+    } else {
+      // Lock: no PIN needed — user is in the app.
+      await AppController.instance.updateProjectLockState(
+        live.id,
+        isNoteLocked: true,
+      );
+
+      if (mounted) {
+        AppToast.show(
+          context,
+          msg: '🔒 Note locked',
+          backgroundColor: const Color(0xFF1A1A2E),
+          textColor: const Color(0xFF64D2FF),
+        );
+      }
+    }
+  }
+
+  void _showNoPinDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('No PIN set',
+            style: TextStyle(color: Colors.white, fontSize: 17)),
+        content: const Text(
+          'Go to Settings → Security to set a PIN before locking notes.',
+          style: TextStyle(color: Colors.white60, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK',
+                style: TextStyle(color: Color(0xFF4CAF50))),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ctrl = AppController.instance;
-    final p = widget.project;
+    final ctrl     = AppController.instance;
+    final p        = widget.project;
     final isActive = p.isActive;
 
-    // ── Archive view: simpler swipe-to-unarchive tile ─────────
+    // Read live lock state so the tray label updates reactively.
+    final liveLocked = ctrl.projects
+        .where((lp) => lp.id == p.id)
+        .firstOrNull
+        ?.isNoteLocked ??
+        p.isNoteLocked;
+
+    // ── Archive view ──────────────────────────────────────────────
     if (widget.isArchiveView) {
       return Dismissible(
         key: ValueKey('arch_${p.id}'),
@@ -679,23 +810,21 @@ class _ProjectTileState extends State<_ProjectTile> {
                 backgroundColor: const Color(0xFF1A2A1A),
                 textColor: const Color(0xFF34C759));
           }
-          return false; // controller handles removal from list
+          return false;
         },
-        child: _buildTileBody(context, ctrl, p, isActive),
+        child: _buildTileBody(context, ctrl, p, isActive, liveLocked),
       );
     }
 
-    // ── Live view: swipe right = archive tray, left = delete ──
+    // ── Live view ─────────────────────────────────────────────────
     return Dismissible(
       key: ValueKey(p.id),
       direction: DismissDirection.horizontal,
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          // Right swipe → open action tray (archive + original actions)
           setState(() => _actionTrayOpen = !_actionTrayOpen);
           return false;
         }
-        // Left swipe → confirm delete
         return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -729,7 +858,6 @@ class _ProjectTileState extends State<_ProjectTile> {
             backgroundColor: const Color(0xFF222222),
             textColor: Colors.white70);
       },
-      // Right-swipe background: archive icon
       background: Container(
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 20),
@@ -752,7 +880,6 @@ class _ProjectTileState extends State<_ProjectTile> {
           ],
         ),
       ),
-      // Left-swipe background: delete
       secondaryBackground: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
@@ -761,18 +888,17 @@ class _ProjectTileState extends State<_ProjectTile> {
           color: const Color(0xFF2E0A0A),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: const Icon(Icons.delete_outline,
-            color: Color(0xFFFF3B30)),
+        child: const Icon(Icons.delete_outline, color: Color(0xFFFF3B30)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _buildTileBody(context, ctrl, p, isActive),
+          _buildTileBody(context, ctrl, p, isActive, liveLocked),
 
-          // ── Action tray (archive + view + edit) ──────────
+          // ── Action tray ────────────────────────────────────
           AnimatedCrossFade(
             duration: const Duration(milliseconds: 200),
-            firstCurve: Curves.easeOut,
+            firstCurve:  Curves.easeOut,
             secondCurve: Curves.easeIn,
             crossFadeState: _actionTrayOpen
                 ? CrossFadeState.showSecond
@@ -790,64 +916,82 @@ class _ProjectTileState extends State<_ProjectTile> {
               ),
               child: Row(
                 children: [
-                    const Text('Actions',
-                        style: TextStyle(color: Colors.white30, fontSize: 11)),
-                    const SizedBox(width: 10),
-                    Expanded(
+                  const Text('Actions',
+                      style: TextStyle(
+                          color: Colors.white30, fontSize: 11)),
+                  const SizedBox(width: 10),
+                  Expanded(
                     child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
                         children: [
-                            // ── Note ──────────────────────────────────────────────
-                            _TrayButton(
+                          // ── Note (PIN-gated) ────────────────
+                          _TrayButton(
                             icon:  Icons.sticky_note_2_outlined,
                             label: 'Note',
                             color: const Color(0xFF0A84FF),
-                            onTap: () {
-                                _closeTray();
-                                showProjectNoteSheet(context, project: p);
-                            },
-                            ),
-                           
-                            const SizedBox(width: 8),
-                            // ── View ──────────────────────────────────────────────
-                            _TrayButton(
+                            // Show a lock badge on the icon when locked.
+                            badge: liveLocked ? Icons.lock_rounded : null,
+                            onTap: _openNote,
+                          ),
+                          const SizedBox(width: 8),
+
+                          // ── Lock / Unlock ───────────────────
+                          _TrayButton(
+                            icon: liveLocked
+                                ? Icons.lock_open_rounded
+                                : Icons.lock_outline_rounded,
+                            label: liveLocked ? 'Unlock' : 'Lock',
+                            color: liveLocked
+                                ? const Color(0xFFFF9F0A)
+                                : const Color(0xFF4CAF50),
+                            onTap: _toggleLock,
+                          ),
+                          const SizedBox(width: 8),
+
+                          // ── View ────────────────────────────
+                          _TrayButton(
                             icon:  Icons.visibility_outlined,
                             label: 'View',
                             color: const Color(0xFF64D2FF),
-                            onTap: () => _showViewSheet(context),
-                            ),
-                            const SizedBox(width: 8),
-                            // ── Edit ──────────────────────────────────────────────
-                            _TrayButton(
+                            onTap: _showViewSheet,
+                          ),
+                          const SizedBox(width: 8),
+
+                          // ── Edit ────────────────────────────
+                          _TrayButton(
                             icon:  Icons.edit_outlined,
                             label: 'Edit',
                             color: const Color(0xFFFFD60A),
-                            onTap: () => _showEditSheet(context),
-                            ),
-                             const SizedBox(width: 8),
-                            // ── Archive ───────────────────────────────────────────
-                            _TrayButton(
+                            onTap: _showEditSheet,
+                          ),
+                          const SizedBox(width: 8),
+
+                          // ── Archive ─────────────────────────
+                          _TrayButton(
                             icon:  Icons.inventory_2_outlined,
                             label: 'Archive',
                             color: const Color(0xFFFF9F0A),
                             onTap: () async {
-                                _closeTray();
-                                await ctrl.archiveProject(p.id);
-                                if (context.mounted) {
+                              _closeTray();
+                              await ctrl.archiveProject(p.id);
+                              if (context.mounted) {
                                 AppToast.show(context,
-                                    msg: '"${p.name}" archived',
-                                    backgroundColor: const Color(0xFF1A1200),
-                                    textColor: const Color(0xFFFF9F0A));
-                                }
+                                    msg:
+                                        '"${p.name}" archived',
+                                    backgroundColor:
+                                        const Color(0xFF1A1200),
+                                    textColor:
+                                        const Color(0xFFFF9F0A));
+                              }
                             },
-                            ),
+                          ),
                         ],
-                        ),
+                      ),
                     ),
-                    ),
+                  ),
                 ],
-                ),
+              ),
             ),
           ),
         ],
@@ -856,7 +1000,12 @@ class _ProjectTileState extends State<_ProjectTile> {
   }
 
   Widget _buildTileBody(
-      BuildContext context, AppController ctrl, Project p, bool isActive) {
+    BuildContext   context,
+    AppController  ctrl,
+    Project        p,
+    bool           isActive,
+    bool           liveLocked,
+  ) {
     return GestureDetector(
       onTap: () {
         if (!widget.isArchiveView) {
@@ -870,13 +1019,12 @@ class _ProjectTileState extends State<_ProjectTile> {
         AppToast.show(context,
             msg: '${p.priority.emoji} Now: ${p.name}',
             backgroundColor: p.priority.bgColor,
-            textColor: p.priority.color);
+            textColor:       p.priority.color);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin:  const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: widget.isArchiveView
               ? const Color(0xFF161616)
@@ -909,20 +1057,17 @@ class _ProjectTileState extends State<_ProjectTile> {
                     color: p.priority.color.withValues(alpha: 0.8)),
               ),
             Container(
-              width: 10,
-              height: 10,
+              width: 10, height: 10,
               decoration: BoxDecoration(
                 color: widget.isArchiveView
                     ? p.priority.color.withValues(alpha: 0.4)
                     : p.priority.color,
                 shape: BoxShape.circle,
                 boxShadow: isActive && !widget.isArchiveView
-                    ? [
-                        BoxShadow(
-                          color: p.priority.color.withValues(alpha: 0.5),
-                          blurRadius: 6,
-                        ),
-                      ]
+                    ? [BoxShadow(
+                        color:      p.priority.color.withValues(alpha: 0.5),
+                        blurRadius: 6,
+                      )]
                     : null,
               ),
             ),
@@ -933,10 +1078,8 @@ class _ProjectTileState extends State<_ProjectTile> {
                 style: TextStyle(
                   color: widget.isArchiveView
                       ? Colors.white38
-                      : isActive
-                          ? Colors.white
-                          : Colors.white70,
-                  fontSize: 15,
+                      : isActive ? Colors.white : Colors.white70,
+                  fontSize:   15,
                   fontWeight: isActive && !widget.isArchiveView
                       ? FontWeight.w600
                       : FontWeight.w400,
@@ -946,6 +1089,15 @@ class _ProjectTileState extends State<_ProjectTile> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+
+            // ── Lock indicator dot on the tile ───────────────
+            if (liveLocked) ...[
+              const SizedBox(width: 6),
+              const Icon(Icons.lock_rounded,
+                  size: 12, color: Color(0xFF4CAF50)),
+            ],
+
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: 8, vertical: 3),
@@ -957,9 +1109,9 @@ class _ProjectTileState extends State<_ProjectTile> {
               child: Text(
                 p.priority.label,
                 style: TextStyle(
-                  color: p.priority.color
-                      .withValues(alpha: widget.isArchiveView ? 0.5 : 1),
-                  fontSize: 11,
+                  color: p.priority.color.withValues(
+                      alpha: widget.isArchiveView ? 0.5 : 1),
+                  fontSize:   11,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.3,
                 ),
@@ -977,19 +1129,22 @@ class _ProjectTileState extends State<_ProjectTile> {
   }
 }
 
-// ── Tray action button ────────────────────────────────────────────
+// ── Tray button ───────────────────────────────────────────────────
 
 class _TrayButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
+  final IconData   icon;
+  final String     label;
+  final Color      color;
   final VoidCallback onTap;
+  /// Optional small badge icon overlaid on the top-right of the main icon.
+  final IconData?  badge;
 
   const _TrayButton({
     required this.icon,
     required this.label,
     required this.color,
     required this.onTap,
+    this.badge,
   });
 
   @override
@@ -997,23 +1152,36 @@ class _TrayButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
+          color:        color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
+          border:       Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 14),
+            // Main icon with optional badge overlay.
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, color: color, size: 14),
+                if (badge != null)
+                  Positioned(
+                    top: -4, right: -4,
+                    child: Icon(badge, size: 8, color: color),
+                  ),
+              ],
+            ),
             const SizedBox(width: 5),
-            Text(label,
-                style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: TextStyle(
+                color:      color,
+                fontSize:   12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
@@ -1032,21 +1200,18 @@ class _AddButton extends StatelessWidget {
     return GestureDetector(
       onTap: () => showProjectAddDialog(context, onAdded: onAdded),
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
+          color:        const Color(0xFF1C1C1C),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white12),
+          border:       Border.all(color: Colors.white12),
         ),
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.add, color: Colors.white54, size: 16),
             SizedBox(width: 4),
-            Text('Add',
-                style:
-                    TextStyle(color: Colors.white54, fontSize: 13)),
+            Text('Add', style: TextStyle(color: Colors.white54, fontSize: 13)),
           ],
         ),
       ),

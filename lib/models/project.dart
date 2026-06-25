@@ -256,6 +256,7 @@ class Project {
   final int sortOrder;
   final bool isArchived;
   final List<Task> tasks;
+  final bool isNoteLocked;
   final String?   note;
   final DateTime? noteUpdatedAt;
   final DateTime createdAt;
@@ -270,6 +271,7 @@ class Project {
     this.sortOrder = 0,
     this.isArchived = false,
     this.tasks = const [],
+    this.isNoteLocked = false,
     this.note,            // ← NEW
     this.noteUpdatedAt, 
     required this.createdAt,
@@ -304,6 +306,7 @@ class Project {
     int?        sortOrder,
     bool?       isArchived,
     List<Task>? tasks,
+    bool? isNoteLocked,
     String?     note,
     bool        clearNote     = false,   // ← NEW: pass true to set note=null
     DateTime?   noteUpdatedAt,
@@ -319,6 +322,7 @@ class Project {
         createdAt:     createdAt,
         isArchived:    isArchived    ?? this.isArchived,
         tasks:         tasks         ?? this.tasks,
+        isNoteLocked: isNoteLocked ?? this.isNoteLocked,
         note:          clearNote ? null : (note ?? this.note),
         noteUpdatedAt: noteUpdatedAt ?? this.noteUpdatedAt,
       );
@@ -334,6 +338,7 @@ class Project {
         'sortOrder':     sortOrder,
         'createdAt':     createdAt.toIso8601String(),
         'tasks':         tasks.map((t) => t.toJson()).toList(),
+        'isNoteLocked': isNoteLocked,
         'note':          note,
         'noteUpdatedAt': noteUpdatedAt?.toIso8601String(),
       };
@@ -353,6 +358,7 @@ class Project {
         tasks:         (json['tasks'] as List<dynamic>? ?? [])
             .map((e) => Task.fromJson(e as Map<String, dynamic>))
             .toList(),
+        isNoteLocked: json['isNoteLocked'] as bool? ?? false,
         note:          json['note']          as String?,
         noteUpdatedAt: json['noteUpdatedAt'] == null
             ? null
