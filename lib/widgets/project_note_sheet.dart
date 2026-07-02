@@ -5,8 +5,10 @@
 //
 // Architecture — Dart mixin composition:
 //   NoteStateInterface          shared abstract getters (state_interface.dart)
-//   ProjectNoteActionsMixin     block CRUD, save, pickers, audio, links
-//   ProjectNoteTextBlocksMixin  top bar, editor scaffold, text + checkbox UI
+//   ProjectNoteActionsMixin     block CRUD, save, pickers, audio, links,
+//                               reminder set/clear
+//   ProjectNoteTextBlocksMixin  top bar, editor scaffold, text + checkbox UI,
+//                               reminder chip
 //   ProjectNoteMediaBlocksMixin image, audio, PDF, recording panel
 //   ProjectNoteFormatBarMixin   format bar rows + bottom toolbar
 //
@@ -26,6 +28,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:focusbell/models/note_models.dart';
 import 'package:focusbell/services/note_rich_controller.dart';
+import 'package:focusbell/services/note_reminder_service.dart';
+import 'package:focusbell/theme/app_theme.dart';
 import 'package:record/record.dart';
 
 import '../models/project.dart';
@@ -70,7 +74,7 @@ class ProjectNoteSheet extends StatefulWidget {
 class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     with
         TickerProviderStateMixin,
-        NoteStateInterface,       // abstract getters — satisfied by fields below
+        NoteStateInterface,
         ProjectNoteActionsMixin,
         ProjectNoteMediaBlocksMixin,
         ProjectNoteTextBlocksMixin,
@@ -89,7 +93,7 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 
   // ── Title ─────────────────────────────────────────────────────────────────
   @override late TextEditingController titleCtrl;
-  late FocusNode _titleFn; // private — only used in _buildTitleBlock
+  late FocusNode _titleFn;
 
   // ── Format bar toggles ────────────────────────────────────────────────────
   @override bool showFormatBar = false;
@@ -130,6 +134,10 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   // ── Fullscreen image overlay ───────────────────────────────────────────────
   @override String? fullscreenImage;
 
+  // ── Note reminder ─────────────────────────────────────────────────────────
+  /// Persisted via NoteReminderService; null when no reminder is scheduled.
+  @override DateTime? noteReminder;
+
   // ─────────────────────────────────────────────────────────────────────────
   // NoteStateInterface — convenience getters
   // ─────────────────────────────────────────────────────────────────────────
@@ -144,11 +152,8 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 
   // ─────────────────────────────────────────────────────────────────────────
   // NoteStateInterface — initBlock / refreshFmtBar / ensureTrailingTextBlock
-  // (live here because they touch `setState` and all fields simultaneously)
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Wires a [NoteRichController] and [FocusNode] for text / checkbox blocks.
-  /// Media blocks need no controller and are skipped.
   @override
   void initBlock(NoteBlock b) {
     if (b.type != NoteBlockType.text && b.type != NoteBlockType.checkbox) {
@@ -176,8 +181,6 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     fn[b.id] = f;
   }
 
-  /// Reads the current selection and block properties, then updates every
-  /// `fmt*` field so the format bar re-renders correctly.
   @override
   void refreshFmtBar(NoteBlock b, NoteRichController c) {
     final sel = c.selection;
@@ -195,8 +198,6 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     fmtBL = b.bulletList;
   }
 
-  /// Guarantees the document always ends with a text block so the user can
-  /// always tap below content to continue typing.
   @override
   void ensureTrailingTextBlock() {
     if (blocks.isEmpty || blocks.last.type != NoteBlockType.text) {
@@ -220,7 +221,6 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     titleCtrl = TextEditingController(text: widget.project.name);
     _titleFn = FocusNode();
 
-    // Pulsing dot animation for the recording indicator.
     pulseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -229,7 +229,6 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
       CurvedAnimation(parent: pulseCtrl, curve: Curves.easeInOut),
     );
 
-    // Listen to audio player events.
     player.onPlayerStateChanged.listen((s) {
       if (!mounted) return;
       if (s == PlayerState.completed) {
@@ -254,9 +253,17 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
       setState(() => playDur[currentlyPlayingId!] = dur);
     });
 
+    // Load any existing reminder for this note.
+    _loadReminder();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (blocks.isNotEmpty) fn[blocks.first.id]?.requestFocus();
     });
+  }
+
+  Future<void> _loadReminder() async {
+    final dt = await NoteReminderService.instance.get(widget.project.id);
+    if (mounted && dt != null) setState(() => noteReminder = dt);
   }
 
   @override
@@ -280,7 +287,6 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 
   @override
   Widget build(BuildContext context) {
-    // While a fullscreen image is active, swap the whole scaffold for the viewer.
     if (fullscreenImage != null) {
       return NoteFullscreenImage(
         path: fullscreenImage!,
@@ -289,15 +295,15 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0E0E0F),
+      backgroundColor: Theme.of(context).fb.scaffoldBg,
       body: SafeArea(
         child: Column(
           children: [
-            buildTopBar(),                                     // ProjectNoteTextBlocksMixin
-            Expanded(child: buildEditor()),                    // ProjectNoteTextBlocksMixin
-            if (recording) buildRecordingPanel(),              // ProjectNoteMediaBlocksMixin
-            if (showFormatBar && !readOnly) buildFormatBar(),  // ProjectNoteFormatBarMixin
-            if (!readOnly) buildBottomBar(),                   // ProjectNoteFormatBarMixin
+            buildTopBar(),
+            Expanded(child: buildEditor()),
+            if (recording) buildRecordingPanel(),
+            if (showFormatBar && !readOnly) buildFormatBar(),
+            if (!readOnly) buildBottomBar(),
           ],
         ),
       ),
@@ -309,17 +315,13 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
 // Public entry point
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Pushes [ProjectNoteSheet] as a full-screen dialog route.
-///
-/// [onSaveNote] and [onClearNote] are optional overrides for standalone notes.
-/// Project notes use the default [AppController]-based persistence.
-void showProjectNoteSheet(
+Future<void> showProjectNoteSheet(
   BuildContext context, {
   required Project project,
   Future<void> Function(String title, String? note)? onSaveNote,
   Future<void> Function()? onClearNote,
 }) {
-  Navigator.of(context).push(MaterialPageRoute(
+  return Navigator.of(context).push(MaterialPageRoute(
     fullscreenDialog: true,
     builder: (_) => ProjectNoteSheet(
       project: project,

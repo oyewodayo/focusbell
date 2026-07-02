@@ -1,4 +1,4 @@
-// home_screen.dart  — FULL REPLACEMENT
+// home_screen.dart — FULL REPLACEMENT
 
 import 'package:flutter/material.dart';
 import 'package:focusbell/screens/notes_screen.dart';
@@ -17,9 +17,9 @@ import '../widgets/focus_timer_sheet.dart';
 import '../widgets/project_view_sheet.dart';
 import '../widgets/projects_bottom_sheet.dart';
 import '../widgets/settings_bottom_sheet.dart';
-
 import '../services/continuity_service.dart';
 import '../widgets/continuity_card.dart';
+import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,7 +29,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin,WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _ctrl     = AppController.instance;
   final _timerSvc = FocusTimerService.instance;
   late AnimationController _pulseCtrl;
@@ -38,8 +38,8 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-     WidgetsBinding.instance.addObserver(this);
-    ContinuityService.instance.addListener(_onContinuityChanged); 
+    WidgetsBinding.instance.addObserver(this);
+    ContinuityService.instance.addListener(_onContinuityChanged);
     _pulseCtrl = AnimationController(
       vsync:    this,
       duration: const Duration(seconds: 2),
@@ -65,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
-     WidgetsBinding.instance.removeObserver(this);
+    WidgetsBinding.instance.removeObserver(this);
     ContinuityService.instance.removeListener(_onContinuityChanged);
     _pulseCtrl.dispose();
     super.dispose();
@@ -113,9 +113,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _openAnalytics() {
-    showAnalyticsSheet(context, _ctrl.projects);
-  }
+  void _openAnalytics() => showAnalyticsSheet(context, _ctrl.projects);
 
   void _openNotes() {
     Navigator.of(context).push(
@@ -131,9 +129,11 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final fb       = Theme.of(context).fb;
     final snapshot = ContinuityService.instance.pendingSnapshot;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: fb.scaffoldBg,
       body: SafeArea(
         child: Column(
           children: [
@@ -157,20 +157,20 @@ class _HomeScreenState extends State<HomeScreen>
                         physics: const ClampingScrollPhysics(),
                         child: ConstrainedBox(
                           constraints: BoxConstraints(
-                            minHeight: constraints.maxHeight,
-                          ),
+                              minHeight: constraints.maxHeight),
                           child: IntrinsicHeight(
                             child: Column(
                               children: [
+                                // ── Top bar ──────────────────────
                                 Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                                  padding: const EdgeInsets.fromLTRB(
+                                      24, 20, 24, 0),
                                   child: Row(
                                     children: [
-                                      const Text(
+                                      Text(
                                         'FocusBell',
                                         style: TextStyle(
-                                          color:         Colors.white30,
+                                          color:         fb.isDark?fb.onSurfaceFaint:fb.onSurface,
                                           fontSize:      13,
                                           fontWeight:    FontWeight.w600,
                                           letterSpacing: 1.5,
@@ -178,23 +178,18 @@ class _HomeScreenState extends State<HomeScreen>
                                       ),
                                       const Spacer(),
                                       _NotifBadge(
-                                          enabled: settings.notificationsEnabled),
+                                        enabled:
+                                            settings.notificationsEnabled,
+                                      ),
                                       const SizedBox(width: 8),
                                       GestureDetector(
                                         onTap: _openSettings,
                                         child: Container(
-                                          padding: const EdgeInsets.all(7),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF1C1C1C),
-                                            borderRadius:
-                                                BorderRadius.circular(10),
-                                            border:
-                                                Border.all(color: Colors.white10),
-                                          ),
-                                          child: const Icon(
+                                          padding: const EdgeInsets.all(7),                                          
+                                          child: Icon(
                                             CupertinoIcons.settings,
-                                            color: Colors.white38,
-                                            size:  16,
+                                            color: fb.isDark?fb.onSurfaceFaint:fb.onSurface,
+                                            size:  24,
                                           ),
                                         ),
                                       ),
@@ -202,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   ),
                                 ),
 
+                                // ── Main content ─────────────────
                                 Flexible(
                                   child: Center(
                                     child: Padding(
@@ -217,9 +213,10 @@ class _HomeScreenState extends State<HomeScreen>
                                   ),
                                 ),
 
+                                // ── Bottom bar ───────────────────
                                 Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                                  padding: const EdgeInsets.fromLTRB(
+                                      24, 8, 24, 20),
                                   child: Row(
                                     children: [
                                       _IconOnlyButton(
@@ -269,10 +266,13 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-class _ActiveCard extends StatelessWidget {
-  final Project            project;
-  final Animation<double>  pulseAnim;
+// ─────────────────────────────────────────────────────────────────────────────
+// _ActiveCard
+// ─────────────────────────────────────────────────────────────────────────────
 
+class _ActiveCard extends StatelessWidget {
+  final Project           project;
+  final Animation<double> pulseAnim;
   const _ActiveCard({required this.project, required this.pulseAnim});
 
   void _openViewSheet(BuildContext context) {
@@ -286,6 +286,7 @@ class _ActiveCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb              = Theme.of(context).fb;
     final p               = project.priority;
     final incompleteTasks = project.tasks
         .where((t) => t.status != TaskStatus.completed)
@@ -296,23 +297,25 @@ class _ActiveCard extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // ── Priority orb ───────────────────────────────────────
         ScaleTransition(
           scale: pulseAnim,
           child: Container(
             width:  72,
             height: 72,
             decoration: BoxDecoration(
-              shape:  BoxShape.circle,
-              color:  p.bgColor,
-              border: Border.all(
-                  color: p.color.withValues(alpha: 0.5), width: 2),
-              boxShadow: [
+            shape:  BoxShape.circle,
+            color:  p.bgColor,
+            border: Border.all(
+                color: p.color.withValues(alpha: 0.5), width: 2),
+            boxShadow: [
                 BoxShadow(
-                  color:        p.color.withValues(alpha: 0.3),
-                  blurRadius:   24,
-                  spreadRadius: 4,
+                // In light mode, reduce glow spread — it bleeds on white bg
+                color:        p.color.withValues(alpha: fb.isDark ? 0.30 : 0.18),
+                blurRadius:   fb.isDark ? 24 : 16,
+                spreadRadius: fb.isDark ? 4  : 1,
                 ),
-              ],
+            ],
             ),
             child: Center(
               child: Text(p.emoji,
@@ -322,6 +325,7 @@ class _ActiveCard extends StatelessWidget {
         ),
         const SizedBox(height: 28),
 
+        // ── Priority pill ──────────────────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
@@ -341,11 +345,12 @@ class _ActiveCard extends StatelessWidget {
         ),
         const SizedBox(height: 16),
 
+        // ── Project name ───────────────────────────────────────
         Text(
           project.name,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color:         Colors.white,
+          style: TextStyle(
+            color:         fb.onSurface,
             fontSize:      28,
             fontWeight:    FontWeight.w800,
             letterSpacing: -0.8,
@@ -356,11 +361,11 @@ class _ActiveCard extends StatelessWidget {
 
         Text(
           "Stay locked in. You've got this.",
-          style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.3), fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceFaint, fontSize: 14),
         ),
         const SizedBox(height: 16),
 
+        // ── Action chips ───────────────────────────────────────
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -377,10 +382,11 @@ class _ActiveCard extends StatelessWidget {
                 icon:  Icons.sticky_note_2_outlined,
                 label: 'Note',
                 color: const Color(0xFF0A84FF),
-                 onTap: () async {
-                    final canOpen = await tryOpenLockedNote(context, project);
-                    if (!canOpen || !context.mounted) return;
-                    showProjectNoteSheet(context, project: project);
+                onTap: () async {
+                  final canOpen =
+                      await tryOpenLockedNote(context, project);
+                  if (!canOpen || !context.mounted) return;
+                  showProjectNoteSheet(context, project: project);
                 },
               ),
               if (hasTasks) ...[
@@ -408,11 +414,9 @@ class _ActiveCard extends StatelessWidget {
             ],
           ),
         ),
-
         const SizedBox(height: 16),
 
         FocusSessionButton(project: project),
-
         const SizedBox(height: 32),
 
         _PrioritySwitcher(project: project),
@@ -420,6 +424,10 @@ class _ActiveCard extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _TrayButton
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _TrayButton extends StatelessWidget {
   final IconData     icon;
@@ -462,6 +470,10 @@ class _TrayButton extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _CardIconButton
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _CardIconButton extends StatelessWidget {
   final VoidCallback onTap;
   final IconData     icon;
@@ -503,18 +515,24 @@ class _CardIconButton extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _PrioritySwitcher
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _PrioritySwitcher extends StatelessWidget {
   final Project project;
   const _PrioritySwitcher({required this.project});
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return Column(
       children: [
         Text(
           'ADJUST PRIORITY',
           style: TextStyle(
-            color:         Colors.white.withValues(alpha: 0.2),
+            color:         fb.onSurfaceFaint,
             fontSize:      10,
             letterSpacing: 1.5,
           ),
@@ -543,14 +561,12 @@ class _PrioritySwitcher extends StatelessWidget {
                 width:    selected ? 48 : 36,
                 height:   36,
                 decoration: BoxDecoration(
-                  color:        selected
-                      ? p.bgColor
-                      : const Color(0xFF1C1C1C),
+                  color: selected ? p.bgColor : fb.surfaceVar,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: selected
                         ? p.color.withValues(alpha: 0.6)
-                        : Colors.white10,
+                        : fb.border,
                     width: 1.5,
                   ),
                 ),
@@ -567,31 +583,38 @@ class _PrioritySwitcher extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// _EmptyState
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _EmptyState extends StatelessWidget {
   final VoidCallback onAdd;
   const _EmptyState({required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         const Text('🔔', style: TextStyle(fontSize: 52)),
         const SizedBox(height: 20),
-        const Text(
+        Text(
           'No active project',
           style: TextStyle(
-            color:         Colors.white,
+            color:         fb.onSurface,
             fontSize:      22,
             fontWeight:    FontWeight.w700,
             letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'Add a project and set it active\nto start your focus reminders.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white38, fontSize: 14, height: 1.6),
+          style: TextStyle(
+              color: fb.onSurfaceDim, fontSize: 14, height: 1.6),
         ),
         const SizedBox(height: 28),
         GestureDetector(
@@ -600,14 +623,21 @@ class _EmptyState extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: 28, vertical: 13),
             decoration: BoxDecoration(
-              color:        const Color(0xFF1C1C1C),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white12),
+            color:        fb.surfaceVar,
+            borderRadius: BorderRadius.circular(14),
+            border:       Border.all(color: fb.border),
+            boxShadow: fb.isDark ? null : [
+                BoxShadow(
+                color:       Colors.black.withValues(alpha: 0.05),
+                blurRadius:  6,
+                offset:      const Offset(0, 2),
+                ),
+            ],
             ),
-            child: const Text(
+            child: Text(
               '+ Add Project',
               style: TextStyle(
-                color:      Colors.white,
+                color:      fb.onSurface,
                 fontSize:   15,
                 fontWeight: FontWeight.w600,
               ),
@@ -618,6 +648,10 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _ActionButton
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _ActionButton extends StatelessWidget {
   final IconData     icon;
@@ -634,24 +668,35 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb     = Theme.of(context).fb;
+    // In light mode step the icon/label up from dim → surface (near-black)
+    final fgColor = fb.isDark ? fb.onSurfaceDim : fb.onSurface;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color:        const Color(0xFF161616),
+          color:        fb.card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white10),
+          border:       Border.all(color: fb.border),
+          boxShadow: fb.isDark ? null : [
+            BoxShadow(
+              color:      Colors.black.withValues(alpha: 0.06),
+              blurRadius: 8,
+              offset:     const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.white54, size: 18),
+            Icon(icon, color: fgColor, size: 18),
             const SizedBox(width: 8),
             Text(
               label,
-              style: const TextStyle(
-                color:      Colors.white70,
+              style: TextStyle(
+                color:      fgColor,
                 fontSize:   14,
                 fontWeight: FontWeight.w500,
               ),
@@ -662,13 +707,13 @@ class _ActionButton extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color:        Colors.white12,
+                  color:        fb.border,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   '$count',
-                  style: const TextStyle(
-                    color:      Colors.white54,
+                  style: TextStyle(
+                    color:      fgColor,
                     fontSize:   11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -695,15 +740,26 @@ class _IconOnlyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb      = Theme.of(context).fb;
+    // Light mode: use onSurface (near-black) so the icons are clearly visible
+    final color   = fb.isDark ? fb.onSurfaceFaint : fb.onSurfaceDim;
+
     return GestureDetector(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child:   Icon(icon, color: Colors.white38, size: size),
+        child:   Icon(icon, color: color, size: size),
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _IconOnlyButton
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// _NotifBadge
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _NotifBadge extends StatelessWidget {
   final bool enabled;
@@ -711,17 +767,21 @@ class _NotifBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb      = Theme.of(context).fb;
+    const green   = Color(0xFF4CAF50);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
+        // Active: a tinted green surface. Inactive: neutral surface.
         color: enabled
-            ? const Color(0xFF1A2E1A)
-            : const Color(0xFF1C1C1C),
+            ? green.withValues(alpha: 0.12)
+            : fb.surfaceVar,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: enabled
-              ? const Color(0xFF4CAF50).withValues(alpha: 0.35)
-              : Colors.white10,
+              ? green.withValues(alpha: 0.35)
+              : fb.border,
         ),
       ),
       child: Row(
@@ -732,17 +792,13 @@ class _NotifBadge extends StatelessWidget {
                 ? Icons.notifications_active_outlined
                 : Icons.notifications_off_outlined,
             size:  12,
-            color: enabled
-                ? const Color(0xFF4CAF50)
-                : Colors.white24,
+            color: enabled ? green : fb.onSurfaceFaint,
           ),
           const SizedBox(width: 4),
           Text(
             enabled ? 'ON' : 'OFF',
             style: TextStyle(
-              color:         enabled
-                  ? const Color(0xFF4CAF50)
-                  : Colors.white24,
+              color:         enabled ? green : fb.onSurfaceFaint,
               fontSize:      10,
               fontWeight:    FontWeight.w700,
               letterSpacing: 0.8,
@@ -753,6 +809,10 @@ class _NotifBadge extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public entry point (kept here to avoid breaking existing call sites)
+// ─────────────────────────────────────────────────────────────────────────────
 
 void showProjectNoteSheet(BuildContext context, {required Project project}) {
   Navigator.of(context).push(MaterialPageRoute(

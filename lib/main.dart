@@ -9,6 +9,7 @@ import 'package:focusbell/services/continuity_service.dart';
 import 'package:focusbell/services/geofence_service.dart';
 import 'package:focusbell/services/reminder_group_service.dart';
 import 'package:focusbell/services/saved_places_service.dart';
+import 'package:focusbell/theme/app_theme.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'services/app_controller.dart';
 import 'services/standalone_note_controller.dart';
@@ -16,6 +17,7 @@ import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/reminder_service.dart';
+import 'models/settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,46 +92,114 @@ Future<void> _safe(String name, Future<void> Function() fn) async {
   }
 }
 
+
 class FocusBellApp extends StatelessWidget {
   const FocusBellApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      navigatorKey: AlarmService.navigatorKey,
-      title: 'FocusBell',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF4CAF50),
-          surface: Color(0xFF111111),
-          onSurface: Colors.white,
-        ),
-        textTheme: GoogleFonts.dmSansTextTheme(ThemeData.dark().textTheme),
-      ),
-      home: WithForegroundTask(child: const _Loader()),
+    return ListenableBuilder(
+      listenable: AppController.instance,
+      builder: (ctx, _) {
+        final settings = AppController.instance.settings;
+        final mode     = settings.themeMode;
+
+        // For AppThemeMode.auto we resolve now and pick a concrete theme.
+        // For system/dark/light we let MaterialApp handle it normally.
+        final platformBrightness =
+            MediaQuery.platformBrightnessOf(ctx);
+        final resolved = mode.resolve(platformBrightness);
+
+        return MaterialApp(
+          navigatorKey:             AlarmService.navigatorKey,
+          title:                    'FocusBell',
+          debugShowCheckedModeBanner: false,
+
+          // Light + dark themes always provided; themeMode selects between them.
+          theme:      AppTheme.light,
+          darkTheme:  AppTheme.dark,
+
+          // auto resolves to a concrete ThemeMode; system delegates to OS.
+          themeMode: mode == AppThemeMode.auto
+              ? (resolved == Brightness.dark ? ThemeMode.dark : ThemeMode.light)
+              : mode.toFlutterThemeMode(),
+
+          home: WithForegroundTask(child: const _Loader()),
+        );
+      },
     );
   }
 }
-
 class _Loader extends StatefulWidget {
   const _Loader();
   @override
   State<_Loader> createState() => _LoaderState();
 }
 
-class _LoaderState extends State<_Loader> {
+class _LoaderState extends State<_Loader> with TickerProviderStateMixin {
+  static const _fullText = 'Keep your attention where it belongs.';
+  static const _typeIntervalMs = 38;
+
+  // How many characters are currently visible
+  int _visibleChars = 0;
+  Timer? _typeTimer;
+
+  // Drives the rainbow wave sweep (loops forever)
+  late final AnimationController _waveController;
+
+  // Rainbow palette — cycles through these hues
+  static const _hues = [
+    Color(0xFF64B5F6), // blue
+    Color(0xFF81C784), // green
+    Color(0xFFFFD54F), // amber
+    Color(0xFFFF8A65), // orange
+    Color(0xFFBA68C8), // purple
+    Color(0xFF4DD0E1), // cyan
+    Color(0xFF64B5F6), // back to blue for seamless loop
+  ];
+
   @override
   void initState() {
     super.initState();
+
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+
+    // Start typewriter
+    _typeTimer = Timer.periodic(
+      const Duration(milliseconds: _typeIntervalMs),
+      (t) {
+        if (!mounted) { t.cancel(); return; }
+        if (_visibleChars < _fullText.length) {
+          setState(() => _visibleChars++);
+        } else {
+          t.cancel();
+        }
+      },
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
         await FlutterForegroundTask.requestIgnoreBatteryOptimization();
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _typeTimer?.cancel();
+    _waveController.dispose();
+    super.dispose();
+  }
+
+  /// Interpolate through the _hues palette given a 0..1 position.
+  Color _paletteColor(double t) {
+    t = t.clamp(0.0, 1.0);
+    final scaled = t * (_hues.length - 1);
+    final i = scaled.floor().clamp(0, _hues.length - 2);
+    return Color.lerp(_hues[i], _hues[i + 1], scaled - i)!;
   }
 
   @override
@@ -140,12 +210,54 @@ class _LoaderState extends State<_Loader> {
         final ctrl = AppController.instance;
 
         if (ctrl.loading) {
-          return const Scaffold(
-            backgroundColor: Color(0xFF0A0A0A),
+          return Scaffold(
+            backgroundColor: const Color(0xFF0A0A0A),
             body: Center(
-              child: CircularProgressIndicator(
-                color: Colors.blueAccent,
-                strokeWidth: 2,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    color: Colors.blueAccent,
+                    strokeWidth: 2,
+                  ),
+                  const SizedBox(height: 40),
+                  AnimatedBuilder(
+                    animation: _waveController,
+                    builder: (context, _) {
+                      final wave = _waveController.value; // 0..1
+                      final chars = _fullText.characters.toList();
+                      final visible = _visibleChars.clamp(0, chars.length);
+
+                      // Build one Text span per character
+                      final spans = <InlineSpan>[];
+                      for (int i = 0; i < visible; i++) {
+                        // Position of this char within the full string (0..1)
+                        final charPos = i / (_fullText.length - 1);
+                        // Wave offset: shift charPos by wave progress,
+                        // then wrap around so color sweeps continuously.
+                        final wavePos = (charPos - wave * 1.6 + 1.6) % 1.0;
+                        final color = _paletteColor(wavePos);
+                        spans.add(TextSpan(
+                          text: chars[i],
+                          style: TextStyle(color: color),
+                        ));
+                      }
+
+                      return Text.rich(
+                        TextSpan(
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.4,
+                            height: 1.5,
+                          ),
+                          children: spans,
+                        ),
+                        textAlign: TextAlign.center,
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           );

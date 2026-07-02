@@ -1,15 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// project_note_text_blocks_mixin.dart
-//
-// UI builders for text-bearing content:
-//   buildTopBar()        — compact icon-only top bar with ⋮ overflow menu
-//   buildEditor()        — ReorderableListView containing all blocks
-//   _buildTitleBlock()   — editable title field (always index 0)
-//   _buildBlock()        — routes to the correct block builder
-//   _buildTextBlock()    — edit mode (rich TextField) + preview (MarkdownBody)
-//   _buildCheckboxBlock()— checkbox + rich text, with auto-total support
-//   _buildReadOnlySpan() — inline TextSpan for checkbox preview mode
-//   _segsToMarkdown()    — converts segs → Markdown string for preview
+// project_note_text_blocks_mixin.dart — FULL REPLACEMENT
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -24,8 +14,10 @@ import 'package:focusbell/services/pin_service.dart';
 import 'package:focusbell/utils/app_toast.dart';
 import 'package:focusbell/widgets/pin_entry_sheet.dart';
 import 'package:focusbell/widgets/project_note_sheet.dart';
+import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../theme/app_theme.dart';
 import 'project_note_state_interface.dart';
 import 'project_note_media_blocks_mixin.dart';
 import 'project_note_actions_mixin.dart';
@@ -37,20 +29,16 @@ mixin ProjectNoteTextBlocksMixin
        ProjectNoteMediaBlocksMixin {
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Top bar — icon-only layout with ⋮ overflow menu
+  // Top bar
   // ─────────────────────────────────────────────────────────────────────────
-  //
-  // Layout (left → right):
-  //   ‹ back  •priority  date/time ... [🗑] [👁/✏] [💾] [⋮]
-  //
-  // All action buttons are icon-only to fit the overflow menu without
-  // wrapping on narrow screens.
 
   Widget buildTopBar() {
+    final fb = Theme.of(context).fb;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFF1E1E1E))),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: fb.border)),
       ),
       child: Row(
         children: [
@@ -64,7 +52,7 @@ mixin ProjectNoteTextBlocksMixin
               padding: const EdgeInsets.all(8),
               child: Icon(
                 Icons.arrow_back_ios_rounded,
-                color: Colors.white.withValues(alpha: 0.7),
+                color: fb.onSurfaceDim,
                 size: 20,
               ),
             ),
@@ -80,7 +68,8 @@ mixin ProjectNoteTextBlocksMixin
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: widget.project.priority.color.withValues(alpha: 0.5),
+                  color: widget.project.priority.color
+                      .withValues(alpha: 0.5),
                   blurRadius: 5,
                 ),
               ],
@@ -96,37 +85,43 @@ mixin ProjectNoteTextBlocksMixin
                     children: [
                       Text(
                         _fmtDateOnly(widget.project.noteUpdatedAt!),
-                        style: const TextStyle(
-                            color: Colors.white38, fontSize: 12),
+                        style: TextStyle(
+                            color: fb.onSurfaceDim, fontSize: 12),
                       ),
                       Text(
                         _fmtTimeOnly(widget.project.noteUpdatedAt!),
-                        style: const TextStyle(
-                            color: Colors.white24, fontSize: 11),
+                        style: TextStyle(
+                            color: fb.onSurfaceFaint, fontSize: 11),
                       ),
                     ],
                   )
-                : const Text(
+                : Text(
                     'New note',
-                    style: TextStyle(color: Colors.white38, fontSize: 12),
+                    style: TextStyle(
+                        color: fb.onSurfaceFaint, fontSize: 12),
                   ),
           ),
 
-          // ── Clear (icon-only, shown only when a note exists) ──
+          // ── Clear ─────────────────────────────────────────────
           if (widget.project.hasNote)
             _TopBarIconBtn(
               icon: Icons.delete_outline_rounded,
               color: const Color(0xFFFF3B30),
               tooltip: 'Clear note',
               onTap: clearNote,
+              fb: fb,
             ),
 
           const SizedBox(width: 2),
 
-          // ── Preview / Edit toggle (icon-only) ─────────────────
+          // ── Preview / Edit toggle ─────────────────────────────
           _TopBarIconBtn(
-            icon: readOnly ? Icons.edit_outlined : Icons.visibility_outlined,
-            color: readOnly ? const Color(0xFF64D2FF) : Colors.white54,
+            icon: readOnly
+                ? Icons.edit_outlined
+                : Icons.visibility_outlined,
+            color: readOnly
+                ? const Color(0xFF64D2FF)
+                : fb.onSurfaceDim,
             tooltip: readOnly ? 'Edit' : 'Preview',
             active: readOnly,
             activeBackground: const Color(0xFF0A1A2E),
@@ -140,34 +135,36 @@ mixin ProjectNoteTextBlocksMixin
                 }
               });
             },
+            fb: fb,
           ),
 
           const SizedBox(width: 2),
 
-          // ── Save (icon-only, glows green when dirty) ──────────
+          // ── Save ──────────────────────────────────────────────
           _TopBarIconBtn(
             icon: Icons.save_rounded,
-            color: dirty ? Colors.black : Colors.white30,
+            color: dirty ? Colors.black : fb.onSurfaceFaint,
             tooltip: 'Save',
             active: dirty,
             activeBackground: const Color(0xFF34C759),
             activeBorder: const Color(0xFF34C759),
             onTap: saveNote,
+            fb: fb,
           ),
 
           const SizedBox(width: 2),
 
           // ── ⋮ Overflow menu ───────────────────────────────────
-          // Always read the live lock state from AppController.
-          // widget.project is the snapshot from when the sheet was
-          // pushed and never reflects subsequent lock/unlock changes.
           _NoteOverflowMenu(
             isLocked: AppController.instance.projects
-                .where((p) => p.id == widget.project.id)
-                .firstOrNull
-                ?.isNoteLocked ??
+                    .where((p) => p.id == widget.project.id)
+                    .firstOrNull
+                    ?.isNoteLocked ??
                 widget.project.isNoteLocked,
+            hasReminder: noteReminder != null,
             onLockToggle: _handleLockToggle,
+            onSetReminder: setNoteReminder,
+            fb: fb,
           ),
         ],
       ),
@@ -175,25 +172,24 @@ mixin ProjectNoteTextBlocksMixin
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Lock / Unlock handler (called from the ⋮ menu)
+  // Lock / Unlock handler
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _handleLockToggle() async {
     final settings = AppController.instance.settings;
+    final fb = Theme.of(context).fb;
 
     if (!PinService.isSet(settings.pinHash) || !settings.pinEnabled) {
       _showNoPinDialog();
       return;
     }
 
-    // Always read the LIVE state — widget.project is stale after the sheet opens.
     final liveProject = AppController.instance.projects
         .where((p) => p.id == widget.project.id)
         .firstOrNull;
     if (liveProject == null) return;
 
     if (liveProject.isNoteLocked) {
-      // Unlock: verify PIN first.
       final ok = await showPinEntry<bool>(
         context,
         mode:       PinEntryMode.verify,
@@ -201,60 +197,50 @@ mixin ProjectNoteTextBlocksMixin
         title:      'Enter PIN to unlock note',
       );
       if (ok != true || !mounted) return;
-
       await AppController.instance.updateProjectLockState(
         widget.project.id,
         isNoteLocked: false,
       );
-
       if (mounted) {
-        AppToast.show(
-          context,
-          msg: '🔓 Note unlocked',
-          backgroundColor: const Color(0xFF1A2E1A),
-          textColor: const Color(0xFF4CAF50),
-        );
+        AppToast.show(context,
+            msg: '🔓 Note unlocked',
+            backgroundColor: const Color(0xFF1A2E1A),
+            textColor: const Color(0xFF4CAF50));
       }
     } else {
-      // Lock: no PIN needed — user is already in the app.
       await AppController.instance.updateProjectLockState(
         widget.project.id,
         isNoteLocked: true,
       );
-
       if (mounted) {
-        AppToast.show(
-          context,
-          msg: '🔒 Note locked',
-          backgroundColor: const Color(0xFF1A1A2E),
-          textColor: const Color(0xFF64D2FF),
-        );
+        AppToast.show(context,
+            msg: '🔒 Note locked',
+            backgroundColor: const Color(0xFF1A1A2E),
+            textColor: const Color(0xFF64D2FF));
       }
     }
-
-    // Rebuild so the ⋮ menu label and icon refresh immediately.
     if (mounted) setState(() {});
   }
 
   void _showNoPinDialog() {
+    final fb = Theme.of(context).fb;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'No PIN set',
-          style: TextStyle(color: Colors.white, fontSize: 17),
-        ),
-        content: const Text(
+        backgroundColor: fb.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16)),
+        title: Text('No PIN set',
+            style: TextStyle(color: fb.onSurface, fontSize: 17)),
+        content: Text(
           'Go to Settings → Security to set a PIN before locking notes.',
-          style: TextStyle(color: Colors.white60, fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child:
-                const Text('OK', style: TextStyle(color: Color(0xFF4CAF50))),
+            child: const Text('OK',
+                style: TextStyle(color: Color(0xFF4CAF50))),
           ),
         ],
       ),
@@ -280,24 +266,28 @@ mixin ProjectNoteTextBlocksMixin
           fn[last.id]?.requestFocus();
           final c = ctrl[last.id];
           if (c != null) {
-            c.selection = TextSelection.collapsed(offset: c.text.length);
+            c.selection =
+                TextSelection.collapsed(offset: c.text.length);
           }
         });
       },
       child: ReorderableListView.builder(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 60),
         onReorder: (oldIndex, newIndex) {
-          final adjOld = oldIndex - 1;
-          final adjNew = newIndex - 1;
+          final offset = noteReminder != null ? 2 : 1;
+          final adjOld = oldIndex - offset;
+          final adjNew = newIndex - offset;
           if (adjOld < 0 || adjNew < 0) return;
           setState(() {
             final block = blocks.removeAt(adjOld);
-            blocks.insert(adjNew > adjOld ? adjNew - 1 : adjNew, block);
+            blocks.insert(
+                adjNew > adjOld ? adjNew - 1 : adjNew, block);
             dirty = true;
           });
         },
         buildDefaultDragHandles: false,
-        itemCount: blocks.length + 1,
+        itemCount:
+            blocks.length + 1 + (noteReminder != null ? 1 : 0),
         itemBuilder: (ctx, i) {
           if (i == 0) {
             return KeyedSubtree(
@@ -305,10 +295,17 @@ mixin ProjectNoteTextBlocksMixin
               child: _buildTitleBlock(),
             );
           }
-          final b = blocks[i - 1];
+          if (noteReminder != null && i == 1) {
+            return KeyedSubtree(
+              key: const ValueKey('__reminder__'),
+              child: _buildReminderChip(),
+            );
+          }
+          final offset = noteReminder != null ? 2 : 1;
+          final b = blocks[i - offset];
           return KeyedSubtree(
             key: ValueKey(b.id),
-            child: _buildBlock(b, i - 1),
+            child: _buildBlock(b, i - offset),
           );
         },
       ),
@@ -320,26 +317,30 @@ mixin ProjectNoteTextBlocksMixin
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildTitleBlock() {
+    final fb = Theme.of(context).fb;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextField(
         controller: titleCtrl,
-        style: const TextStyle(
-          color: Colors.white70,
-          fontSize: 26,
-          fontWeight: FontWeight.w700,
+        style: TextStyle(
+          color:       fb.onSurface,
+          fontSize:    26,
+          fontWeight:  FontWeight.w700,
           letterSpacing: -0.5,
-          height: 1.3,
+          height:      1.3,
         ),
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           hintText: 'Title',
           hintStyle: TextStyle(
-            color: Colors.white24,
-            fontSize: 26,
+            color:      fb.onSurfaceFaint,
+            fontSize:   26,
             fontWeight: FontWeight.w700,
           ),
-          border: InputBorder.none,
-          isDense: true,
+          border:         InputBorder.none,
+          enabledBorder:  InputBorder.none,
+          focusedBorder:  InputBorder.none,
+          isDense:        true,
           contentPadding: EdgeInsets.zero,
         ),
         maxLines: null,
@@ -347,6 +348,87 @@ mixin ProjectNoteTextBlocksMixin
         onChanged: (_) => setState(() => dirty = true),
       ),
     );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Reminder chip
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildReminderChip() {
+    if (noteReminder == null) return const SizedBox.shrink();
+    final fb      = Theme.of(context).fb;
+    final isPast  = noteReminder!.isBefore(DateTime.now());
+    final label   = _fmtReminderLabel(noteReminder!);
+    const amber   = Color(0xFFFF9F0A);
+    final chipColor = isPast ? fb.onSurfaceFaint : amber;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: setNoteReminder,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: chipColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: chipColor.withValues(alpha: 0.35)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.alarm_rounded,
+                      size: 13, color: chipColor),
+                  const SizedBox(width: 6),
+                  Text(label,
+                      style: TextStyle(
+                        color:      chipColor,
+                        fontSize:   12,
+                        fontWeight: FontWeight.w600,
+                      )),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: clearNoteReminder,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: fb.onSurface.withValues(alpha: 0.06),
+              ),
+              child: Center(
+                child: Icon(Icons.close_rounded,
+                    size: 13, color: fb.onSurfaceFaint),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmtReminderLabel(DateTime dt) {
+    final now      = DateTime.now();
+    final local    = dt.toLocal();
+    final today    = DateTime(now.year, now.month, now.day);
+    final dDay     = DateTime(local.year, local.month, local.day);
+    final timePart = DateFormat('hh:mm a').format(local);
+    if (local.isBefore(now)) {
+      return 'Passed · ${DateFormat('MM/dd').format(local)}';
+    }
+    if (dDay == today) return 'Today $timePart';
+    if (dDay == today.add(const Duration(days: 1))) {
+      return 'Tomorrow $timePart';
+    }
+    return '${DateFormat('MM/dd').format(local)} $timePart';
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -366,30 +448,32 @@ mixin ProjectNoteTextBlocksMixin
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildTextBlock(NoteBlock b, int index) {
-    final baseStyle = b.baseStyle;
-    final prefix =
-        b.orderedList ? '${index + 1}.  ' : b.bulletList ? '•  ' : '';
+    final fb = Theme.of(context).fb;
+  final baseStyle = b.baseStyle.copyWith(color: fb.onSurface);
+  final prefix = b.orderedList ? '${index + 1}.  ' : b.bulletList ? '•  ' : '';
 
-    // ── Preview mode ─────────────────────────────────────────────────────────
-    if (readOnly) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 2),
-        child: MarkdownBody(
-          data: _segsToMarkdown(b),
-          styleSheet: _markdownStyleSheet,
-          onTapLink: (_, href, __) async {
-            if (href == null) return;
-            final uri = Uri.tryParse(href);
-            if (uri != null && await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          },
-          selectable: true,
-        ),
-      );
-    }
+  if (readOnly) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (prefix.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 4),
+              child: Text(prefix, style: baseStyle.copyWith(color: fb.onSurfaceFaint)),
+            ),
+          Expanded(
+            child: GestureDetector(
+              onTapUp: (d) => handleTextTap(b, d),
+              child: Text.rich(_buildReadOnlySpan(b, baseStyle, fb)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    // ── Edit mode ─────────────────────────────────────────────────────────────
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Row(
@@ -399,7 +483,8 @@ mixin ProjectNoteTextBlocksMixin
             Padding(
               padding: const EdgeInsets.only(top: 2, right: 4),
               child: Text(prefix,
-                  style: baseStyle.copyWith(color: Colors.white38)),
+                  style:
+                      baseStyle.copyWith(color: fb.onSurfaceFaint)),
             ),
           Expanded(
             child: GestureDetector(
@@ -407,7 +492,8 @@ mixin ProjectNoteTextBlocksMixin
               child: Focus(
                 onKeyEvent: (_, event) {
                   if (event is KeyDownEvent &&
-                      event.logicalKey == LogicalKeyboardKey.backspace &&
+                      event.logicalKey ==
+                          LogicalKeyboardKey.backspace &&
                       ctrl[b.id]?.text.isEmpty == true) {
                     removeBlock(b.id);
                     return KeyEventResult.handled;
@@ -415,13 +501,14 @@ mixin ProjectNoteTextBlocksMixin
                   return KeyEventResult.ignored;
                 },
                 child: TextField(
-                  key: textKeys[b.id],
-                  controller: ctrl[b.id],
-                  focusNode: fn[b.id],
-                  maxLines: null,
+                  key:            textKeys[b.id],
+                  controller:     ctrl[b.id],
+                  focusNode:      fn[b.id],
+                  maxLines:       null,
                   enableInteractiveSelection: true,
-                  selectionControls: MaterialTextSelectionControls(),
-                  keyboardType: TextInputType.multiline,
+                  selectionControls:
+                      MaterialTextSelectionControls(),
+                  keyboardType:   TextInputType.multiline,
                   textInputAction: TextInputAction.newline,
                   textAlign: switch (b.align) {
                     NoteAlign.left   => TextAlign.left,
@@ -438,14 +525,17 @@ mixin ProjectNoteTextBlocksMixin
                   },
                   onSubmitted: (_) => addTextBlockAfter(b.id),
                   decoration: InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
+                    border:         InputBorder.none,
+                    enabledBorder:  InputBorder.none,
+                    focusedBorder:  InputBorder.none,
+                    isDense:        true,
                     contentPadding: EdgeInsets.zero,
-                    hintText: (activeId == b.id && blocks.length == 1)
+                    hintText: (activeId == b.id &&
+                            blocks.length == 1)
                         ? 'Start typing…'
                         : null,
-                    hintStyle: const TextStyle(
-                        color: Colors.white54, fontSize: 14),
+                    hintStyle: TextStyle(
+                        color: fb.onSurfaceFaint, fontSize: 14),
                   ),
                 ),
               ),
@@ -461,14 +551,19 @@ mixin ProjectNoteTextBlocksMixin
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildCheckboxBlock(NoteBlock b, int index) {
-    final checkColor =
-        b.checked ? Colors.white30 : Colors.white.withValues(alpha: 0.88);
+    final fb = Theme.of(context).fb;
+
+    final checkColor = b.checked
+        ? fb.onSurfaceFaint
+        : fb.onSurface;
     final checkStyle = TextStyle(
-      color: checkColor,
-      fontSize: 14,
-      height: 1.5,
-      decoration:
-          b.checked ? TextDecoration.lineThrough : TextDecoration.none,
+      color:      checkColor,
+      fontSize:   14,
+      height:     1.5,
+      decoration: b.checked
+          ? TextDecoration.lineThrough
+          : TextDecoration.none,
+      decorationColor: fb.onSurfaceFaint,
     );
 
     final checkBox = GestureDetector(
@@ -486,22 +581,24 @@ mixin ProjectNoteTextBlocksMixin
               } else {
                 setState(() {
                   b.checked = !b.checked;
-                  dirty = true;
+                  dirty     = true;
                 });
               }
             },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 20,
+        width:  20,
         height: 20,
         margin: const EdgeInsets.only(right: 10),
         decoration: BoxDecoration(
-          color:
-              b.checked ? const Color(0xFF34C759) : Colors.transparent,
+          color: b.checked
+              ? const Color(0xFF34C759)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(5),
           border: Border.all(
-            color:
-                b.checked ? const Color(0xFF34C759) : Colors.white30,
+            color: b.checked
+                ? const Color(0xFF34C759)
+                : fb.onSurfaceFaint,
             width: 1.5,
           ),
         ),
@@ -512,7 +609,6 @@ mixin ProjectNoteTextBlocksMixin
       ),
     );
 
-    // ── Preview mode ──────────────────────────────────────────────────────
     if (readOnly) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
@@ -523,7 +619,8 @@ mixin ProjectNoteTextBlocksMixin
             Expanded(
               child: GestureDetector(
                 onTapUp: (d) => handleTextTap(b, d),
-                child: Text.rich(_buildReadOnlySpan(b, checkStyle)),
+                child: Text.rich(
+                    _buildReadOnlySpan(b, checkStyle, fb)),
               ),
             ),
           ],
@@ -531,7 +628,6 @@ mixin ProjectNoteTextBlocksMixin
       );
     }
 
-    // ── Edit mode ─────────────────────────────────────────────────────────
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
@@ -544,7 +640,8 @@ mixin ProjectNoteTextBlocksMixin
               child: Focus(
                 onKeyEvent: (_, event) {
                   if (event is KeyDownEvent &&
-                      event.logicalKey == LogicalKeyboardKey.backspace &&
+                      event.logicalKey ==
+                          LogicalKeyboardKey.backspace &&
                       ctrl[b.id]?.text.isEmpty == true) {
                     final isTotal = b.segs.isNotEmpty &&
                         b.segs.first.text
@@ -556,13 +653,14 @@ mixin ProjectNoteTextBlocksMixin
                   return KeyEventResult.ignored;
                 },
                 child: TextField(
-                  key: textKeys[b.id],
-                  controller: ctrl[b.id],
-                  focusNode: fn[b.id],
-                  maxLines: null,
+                  key:            textKeys[b.id],
+                  controller:     ctrl[b.id],
+                  focusNode:      fn[b.id],
+                  maxLines:       null,
                   enableInteractiveSelection: true,
-                  selectionControls: MaterialTextSelectionControls(),
-                  keyboardType: TextInputType.multiline,
+                  selectionControls:
+                      MaterialTextSelectionControls(),
+                  keyboardType:   TextInputType.multiline,
                   textInputAction: TextInputAction.newline,
                   onChanged: (t) {
                     final c = ctrl[b.id];
@@ -578,13 +676,15 @@ mixin ProjectNoteTextBlocksMixin
                   },
                   onSubmitted: (_) => addTextBlockAfter(b.id),
                   style: checkStyle,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
+                  decoration: InputDecoration(
+                    border:         InputBorder.none,
+                    enabledBorder:  InputBorder.none,
+                    focusedBorder:  InputBorder.none,
+                    isDense:        true,
                     contentPadding: EdgeInsets.zero,
                     hintText: 'To-do item',
                     hintStyle: TextStyle(
-                        color: Colors.white12, fontSize: 14),
+                        color: fb.onSurfaceFaint, fontSize: 14),
                   ),
                 ),
               ),
@@ -601,19 +701,22 @@ mixin ProjectNoteTextBlocksMixin
 
   String _segsToMarkdown(NoteBlock b) {
     final segs = ctrl[b.id]?.segs ?? b.segs;
-    final buf = StringBuffer();
+    final buf  = StringBuffer();
     for (final s in segs) {
       var text = s.text;
       if (s.bold) text = '**$text**';
       if (s.italic) text = '_${text}_';
       if (s.strikethrough) text = '~~$text~~';
-      if (s.url != null && s.url!.isNotEmpty) text = '[$text](${s.url})';
+      if (s.url != null && s.url!.isNotEmpty) {
+        text = '[$text](${s.url})';
+      }
       buf.write(text);
     }
     return buf.toString();
   }
 
-  TextSpan _buildReadOnlySpan(NoteBlock b, TextStyle baseStyle) {
+  TextSpan _buildReadOnlySpan(
+      NoteBlock b, TextStyle baseStyle, FocusBellColors fb) {
     final segs = ctrl[b.id]?.segs ?? b.segs;
     return TextSpan(
       style: baseStyle,
@@ -625,7 +728,10 @@ mixin ProjectNoteTextBlocksMixin
             fontWeight: s.bold ? FontWeight.w700 : FontWeight.w400,
             fontStyle:
                 s.italic ? FontStyle.italic : FontStyle.normal,
-            color: isLink ? const Color(0xFF64D2FF) : s.color,
+            // Respect explicit seg color; fall back to theme onSurface
+            color: isLink
+                ? const Color(0xFF64D2FF)
+                : (s.color ?? fb.onSurface),
             backgroundColor: s.highlight,
             decoration: TextDecoration.combine([
               if (s.underline || isLink) TextDecoration.underline,
@@ -652,55 +758,68 @@ mixin ProjectNoteTextBlocksMixin
     );
   }
 
-  static final _markdownStyleSheet = MarkdownStyleSheet(
-    p:      const TextStyle(
-        color: Colors.white70, fontSize: 14, height: 1.5),
-    h1:     const TextStyle(
-        color: Colors.white,
-        fontSize: 26,
-        fontWeight: FontWeight.w700),
-    h2:     const TextStyle(
-        color: Colors.white,
-        fontSize: 22,
-        fontWeight: FontWeight.w700),
-    h3:     const TextStyle(
-        color: Color(0xFFFFD60A),
-        fontSize: 18,
-        fontWeight: FontWeight.w600),
-    h4:     const TextStyle(
-        color: Color(0xFF64D2FF),
-        fontSize: 16,
-        fontWeight: FontWeight.w600),
-    strong: const TextStyle(
-        color: Colors.white, fontWeight: FontWeight.w700),
-    em:     const TextStyle(
-        color: Colors.white70, fontStyle: FontStyle.italic),
-    code:   const TextStyle(
-        color: Color(0xFF34C759),
-        fontFamily: 'monospace',
-        fontSize: 13),
-    codeblockDecoration: BoxDecoration(
-      color: const Color(0xFF1A1A1A),
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.white10),
-    ),
-    tableBody: const TextStyle(color: Colors.white70, fontSize: 13),
-    tableHead: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w700,
-        fontSize: 13),
-    tableBorder: TableBorder.all(color: Colors.white12, width: 1),
-    blockquoteDecoration: const BoxDecoration(
-      border:
-          Border(left: BorderSide(color: Color(0xFF64D2FF), width: 3)),
-      color: Color(0xFF0A1A2E),
-    ),
-    blockquote: const TextStyle(color: Colors.white54, fontSize: 14),
-    listBullet: const TextStyle(color: Colors.white38),
-    horizontalRuleDecoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: Colors.white12)),
-    ),
-  );
+  // ─────────────────────────────────────────────────────────────────────────
+  // Markdown stylesheet — now theme-aware, built per-render
+  // ─────────────────────────────────────────────────────────────────────────
+
+  MarkdownStyleSheet _markdownStyleSheet(FocusBellColors fb) =>
+      MarkdownStyleSheet(
+        p: TextStyle(
+            color: fb.onSurface, fontSize: 14, height: 1.5),
+        h1: TextStyle(
+            color:      fb.onSurface,
+            fontSize:   26,
+            fontWeight: FontWeight.w700),
+        h2: TextStyle(
+            color:      fb.onSurface,
+            fontSize:   22,
+            fontWeight: FontWeight.w700),
+        h3: const TextStyle(
+            color:      Color(0xFFFFD60A),
+            fontSize:   18,
+            fontWeight: FontWeight.w600),
+        h4: const TextStyle(
+            color:      Color(0xFF64D2FF),
+            fontSize:   16,
+            fontWeight: FontWeight.w600),
+        strong: TextStyle(
+            color:      fb.onSurface,
+            fontWeight: FontWeight.w700),
+        em: TextStyle(
+            color:      fb.onSurfaceDim,
+            fontStyle:  FontStyle.italic),
+        code: const TextStyle(
+            color:      Color(0xFF34C759),
+            fontFamily: 'monospace',
+            fontSize:   13),
+        codeblockDecoration: BoxDecoration(
+          color:        fb.surfaceVar,
+          borderRadius: BorderRadius.circular(8),
+          border:       Border.all(color: fb.border),
+        ),
+        tableBody: TextStyle(
+            color: fb.onSurfaceDim, fontSize: 13),
+        tableHead: TextStyle(
+            color:      fb.onSurface,
+            fontWeight: FontWeight.w700,
+            fontSize:   13),
+        tableBorder: TableBorder.all(color: fb.border, width: 1),
+        blockquoteDecoration: BoxDecoration(
+          border: const Border(
+              left: BorderSide(
+                  color: Color(0xFF64D2FF), width: 3)),
+          color: fb.isDark
+              ? const Color(0xFF0A1A2E)
+              : const Color(0xFFE8F4FF),
+        ),
+        blockquote:
+            TextStyle(color: fb.onSurfaceDim, fontSize: 14),
+        listBullet: TextStyle(color: fb.onSurfaceFaint),
+        horizontalRuleDecoration: BoxDecoration(
+          border: Border(
+              bottom: BorderSide(color: fb.border)),
+        ),
+      );
 
   // ─────────────────────────────────────────────────────────────────────────
   // Date / time formatters
@@ -723,25 +842,24 @@ mixin ProjectNoteTextBlocksMixin
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _TopBarIconBtn
-//
-// A small square icon button used in the top bar. Supports an optional
-// active state that changes the background and border colour.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TopBarIconBtn extends StatelessWidget {
-  final IconData     icon;
-  final Color        color;
-  final String       tooltip;
-  final VoidCallback onTap;
-  final bool         active;
-  final Color?       activeBackground;
-  final Color?       activeBorder;
+  final IconData         icon;
+  final Color            color;
+  final String           tooltip;
+  final VoidCallback     onTap;
+  final bool             active;
+  final Color?           activeBackground;
+  final Color?           activeBorder;
+  final FocusBellColors  fb;
 
   const _TopBarIconBtn({
     required this.icon,
     required this.color,
     required this.tooltip,
     required this.onTap,
+    required this.fb,
     this.active          = false,
     this.activeBackground,
     this.activeBorder,
@@ -750,23 +868,24 @@ class _TopBarIconBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: tooltip,
+      message:    tooltip,
       preferBelow: true,
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          width: 34,
+          width:  34,
           height: 34,
           decoration: BoxDecoration(
             color: active
-                ? (activeBackground ?? const Color(0xFF1C1C1C))
-                : const Color(0xFF1C1C1C),
+                ? (activeBackground ?? fb.surfaceVar)
+                : fb.surfaceVar,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: active
-                  ? (activeBorder?.withValues(alpha: 0.5) ?? Colors.white10)
-                  : Colors.white10,
+                  ? (activeBorder?.withValues(alpha: 0.5) ??
+                      fb.border)
+                  : fb.border,
             ),
           ),
           child: Center(
@@ -780,21 +899,23 @@ class _TopBarIconBtn extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _NoteOverflowMenu
-//
-// Three-dot (⋮) PopupMenuButton. Currently exposes Lock / Unlock.
-// Extend [_NoteMenuAction] to add future items (share, export, etc.)
-// without touching the call site.
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum _NoteMenuAction { lock }
+enum _NoteMenuAction { lock, reminder }
 
 class _NoteOverflowMenu extends StatelessWidget {
-  final bool         isLocked;
-  final VoidCallback onLockToggle;
+  final bool            isLocked;
+  final bool            hasReminder;
+  final VoidCallback    onLockToggle;
+  final VoidCallback    onSetReminder;
+  final FocusBellColors fb;
 
   const _NoteOverflowMenu({
     required this.isLocked,
+    required this.hasReminder,
     required this.onLockToggle,
+    required this.onSetReminder,
+    required this.fb,
   });
 
   @override
@@ -804,98 +925,128 @@ class _NoteOverflowMenu extends StatelessWidget {
         switch (action) {
           case _NoteMenuAction.lock:
             onLockToggle();
+          case _NoteMenuAction.reminder:
+            onSetReminder();
         }
       },
-      // Render as a plain icon — no ink splash, matches the top-bar style.
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1C),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white10),
-        ),
-        child: const Center(
-          child: Icon(
-            Icons.more_vert_rounded,
-            size: 18,
-            color: Colors.white54,
-          ),
-        ),
-      ),
-      // Popup card styling.
-      color: const Color(0xFF1E1E1E),
-      elevation: 8,
+      color:       fb.surfaceVar,
+      elevation:   8,
       shadowColor: Colors.black54,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Colors.white10),
+        side:         BorderSide(color: fb.border),
+      ),
+      child: Container(
+        width:  34,
+        height: 34,
+        decoration: BoxDecoration(
+          color:        fb.surfaceVar,
+          borderRadius: BorderRadius.circular(8),
+          border:       Border.all(color: fb.border),
+        ),
+        child: Center(
+          child: Icon(Icons.more_vert_rounded,
+              size: 18, color: fb.onSurfaceDim),
+        ),
       ),
       itemBuilder: (_) => [
+        // ── Lock / Unlock ──────────────────────────────────
         PopupMenuItem<_NoteMenuAction>(
           value: _NoteMenuAction.lock,
-          child: Row(
-            children: [
-              // Lock icon changes to reflect the current state.
-              Icon(
-                isLocked
-                    ? Icons.lock_open_rounded
-                    : Icons.lock_outline_rounded,
-                size: 18,
+          child: Row(children: [
+            Icon(
+              isLocked
+                  ? Icons.lock_open_rounded
+                  : Icons.lock_outline_rounded,
+              size:  18,
+              color: isLocked
+                  ? const Color(0xFFFF9F0A)
+                  : const Color(0xFF4CAF50),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              isLocked ? 'Unlock note' : 'Lock note',
+              style: TextStyle(
                 color: isLocked
-                    ? const Color(0xFFFF9F0A)  // amber = currently locked
-                    : const Color(0xFF4CAF50), // green  = currently unlocked
+                    ? const Color(0xFFFF9F0A)
+                    : fb.onSurface,
+                fontSize: 14,
               ),
-              const SizedBox(width: 12),
-              Text(
-                isLocked ? 'Unlock note' : 'Lock note',
-                style: TextStyle(
-                  color: isLocked
-                      ? const Color(0xFFFF9F0A)
-                      : Colors.white,
-                  fontSize: 14,
+            ),
+            if (isLocked) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9F0A)
+                      .withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                      color: const Color(0xFFFF9F0A)
+                          .withValues(alpha: 0.4)),
                 ),
-              ),
-              // Small badge shown when note is currently locked.
-              if (isLocked) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF9F0A).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(
-                      color:
-                          const Color(0xFFFF9F0A).withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: const Text(
-                    'LOCKED',
+                child: const Text('LOCKED',
                     style: TextStyle(
-                      color: Color(0xFFFF9F0A),
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
+                      color:       Color(0xFFFF9F0A),
+                      fontSize:    9,
+                      fontWeight:  FontWeight.w800,
                       letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ],
+                    )),
+              ),
             ],
-          ),
+          ]),
         ),
 
-        // ── Divider + placeholder for future actions ────────────
-        // Uncomment and extend when more options are added:
-        // const PopupMenuDivider(height: 1),
-        // PopupMenuItem<_NoteMenuAction>(
-        //   value: _NoteMenuAction.export,
-        //   child: Row(children: [
-        //     const Icon(Icons.ios_share_rounded, size: 18, color: Colors.white54),
-        //     const SizedBox(width: 12),
-        //     const Text('Export note', style: TextStyle(color: Colors.white, fontSize: 14)),
-        //   ]),
-        // ),
+        const PopupMenuDivider(height: 1),
+
+        // ── Set / Edit reminder ────────────────────────────
+        PopupMenuItem<_NoteMenuAction>(
+          value: _NoteMenuAction.reminder,
+          child: Row(children: [
+            Icon(
+              hasReminder
+                  ? Icons.alarm_on_rounded
+                  : Icons.alarm_add_rounded,
+              size:  18,
+              color: hasReminder
+                  ? const Color(0xFFFF9F0A)
+                  : fb.onSurfaceDim,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              hasReminder ? 'Edit reminder' : 'Set reminder',
+              style: TextStyle(
+                color: hasReminder
+                    ? const Color(0xFFFF9F0A)
+                    : fb.onSurface,
+                fontSize: 14,
+              ),
+            ),
+            if (hasReminder) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9F0A)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(
+                      color: const Color(0xFFFF9F0A)
+                          .withValues(alpha: 0.35)),
+                ),
+                child: const Text('SET',
+                    style: TextStyle(
+                      color:       Color(0xFFFF9F0A),
+                      fontSize:    9,
+                      fontWeight:  FontWeight.w800,
+                      letterSpacing: 0.5,
+                    )),
+              ),
+            ],
+          ]),
+        ),
       ],
     );
   }

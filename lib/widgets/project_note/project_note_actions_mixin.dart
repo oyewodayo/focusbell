@@ -14,6 +14,7 @@
 //   • autoDetectLinks
 //   • saveNote / clearNote / confirmRemoveBlock
 //   • showColorPicker
+//   • setNoteReminder / clearNoteReminder   ← NEW
 //
 // Accesses shared state via NoteStateInterface abstract getters — no casting.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +29,9 @@ import 'package:flutter/rendering.dart';
 import 'package:focusbell/models/note_models.dart';
 import 'package:focusbell/services/app_controller.dart';
 import 'package:focusbell/services/note_rich_controller.dart';
+import 'package:focusbell/services/note_reminder_service.dart';
+import 'package:focusbell/services/reminder_service.dart';
+import 'package:focusbell/models/reminder_model.dart';
 import 'package:focusbell/services/standalone_note_controller.dart';
 import 'package:focusbell/utils/app_toast.dart';
 import 'package:focusbell/widgets/project_note_sheet.dart';
@@ -35,18 +39,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-
+import 'package:focusbell/services/note_rich_controller.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'project_note_state_interface.dart';
 
 mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
-
   // ─────────────────────────────────────────────────────────────────────────
   // Formatting helpers
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Applies [apply] to every [NoteSeg] in the active selection, or the whole
-  /// block when the cursor is collapsed.
   void applyInlineFmt(void Function(NoteSeg seg) apply) {
     final b = activeBlock;
     final c = activeCtrl;
@@ -54,7 +55,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
 
     final sel = c.selection;
     final start = (sel.isValid && !sel.isCollapsed) ? sel.start : 0;
-    final end   = (sel.isValid && !sel.isCollapsed) ? sel.end   : c.text.length;
+    final end = (sel.isValid && !sel.isCollapsed) ? sel.end : c.text.length;
 
     setState(() {
       c.applyToRange(start, end, apply);
@@ -65,8 +66,6 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     });
   }
 
-  /// Applies [apply] to the active [NoteBlock] for paragraph-level attributes
-  /// (heading level, alignment, ordered / bullet list).
   void applyParagraphFmt(void Function(NoteBlock b) apply) {
     final b = activeBlock;
     if (b == null) return;
@@ -82,18 +81,17 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // Block management
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Inserts a new empty text block immediately after [afterId] and focuses it.
   void addTextBlockAfter(String afterId) {
     final idx = blocks.indexWhere((b) => b.id == afterId);
     final nb = NoteBlock(id: noteUid(), type: NoteBlockType.text);
     blocks.insert(idx + 1, nb);
     initBlock(nb);
     setState(() {});
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => fn[nb.id]?.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => fn[nb.id]?.requestFocus(),
+    );
   }
 
-  /// Inserts a new checkbox block after the active block (or at the end).
   void addCheckboxBlock() {
     final nb = NoteBlock(id: noteUid(), type: NoteBlockType.checkbox);
     final idx = activeId == null
@@ -102,12 +100,11 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     blocks.insert(idx, nb);
     initBlock(nb);
     setState(() {});
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => fn[nb.id]?.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => fn[nb.id]?.requestFocus(),
+    );
   }
 
-  /// Removes the block with [id].  If it is the only editable block, clears
-  /// its content instead of deleting the block entirely.
   void removeBlock(String id) {
     final idx = blocks.indexWhere((b) => b.id == id);
     if (idx == -1) return;
@@ -117,22 +114,22 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       (b) => b.type == NoteBlockType.text || b.type == NoteBlockType.checkbox,
     );
 
-    // Wipe content instead of removing the last editable block.
     if (blocks.length <= 1 ||
         (textBlocks.length == 1 && textBlocks.first.id == id)) {
       final c = ctrl[id];
-      if (c != null) { c.segs = []; c.text = ''; blocks[idx].segs = []; }
+      if (c != null) {
+        c.segs = [];
+        c.text = '';
+        blocks[idx].segs = [];
+      }
       setState(() => dirty = true);
       return;
     }
 
-    // Delete associated temp PDF to avoid storage leaks.
     if (block.type == NoteBlockType.pdf && block.pdfPath != null) {
       File(block.pdfPath!).delete().catchError((_) {});
     }
 
-    // Capture refs BEFORE removing from maps — deferred disposal avoids the
-    // "_dependents.isEmpty" assertion while the TextField is still mounted.
     final ctrlToDispose = ctrl[id];
     final fnToDispose = fn[id];
 
@@ -150,76 +147,141 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       fnToDispose?.dispose();
     });
 
-    // Focus the block above (or first) after removal.
     final focusIdx = (idx - 1).clamp(0, blocks.length - 1);
     final targetId = blocks[focusIdx].id;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       fn[targetId]?.requestFocus();
       final c = ctrl[targetId];
-      if (c != null) c.selection = TextSelection.collapsed(offset: c.text.length);
+      if (c != null)
+        c.selection = TextSelection.collapsed(offset: c.text.length);
     });
   }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Checkbox total auto-computation
   // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // Extracts the monetary/numeric amount from a checkbox block's text.
+  // Uses the LAST number found in the flattened text, supporting:
+  //   "1000"             → 1000
+  //   "food: 5000"       → 5000
+  //   "water – 2,000"    → 2000
+  //   "1000\ncloth–3000" → 3000  (last number)
+  // ─────────────────────────────────────────────────────────────────────────
+  double? _extractBlockAmount(NoteBlock b) {
+    // Prefer live controller text (includes unsaved edits)
+    final raw = (ctrl[b.id]?.text.isNotEmpty == true)
+        ? ctrl[b.id]!.text
+        : b.segs.map((s) => s.text).join();
 
-  /// Scans numeric-only checkbox blocks.  If ≥ 2 exist, inserts / updates a
-  /// read-only "Checkbox Total:" block after the last numeric one.
-  void recomputeCheckboxTotal() {
-    final numericBlocks = <({NoteBlock block, int value})>[];
+    // Match integers or decimals with optional comma-thousands separators
+    final matches = RegExp(r'[\d,]+(?:\.\d+)?').allMatches(raw).toList();
+    if (matches.isEmpty) return null;
 
-    for (final b in blocks) {
-      if (b.type != NoteBlockType.checkbox) continue;
-      // Skip any existing total block.
-      if (b.segs.isNotEmpty &&
-          b.segs.first.text.trimLeft().startsWith('Checkbox Total:')) continue;
-      final raw = b.plainText.replaceAll(RegExp(r'[\s,_]'), '');
-      final n = int.tryParse(raw);
-      if (n != null) numericBlocks.add((block: b, value: n));
+    // Walk backwards — first parseable number from the end is the amount
+    for (final m in matches.reversed) {
+      final val = double.tryParse(m.group(0)!.replaceAll(',', ''));
+      if (val != null && val > 0) return val;
     }
+    return null;
+  }
 
-    final totalIdx = blocks.indexWhere(
-      (b) =>
-          b.type == NoteBlockType.checkbox &&
-          b.segs.isNotEmpty &&
-          b.segs.first.text.trimLeft().startsWith('Checkbox Total:'),
-    );
+    void recomputeCheckboxTotal() {
+  if (suppressTotalRecompute) {
+    suppressTotalRecompute = false;
+    return;
+  }
 
-    if (numericBlocks.length < 2) {
-      // Remove stale total if fewer than 2 numeric inputs remain.
-      if (totalIdx != -1) setState(() { blocks.removeAt(totalIdx); dirty = true; });
-      return;
-    }
+  double sum = 0;
+  bool anyAmount = false;
 
-    final sum = numericBlocks.fold(0, (acc, e) => acc + e.value);
-    final label = 'Checkbox Total: ${_commas(sum)}';
+  for (final b in blocks) {
+    if (b.type != NoteBlockType.checkbox) continue;
+    // Skip the total row itself
+    final plainText = (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join());
+    if (plainText.trimLeft().startsWith('Checkbox Total:')) continue;
 
-    if (totalIdx != -1) {
-      // Update in-place.
-      final tb = blocks[totalIdx];
-      final c = ctrl[tb.id];
-      setState(() {
-        tb.segs = [NoteSeg(text: label)];
-        tb.checked = false;
-        if (c != null) { c.segs = List.from(tb.segs); c.rebuildText(); }
-        dirty = true;
-      });
-    } else {
-      // Insert after the last numeric checkbox.
-      final insertAfterIdx =
-          blocks.indexWhere((b) => b.id == numericBlocks.last.block.id);
-      final tb = NoteBlock(id: noteUid(), type: NoteBlockType.checkbox)
-        ..segs = [NoteSeg(text: label)];
-      blocks.insert(insertAfterIdx + 1, tb);
-      initBlock(tb);
-      final c = ctrl[tb.id];
-      if (c != null) { c.segs = List.from(tb.segs); c.rebuildText(); }
-      setState(() => dirty = true);
+    final amount = _extractBlockAmount(b);
+    if (amount != null) {
+      sum += amount;
+      anyAmount = true;
     }
   }
 
-  /// Formats [n] with thousands commas, e.g. 1234567 → "1,234,567".
+  if (!anyAmount) {
+    final hadTotal = blocks.any((b) =>
+        b.type == NoteBlockType.checkbox &&
+        (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
+            .trimLeft()
+            .startsWith('Checkbox Total:'));
+    if (hadTotal) {
+      blocks.removeWhere((b) =>
+          b.type == NoteBlockType.checkbox &&
+          (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
+              .trimLeft()
+              .startsWith('Checkbox Total:'));
+      if (mounted) setState(() => dirty = true);
+    }
+    return;
+  }
+
+  final totalText = 'Checkbox Total: ${_fmtTotal(sum)}';
+
+  // Use controller text for the lookup — not segs — so it's always current
+  final existingIndex = blocks.indexWhere((b) =>
+      b.type == NoteBlockType.checkbox &&
+      (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
+          .trimLeft()
+          .startsWith('Checkbox Total:'));
+
+  if (existingIndex >= 0) {
+    final tb = blocks[existingIndex];
+    // Sync BOTH segs and controller
+    tb.segs = [NoteSeg(text: totalText)];
+    final c = ctrl[tb.id];
+    if (c != null) {
+      c.segs = [NoteSeg(text: totalText)];
+      c.rebuildText();
+    }
+  } else {
+    final tb = NoteBlock(
+      id: noteUid(),
+      type: NoteBlockType.checkbox,
+      segs: [NoteSeg(text: totalText)],
+    );
+    final c = NoteRichController(segs: [NoteSeg(text: totalText)]);
+    ctrl[tb.id] = c;
+    fn[tb.id] = FocusNode();
+    textKeys[tb.id] = GlobalKey();
+    blocks.add(tb);
+  }
+
+  if (mounted) setState(() => dirty = true);
+}
+
+
+  /// Formats a double total with comma-grouping.
+  /// 11000.0  → "11,000"
+  /// 2500.5   → "2,500.5"
+  String _fmtTotal(double v) {
+    final isWhole = v == v.truncateToDouble();
+    final raw = isWhole
+        ? v.toInt().toString()
+        : v.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '');
+
+    // Insert thousand-separators into the integer part
+    final parts = raw.split('.');
+    final intPart = parts[0];
+    final decPart = parts.length > 1 ? '.${parts[1]}' : '';
+
+    final buf = StringBuffer();
+    for (var i = 0; i < intPart.length; i++) {
+      if (i > 0 && (intPart.length - i) % 3 == 0) buf.write(',');
+      buf.write(intPart[i]);
+    }
+    return '$buf$decPart';
+  }
+
   String _commas(int n) {
     final s = n.toString();
     final buf = StringBuffer();
@@ -234,8 +296,6 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // URL tap detection
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Hit-tests [details] inside a text block to find a URL segment and opens
-  /// it in an external browser.
   Future<void> handleTextTap(NoteBlock b, TapUpDetails details) async {
     final c = ctrl[b.id];
     if (c == null) return;
@@ -247,9 +307,13 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
 
     RenderEditable? re;
     void visit(RenderObject child) {
-      if (child is RenderEditable) { re = child; return; }
+      if (child is RenderEditable) {
+        re = child;
+        return;
+      }
       child.visitChildren(visit);
     }
+
     renderObject.visitChildren(visit);
     if (re == null) return;
 
@@ -270,30 +334,41 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> pickImage(ImageSource source) async {
-    final file = await ImagePicker().pickImage(source: source, imageQuality: 85);
+    final file = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 85,
+    );
     if (file == null) return;
 
     final imgBlock = NoteBlock(
-        id: noteUid(), type: NoteBlockType.image, imagePath: file.path);
+      id: noteUid(),
+      type: NoteBlockType.image,
+      imagePath: file.path,
+    );
     final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
     final idx = activeId == null
         ? blocks.length
         : blocks.indexWhere((b) => b.id == activeId) + 1;
 
-    setState(() { blocks.insert(idx, imgBlock); blocks.insert(idx + 1, textAfter); dirty = true; });
+    setState(() {
+      blocks.insert(idx, imgBlock);
+      blocks.insert(idx + 1, textAfter);
+      dirty = true;
+    });
     initBlock(textAfter);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => fn[textAfter.id]?.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => fn[textAfter.id]?.requestFocus(),
+    );
   }
 
-  /// Bottom sheet offering camera or gallery as image sources.
   void showImageOptions() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       barrierColor: Colors.black38,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (_) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -306,11 +381,23 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _ImageOptionRow(icon: Icons.camera_alt_rounded, label: 'Take Photo',
-                    onTap: () { Navigator.pop(context); pickImage(ImageSource.camera); }),
+                _ImageOptionRow(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Take Photo',
+                  onTap: () {
+                    Navigator.pop(context);
+                    pickImage(ImageSource.camera);
+                  },
+                ),
                 const Divider(height: 1, color: Colors.white10),
-                _ImageOptionRow(icon: Icons.photo_library_rounded, label: 'Choose Photo',
-                    onTap: () { Navigator.pop(context); pickImage(ImageSource.gallery); }),
+                _ImageOptionRow(
+                  icon: Icons.photo_library_rounded,
+                  label: 'Choose Photo',
+                  onTap: () {
+                    Navigator.pop(context);
+                    pickImage(ImageSource.gallery);
+                  },
+                ),
               ],
             ),
           ),
@@ -335,35 +422,41 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     final picked = result.files.first;
     if (picked.path == null) return;
 
-    // Copy to app documents so the file survives the picker's temp directory.
     final docsDir = await getApplicationDocumentsDirectory();
     final destPath =
         '${docsDir.path}/${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
     await File(picked.path!).copy(destPath);
 
-    // Estimate page count by scanning raw PDF bytes.
     int pageCount = 0;
     try {
       final bytes = await File(destPath).readAsBytes();
-      pageCount = RegExp(r'/Type\s*/Page[^s]')
-          .allMatches(String.fromCharCodes(bytes))
-          .length;
+      pageCount = RegExp(
+        r'/Type\s*/Page[^s]',
+      ).allMatches(String.fromCharCodes(bytes)).length;
     } catch (_) {}
 
     final pdfBlock = NoteBlock(
-      id: noteUid(), type: NoteBlockType.pdf,
-      pdfPath: destPath, pdfName: picked.name,
-      pdfSizeBytes: picked.size, pdfPageCount: pageCount,
+      id: noteUid(),
+      type: NoteBlockType.pdf,
+      pdfPath: destPath,
+      pdfName: picked.name,
+      pdfSizeBytes: picked.size,
+      pdfPageCount: pageCount,
     );
     final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
     final idx = activeId == null
         ? blocks.length
         : blocks.indexWhere((b) => b.id == activeId) + 1;
 
-    setState(() { blocks.insert(idx, pdfBlock); blocks.insert(idx + 1, textAfter); dirty = true; });
+    setState(() {
+      blocks.insert(idx, pdfBlock);
+      blocks.insert(idx + 1, textAfter);
+      dirty = true;
+    });
     initBlock(textAfter);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => fn[textAfter.id]?.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => fn[textAfter.id]?.requestFocus(),
+    );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -377,26 +470,38 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     final sel = c.selection;
     final hasSelection = sel.isValid && !sel.isCollapsed;
     final existing = (c.styleAt(sel)['url'] as String?) ?? '';
-    final selectedText =
-        hasSelection ? c.text.substring(sel.start, sel.end).trim() : '';
-    final looksLikeUrl = selectedText.startsWith('http://') ||
+    final selectedText = hasSelection
+        ? c.text.substring(sel.start, sel.end).trim()
+        : '';
+    final looksLikeUrl =
+        selectedText.startsWith('http://') ||
         selectedText.startsWith('https://') ||
         selectedText.startsWith('www.');
 
-    // Create controllers here; dispose AFTER dialog closes to avoid the
-    // "_dependents.isEmpty" assertion from inside the dialog's build.
     final urlCtrl = TextEditingController(
-        text: existing.isNotEmpty ? existing : looksLikeUrl ? selectedText : '');
+      text: existing.isNotEmpty
+          ? existing
+          : looksLikeUrl
+          ? selectedText
+          : '',
+    );
     final textCtrl = TextEditingController(
-        text: looksLikeUrl ? '' : selectedText);
+      text: looksLikeUrl ? '' : selectedText,
+    );
 
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('Insert Link',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+        title: const Text(
+          'Insert Link',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -404,26 +509,48 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
               _dialogField(textCtrl, 'Link text'),
               const SizedBox(height: 10),
             ],
-            _dialogField(urlCtrl, 'https://',
-                keyboardType: TextInputType.url,
-                autofocus: true,
-                prefixIcon: const Icon(Icons.link_rounded,
-                    color: Color(0xFF64D2FF), size: 18)),
+            _dialogField(
+              urlCtrl,
+              'https://',
+              keyboardType: TextInputType.url,
+              autofocus: true,
+              prefixIcon: const Icon(
+                Icons.link_rounded,
+                color: Color(0xFF64D2FF),
+                size: 18,
+              ),
+            ),
           ],
         ),
         actions: [
           if (existing.isNotEmpty)
             TextButton(
-                onPressed: () => Navigator.pop(ctx, {'url': '', 'text': ''}),
-                child: const Text('Remove', style: TextStyle(color: Color(0xFFFF3B30)))),
+              onPressed: () => Navigator.pop(ctx, {'url': '', 'text': ''}),
+              child: const Text(
+                'Remove',
+                style: TextStyle(color: Color(0xFFFF3B30)),
+              ),
+            ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(
-                  ctx, {'url': urlCtrl.text.trim(), 'text': textCtrl.text.trim()}),
-              child: const Text('Insert',
-                  style: TextStyle(color: Color(0xFF64D2FF), fontWeight: FontWeight.w700))),
+            onPressed: () => Navigator.pop(ctx, {
+              'url': urlCtrl.text.trim(),
+              'text': textCtrl.text.trim(),
+            }),
+            child: const Text(
+              'Insert',
+              style: TextStyle(
+                color: Color(0xFF64D2FF),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -444,13 +571,19 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       final b = activeBlock;
       final at = c.selection.baseOffset;
       final newSeg = NoteSeg(
-          text: linkText, url: url, underline: true, color: const Color(0xFF64D2FF));
+        text: linkText,
+        url: url,
+        underline: true,
+        color: const Color(0xFF64D2FF),
+      );
       setState(() {
         c.segs = NoteRichController.insSegs(c.segs, at, linkText, newSeg);
         int pos = 0;
         for (final seg in c.segs) {
           if (pos >= at && pos < at + linkText.length) {
-            seg.url = url; seg.color = const Color(0xFF64D2FF); seg.underline = true;
+            seg.url = url;
+            seg.color = const Color(0xFF64D2FF);
+            seg.underline = true;
           }
           pos += seg.text.length;
         }
@@ -462,8 +595,13 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     }
   }
 
-  Widget _dialogField(TextEditingController c, String hint,
-      {TextInputType? keyboardType, bool autofocus = false, Widget? prefixIcon}) {
+  Widget _dialogField(
+    TextEditingController c,
+    String hint, {
+    TextInputType? keyboardType,
+    bool autofocus = false,
+    Widget? prefixIcon,
+  }) {
     return TextField(
       controller: c,
       autofocus: autofocus,
@@ -472,63 +610,183 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: Colors.white38),
-        filled: true, fillColor: const Color(0xFF252525),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        filled: true,
+        fillColor: const Color(0xFF252525),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
         prefixIcon: prefixIcon,
       ),
     );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Audio recording
-  // ─────────────────────────────────────────────────────────────────────────
+// Audio recording
+// ─────────────────────────────────────────────────────────────────────────
 
-  Future<void> toggleRecording() async =>
-      recording ? await stopRecording() : await startRecording();
+Future<void> toggleRecording() async =>
+    recording ? await stopRecording() : await startRecording();
 
-  Future<void> startRecording() async {
-    if (!await recorder.hasPermission()) return;
-    final dir = await getApplicationDocumentsDirectory();
-    final path =
-        '${dir.path}/note_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
-    await recorder.start(const RecordConfig(), path: path);
-    recStart = DateTime.now();
+Future<void> startRecording() async {
+  if (!await recorder.hasPermission()) {
+    if (mounted) {
+      AppToast.show(context,
+          msg: 'Microphone permission is required',
+          backgroundColor: const Color(0xFF2A1A1A),
+          textColor: const Color(0xFFFF3B30));
+    }
+    return;
+  }
+
+  final dir = await getApplicationDocumentsDirectory();
+  final path =
+      '${dir.path}/note_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+  try {
+    // Keep the CPU/screen awake for the duration of the recording so the
+    // OS doesn't suspend the mic session mid-capture on long recordings.
+    await WakelockPlus.enable();
+
+    await recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.aacLc,
+        // Bump this up if you're recording lectures/seminars, not quick notes —
+        // higher bitrate = more reliable playback of speech over long durations.
+        bitRate: 128000,
+        sampleRate: 44100,
+      ),
+      path: path,
+    );
+  } catch (e) {
+    await WakelockPlus.disable();
+    if (mounted) {
+      AppToast.show(context,
+          msg: '⚠️ Could not start recording: $e',
+          backgroundColor: const Color(0xFF2A1A1A),
+          textColor: const Color(0xFFFF3B30));
+    }
+    return;
+  }
+
+  recStart = DateTime.now();
+  recElapsed = Duration.zero;
+  recTicker?.dispose();
+  recTicker = createTicker((_) {
+    if (recStart != null && mounted) {
+      setState(() => recElapsed = DateTime.now().difference(recStart!));
+    }
+  })..start();
+
+  if (mounted) setState(() => recording = true);
+}
+
+Future<void> stopRecording() async {
+  recTicker?.stop();
+
+  String? path;
+  try {
+    path = await recorder.stop();
+  } catch (e) {
+    await WakelockPlus.disable();
+    if (mounted) {
+      setState(() {
+        recording = false;
+        recElapsed = Duration.zero;
+      });
+      AppToast.show(context,
+          msg: '⚠️ Recording failed to stop cleanly: $e',
+          backgroundColor: const Color(0xFF2A1A1A),
+          textColor: const Color(0xFFFF3B30));
+    }
+    return;
+  }
+
+  await WakelockPlus.disable();
+
+  // Capture elapsed time BEFORE resetting it — this was the bug that made
+  // saved recordings show up with a duration of 0.
+  final capturedElapsed = recElapsed;
+
+  setState(() {
+    recording = false;
     recElapsed = Duration.zero;
-    recTicker?.dispose();
-    recTicker = createTicker((_) {
-      if (recStart != null && mounted) {
-        setState(() => recElapsed = DateTime.now().difference(recStart!));
-      }
-    })..start();
-    setState(() => recording = true);
+  });
+
+  if (path == null) {
+    if (mounted) {
+      AppToast.show(context,
+          msg: '⚠️ Recording did not produce a file',
+          backgroundColor: const Color(0xFF2A1A1A),
+          textColor: const Color(0xFFFF3B30));
+    }
+    return;
   }
 
-  Future<void> stopRecording() async {
-    recTicker?.stop();
-    final path = await recorder.stop();
-    setState(() { recording = false; recElapsed = Duration.zero; });
-    if (path == null) return;
+  // Verify the file actually has content before trusting it. An .m4a whose
+  // container never got finalized (app killed / OS reclaimed mic mid-recording)
+  // can leave a near-empty or missing file — better to know now than to
+  // discover it later when the "note" turns out to hold nothing.
+  final file = File(path);
+  final exists = await file.exists();
+  final sizeBytes = exists ? await file.length() : 0;
+  const minPlausibleBytes = 2048; // a real recording is always well above this
 
-    final audioBlock = NoteBlock(
-        id: noteUid(), type: NoteBlockType.audio,
-        audioPath: path, audioDuration: recElapsed);
-    final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
-    final idx = activeId == null
-        ? blocks.length
-        : blocks.indexWhere((b) => b.id == activeId) + 1;
-
-    setState(() { blocks.insert(idx, audioBlock); blocks.insert(idx + 1, textAfter); dirty = true; });
-    initBlock(textAfter);
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => fn[textAfter.id]?.requestFocus());
+  if (!exists || sizeBytes < minPlausibleBytes) {
+    if (mounted) {
+      AppToast.show(context,
+          msg: '⚠️ Recording looks empty or corrupted (${sizeBytes}B). '
+              'Check Settings → Storage for the raw file at:\n$path',
+          backgroundColor: const Color(0xFF2A1A1A),
+          textColor: const Color(0xFFFF3B30));
+    }
+    // Still fall through and attach the block below — you get the warning
+    // immediately AND keep the file reference/path in case it's partially
+    // recoverable, instead of silently losing the pointer to it.
   }
 
-  Future<void> cancelRecording() async {
-    recTicker?.stop();
-    await recorder.cancel();
-    setState(() { recording = false; recElapsed = Duration.zero; });
+  final audioBlock = NoteBlock(
+    id: noteUid(),
+    type: NoteBlockType.audio,
+    audioPath: path,
+    audioDuration: capturedElapsed,
+  );
+  final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
+  final idx = activeId == null
+      ? blocks.length
+      : blocks.indexWhere((b) => b.id == activeId) + 1;
+
+  setState(() {
+    blocks.insert(idx, audioBlock);
+    blocks.insert(idx + 1, textAfter);
+    dirty = true;
+  });
+  initBlock(textAfter);
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => fn[textAfter.id]?.requestFocus(),
+  );
+
+  // Save immediately after a successful recording — don't let a crash or
+  // an accidental back-swipe lose 50 minutes of audio that's just sitting
+  // dirty in memory.
+  if (sizeBytes >= minPlausibleBytes) {
+    await saveNote();
   }
+}
+
+Future<void> cancelRecording() async {
+  recTicker?.stop();
+  await WakelockPlus.disable();
+  await recorder.cancel();
+  setState(() {
+    recording = false;
+    recElapsed = Duration.zero;
+  });
+}
 
   // ─────────────────────────────────────────────────────────────────────────
   // Audio playback
@@ -539,14 +797,22 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     if (isPlaying) {
       await player.pause();
       positionPoller?.cancel();
-      setState(() { playing[b.id] = false; currentlyPlayingId = null; });
+      setState(() {
+        playing[b.id] = false;
+        currentlyPlayingId = null;
+      });
     } else {
       for (final k in playing.keys.toList()) playing[k] = false;
       positionPoller?.cancel();
       await player.play(DeviceFileSource(b.audioPath!));
-      setState(() { playing[b.id] = true; currentlyPlayingId = b.id; activeId = b.id; });
-      // Poll every 100 ms — reliable even when the stream stalls.
-      positionPoller = Timer.periodic(const Duration(milliseconds: 100), (_) async {
+      setState(() {
+        playing[b.id] = true;
+        currentlyPlayingId = b.id;
+        activeId = b.id;
+      });
+      positionPoller = Timer.periodic(const Duration(milliseconds: 100), (
+        _,
+      ) async {
         if (!mounted || currentlyPlayingId == null) return;
         final pos = await player.getCurrentPosition();
         if (pos != null) setState(() => playPos[currentlyPlayingId!] = pos);
@@ -558,7 +824,8 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     final dur = playDur[b.id] ?? b.audioDuration;
     if (dur == Duration.zero) return;
     final target = Duration(
-        milliseconds: (dur.inMilliseconds * fraction.clamp(0.0, 1.0)).round());
+      milliseconds: (dur.inMilliseconds * fraction.clamp(0.0, 1.0)).round(),
+    );
     await player.seek(target);
     setState(() => playPos[b.id] = target);
   }
@@ -574,7 +841,8 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       context: context,
       backgroundColor: const Color(0xFF1A1A1A),
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (ctx) {
         final List<Widget> items;
 
@@ -585,19 +853,38 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
           items = notes.map((note) {
             final title = note.title.isEmpty ? 'Untitled' : note.title;
             return ListTile(
-              leading: const Icon(Icons.note_outlined, color: Colors.white38, size: 18),
-              title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 14)),
+              leading: const Icon(
+                Icons.note_outlined,
+                color: Colors.white38,
+                size: 18,
+              ),
+              title: Text(
+                title,
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
               onTap: () async {
                 Navigator.pop(ctx);
-                setState(() { blocks.removeWhere((bl) => bl.id == audioBlock.id); dirty = true; });
+                setState(() {
+                  blocks.removeWhere((bl) => bl.id == audioBlock.id);
+                  dirty = true;
+                });
                 await saveNote();
                 final target = StandaloneNoteController.instance.find(note.id);
                 if (target == null) return;
-                final tBlocks = NoteBlock.decodeList(target.note)..add(audioBlock);
-                await StandaloneNoteController.instance
-                    .saveNote(note.id, note.title, NoteBlock.encodeList(tBlocks));
-                if (mounted) AppToast.show(context, msg: 'Moved to "$title"',
-                    backgroundColor: const Color(0xFF0A1F0A), textColor: const Color(0xFF34C759));
+                final tBlocks = NoteBlock.decodeList(target.note)
+                  ..add(audioBlock);
+                await StandaloneNoteController.instance.saveNote(
+                  note.id,
+                  note.title,
+                  NoteBlock.encodeList(tBlocks),
+                );
+                if (mounted)
+                  AppToast.show(
+                    context,
+                    msg: 'Moved to "$title"',
+                    backgroundColor: const Color(0xFF0A1F0A),
+                    textColor: const Color(0xFF34C759),
+                  );
               },
             );
           }).toList();
@@ -605,41 +892,90 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
           final projects = AppController.instance.projects
               .where((p) => p.id != widget.project.id)
               .toList();
-          items = projects.map((project) => ListTile(
-            leading: Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(color: project.priority.color, shape: BoxShape.circle)),
-            title: Text(project.name, style: const TextStyle(color: Colors.white, fontSize: 14)),
-            subtitle: project.description.isNotEmpty
-                ? Text(project.description, style: const TextStyle(color: Colors.white38, fontSize: 12),
-                    maxLines: 1, overflow: TextOverflow.ellipsis)
-                : null,
-            onTap: () async {
-              Navigator.pop(ctx);
-              setState(() { blocks.removeWhere((bl) => bl.id == audioBlock.id); dirty = true; });
-              await saveNote();
-              final tp = AppController.instance.projects.firstWhere((p) => p.id == project.id);
-              final tBlocks = NoteBlock.decodeList(tp.note)..add(audioBlock);
-              await AppController.instance.updateProjectNote(project.id, NoteBlock.encodeList(tBlocks));
-              if (mounted) AppToast.show(context, msg: 'Moved to "${project.name}"',
-                  backgroundColor: const Color(0xFF0A1F0A), textColor: const Color(0xFF34C759));
-            },
-          )).toList();
+          items = projects
+              .map(
+                (project) => ListTile(
+                  leading: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: project.priority.color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  title: Text(
+                    project.name,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                  ),
+                  subtitle: project.description.isNotEmpty
+                      ? Text(
+                          project.description,
+                          style: const TextStyle(
+                            color: Colors.white38,
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        )
+                      : null,
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      blocks.removeWhere((bl) => bl.id == audioBlock.id);
+                      dirty = true;
+                    });
+                    await saveNote();
+                    final tp = AppController.instance.projects.firstWhere(
+                      (p) => p.id == project.id,
+                    );
+                    final tBlocks = NoteBlock.decodeList(tp.note)
+                      ..add(audioBlock);
+                    await AppController.instance.updateProjectNote(
+                      project.id,
+                      NoteBlock.encodeList(tBlocks),
+                    );
+                    if (mounted)
+                      AppToast.show(
+                        context,
+                        msg: 'Moved to "${project.name}"',
+                        backgroundColor: const Color(0xFF0A1F0A),
+                        textColor: const Color(0xFF34C759),
+                      );
+                  },
+                ),
+              )
+              .toList();
         }
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 36, height: 4,
-                margin: const EdgeInsets.only(top: 12, bottom: 14),
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
-            Text(isStandalone ? 'Move to note' : 'Move to project',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(top: 12, bottom: 14),
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text(
+              isStandalone ? 'Move to note' : 'Move to project',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
             if (items.isEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Text(isStandalone ? 'No other notes available' : 'No other projects available',
-                    style: const TextStyle(color: Colors.white38, fontSize: 13)),
+                child: Text(
+                  isStandalone
+                      ? 'No other notes available'
+                      : 'No other projects available',
+                  style: const TextStyle(color: Colors.white38, fontSize: 13),
+                ),
               )
             else
               Flexible(child: ListView(shrinkWrap: true, children: items)),
@@ -654,12 +990,15 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // Auto-link detection
   // ─────────────────────────────────────────────────────────────────────────
 
-  static final _urlRegex = RegExp(r'(?:https?://|www\.)\S+', caseSensitive: false);
+  static final _urlRegex = RegExp(
+    r'(?:https?://|www\.)\S+',
+    caseSensitive: false,
+  );
 
-  /// Promotes bare URL text in all blocks to linked, underlined, blue segments.
   void autoDetectLinks() {
     for (final b in blocks) {
-      if (b.type != NoteBlockType.text && b.type != NoteBlockType.checkbox) continue;
+      if (b.type != NoteBlockType.text && b.type != NoteBlockType.checkbox)
+        continue;
       final c = ctrl[b.id];
       if (c == null) continue;
 
@@ -667,21 +1006,32 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       final newSegs = <NoteSeg>[];
 
       for (final seg in c.segs) {
-        if (seg.url != null && seg.url!.isNotEmpty) { newSegs.add(seg); continue; }
+        if (seg.url != null && seg.url!.isNotEmpty) {
+          newSegs.add(seg);
+          continue;
+        }
         final matches = _urlRegex.allMatches(seg.text).toList();
-        if (matches.isEmpty) { newSegs.add(seg); continue; }
+        if (matches.isEmpty) {
+          newSegs.add(seg);
+          continue;
+        }
         changed = true;
         int cursor = 0;
         for (final m in matches) {
           if (m.start > cursor) {
-            newSegs.add(seg.copyWith(text: seg.text.substring(cursor, m.start)));
+            newSegs.add(
+              seg.copyWith(text: seg.text.substring(cursor, m.start)),
+            );
           }
           final urlText = m.group(0)!;
-          newSegs.add(seg.copyWith(
-            text: urlText,
-            url: urlText.startsWith('http') ? urlText : 'https://$urlText',
-            underline: true, color: const Color(0xFF64D2FF),
-          ));
+          newSegs.add(
+            seg.copyWith(
+              text: urlText,
+              url: urlText.startsWith('http') ? urlText : 'https://$urlText',
+              underline: true,
+              color: const Color(0xFF64D2FF),
+            ),
+          );
           cursor = m.end;
         }
         if (cursor < seg.text.length) {
@@ -706,26 +1056,37 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     for (final b in blocks) {
       if (ctrl[b.id] != null) b.segs = List.from(ctrl[b.id]!.segs);
     }
-    // Trim trailing empty text block before encoding.
     final trimmed = blocks.length > 1
-        ? (blocks.toList()
-          ..removeWhere((b) =>
-              b == blocks.last &&
-              b.type == NoteBlockType.text &&
-              b.plainText.trim().isEmpty))
+        ? (blocks.toList()..removeWhere(
+            (b) =>
+                b == blocks.last &&
+                b.type == NoteBlockType.text &&
+                b.plainText.trim().isEmpty,
+          ))
         : blocks;
     final encoded = NoteBlock.encodeList(trimmed);
 
     if (widget.onSaveNote != null) {
       await widget.onSaveNote!(titleCtrl.text.trim(), encoded);
     } else {
-      await AppController.instance.updateProjectNote(widget.project.id, encoded);
+      await AppController.instance.updateProjectNote(
+        widget.project.id,
+        encoded,
+      );
     }
 
     if (mounted) {
-      AppToast.show(context, msg: 'Note saved',
-          backgroundColor: const Color(0xFF0A1F0A), textColor: const Color(0xFF34C759));
-      setState(() { dirty = false; readOnly = true; FocusScope.of(context).unfocus(); });
+      AppToast.show(
+        context,
+        msg: 'Note saved',
+        backgroundColor: const Color(0xFF0A1F0A),
+        textColor: const Color(0xFF34C759),
+      );
+      setState(() {
+        dirty = false;
+        readOnly = true;
+        FocusScope.of(context).unfocus();
+      });
     }
   }
 
@@ -734,14 +1095,29 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Clear note?', style: TextStyle(color: Colors.white, fontSize: 17)),
-        content: const Text('All note content will be removed.',
-            style: TextStyle(color: Colors.white60, fontSize: 14)),
+        title: const Text(
+          'Clear note?',
+          style: TextStyle(color: Colors.white, fontSize: 17),
+        ),
+        content: const Text(
+          'All note content will be removed.',
+          style: TextStyle(color: Colors.white60, fontSize: 14),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Clear', style: TextStyle(color: Color(0xFFFF3B30)))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Clear',
+              style: TextStyle(color: Color(0xFFFF3B30)),
+            ),
+          ),
         ],
       ),
     );
@@ -756,16 +1132,157 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text('Remove block?', style: TextStyle(color: Colors.white, fontSize: 16)),
+        title: const Text(
+          'Remove block?',
+          style: TextStyle(color: Colors.white, fontSize: 16),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Remove', style: TextStyle(color: Color(0xFFFF3B30)))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Color(0xFFFF3B30)),
+            ),
+          ),
         ],
       ),
     );
     if (ok == true) removeBlock(b.id);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Note reminder — set / clear
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Shows a date+time picker, then schedules a [Reminder] via [ReminderService]
+  /// and persists the DateTime in [NoteReminderService].
+  Future<void> setNoteReminder() async {
+    final now = DateTime.now();
+
+    // Step 1 — date picker.
+    final date = await showDatePicker(
+      context: context,
+      initialDate: noteReminder ?? now.add(const Duration(hours: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFFFF9F0A),
+            onPrimary: Colors.black,
+            surface: Color(0xFF1E1E1E),
+            onSurface: Colors.white,
+          ),
+          dialogBackgroundColor: const Color(0xFF1A1A1A),
+        ),
+        child: child!,
+      ),
+    );
+    if (date == null || !mounted) return;
+
+    // Step 2 — time picker.
+    final initialTime = noteReminder != null
+        ? TimeOfDay.fromDateTime(noteReminder!)
+        : TimeOfDay.fromDateTime(now.add(const Duration(hours: 1)));
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      builder: (ctx, child) => Theme(
+        data: Theme.of(ctx).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFFFF9F0A),
+            onPrimary: Colors.black,
+            surface: Color(0xFF1E1E1E),
+            onSurface: Colors.white,
+          ),
+          dialogBackgroundColor: const Color(0xFF1A1A1A),
+        ),
+        child: child!,
+      ),
+    );
+    if (time == null || !mounted) return;
+
+    final remindAt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+
+    if (remindAt.isBefore(now)) {
+      AppToast.show(
+        context,
+        msg: 'Choose a future time',
+        backgroundColor: const Color(0xFF2A1A1A),
+        textColor: const Color(0xFFFF3B30),
+      );
+      return;
+    }
+
+    // Cancel any existing reminder for this note before creating a new one.
+    await _cancelExistingReminder();
+
+    // Build the title used in the Reminders screen.
+    final noteTitle = titleCtrl.text.trim();
+    final reminderTitle = noteTitle.isEmpty
+        ? 'Note reminder'
+        : 'Reminder: $noteTitle';
+
+    // Create a once-off Reminder via the shared ReminderService.
+    final reminder = Reminder(
+      id: 'note_${widget.project.id}',
+      title: reminderTitle,
+      dateTime: remindAt,
+      repeat: RepeatDays.once(),
+      priority: ReminderPriority.normal,
+      notes: noteTitle.isEmpty ? null : noteTitle,
+    );
+
+    await ReminderService.instance.add(reminder);
+    await NoteReminderService.instance.set(widget.project.id, remindAt);
+
+    if (mounted) {
+      setState(() => noteReminder = remindAt);
+      AppToast.show(
+        context,
+        msg: '🔔 Reminder set',
+        backgroundColor: const Color(0xFF1A1F0A),
+        textColor: const Color(0xFFFF9F0A),
+      );
+    }
+  }
+
+  /// Clears the scheduled reminder for this note.
+  Future<void> clearNoteReminder() async {
+    await _cancelExistingReminder();
+    await NoteReminderService.instance.clear(widget.project.id);
+    if (mounted) {
+      setState(() => noteReminder = null);
+      AppToast.show(
+        context,
+        msg: 'Reminder removed',
+        backgroundColor: const Color(0xFF1A1A1A),
+        textColor: const Color(0xFFFF3B30),
+      );
+    }
+  }
+
+  Future<void> _cancelExistingReminder() async {
+    final existingId = 'note_${widget.project.id}';
+    try {
+      await ReminderService.instance.remove(existingId);
+    } catch (_) {
+      // Not found — that's fine.
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -781,60 +1298,130 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
 
     final picked = await showDialog<Color>(
       context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
-        final preview =
-            isHighlight ? hsv.toColor().withValues(alpha: 0.4) : hsv.toColor();
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          title: Text(isHighlight ? 'Highlight color' : 'Text color',
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(height: 36,
-                  decoration: BoxDecoration(color: preview,
-                      borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.white12))),
-              const SizedBox(height: 16),
-              _hsvSlider(ctx, 'Hue', hsv.hue, 0, 360,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final preview = isHighlight
+              ? hsv.toColor().withValues(alpha: 0.4)
+              : hsv.toColor();
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            title: Text(
+              isHighlight ? 'Highlight color' : 'Text color',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: preview,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _hsvSlider(
+                  ctx,
+                  'Hue',
+                  hsv.hue,
+                  0,
+                  360,
                   HSVColor.fromAHSV(1, hsv.hue, 1, 1).toColor(),
-                  (v) => setLocal(() => hsv = hsv.withHue(v))),
-              _hsvSlider(ctx, 'Saturation', hsv.saturation, 0, 1, hsv.toColor(),
-                  (v) => setLocal(() => hsv = hsv.withSaturation(v))),
-              _hsvSlider(ctx, 'Brightness', hsv.value, 0, 1, hsv.toColor(),
-                  (v) => setLocal(() => hsv = hsv.withValue(v))),
+                  (v) => setLocal(() => hsv = hsv.withHue(v)),
+                ),
+                _hsvSlider(
+                  ctx,
+                  'Saturation',
+                  hsv.saturation,
+                  0,
+                  1,
+                  hsv.toColor(),
+                  (v) => setLocal(() => hsv = hsv.withSaturation(v)),
+                ),
+                _hsvSlider(
+                  ctx,
+                  'Brightness',
+                  hsv.value,
+                  0,
+                  1,
+                  hsv.toColor(),
+                  (v) => setLocal(() => hsv = hsv.withValue(v)),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, null),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.white54),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(
+                  ctx,
+                  isHighlight
+                      ? hsv.toColor().withValues(alpha: 0.4)
+                      : hsv.toColor(),
+                ),
+                child: const Text(
+                  'Apply',
+                  style: TextStyle(
+                    color: Color(0xFF64D2FF),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, null),
-                child: const Text('Cancel', style: TextStyle(color: Colors.white54))),
-            TextButton(
-                onPressed: () => Navigator.pop(ctx,
-                    isHighlight ? hsv.toColor().withValues(alpha: 0.4) : hsv.toColor()),
-                child: const Text('Apply',
-                    style: TextStyle(color: Color(0xFF64D2FF), fontWeight: FontWeight.w700))),
-          ],
-        );
-      }),
+          );
+        },
+      ),
     );
 
     if (picked == null) return;
-    if (isHighlight) applyInlineFmt((seg) => seg.highlight = picked);
-    else applyInlineFmt((seg) => seg.color = picked);
+    if (isHighlight)
+      applyInlineFmt((seg) => seg.highlight = picked);
+    else
+      applyInlineFmt((seg) => seg.color = picked);
   }
 
-  Widget _hsvSlider(BuildContext ctx, String label, double value, double min,
-      double max, Color activeColor, ValueChanged<double> onChanged) {
+  Widget _hsvSlider(
+    BuildContext ctx,
+    String label,
+    double value,
+    double min,
+    double max,
+    Color activeColor,
+    ValueChanged<double> onChanged,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
         SliderTheme(
           data: SliderTheme.of(ctx).copyWith(
-              trackHeight: 8,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10)),
-          child: Slider(value: value, min: min, max: max,
-              activeColor: activeColor, inactiveColor: Colors.white12, onChanged: onChanged),
+            trackHeight: 8,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+          ),
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            activeColor: activeColor,
+            inactiveColor: Colors.white12,
+            onChanged: onChanged,
+          ),
         ),
       ],
     );
@@ -846,7 +1433,11 @@ class _ImageOptionRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _ImageOptionRow({required this.icon, required this.label, required this.onTap});
+  const _ImageOptionRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -855,12 +1446,20 @@ class _ImageOptionRow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Row(children: [
-          Icon(icon, color: Colors.white70, size: 22),
-          const SizedBox(width: 16),
-          Text(label, style: const TextStyle(
-              color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
-        ]),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white70, size: 22),
+            const SizedBox(width: 16),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

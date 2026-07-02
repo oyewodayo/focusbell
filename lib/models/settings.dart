@@ -32,7 +32,6 @@ enum ReminderInterval {
     }
   }
 
-  /// Ascending display order for the settings UI.
   static const displayOrder = [
     ReminderInterval.fiveMin,
     ReminderInterval.fifteenMin,
@@ -83,24 +82,80 @@ extension SoundModeX on SoundMode {
       };
 }
 
+// ── AppThemeMode ──────────────────────────────────────────────────
+//
+// • dark   — always dark
+// • light  — always light
+// • system — follow OS setting
+// • auto   — dark 8 PM–7 AM, light otherwise (time-of-day)
+
+enum AppThemeMode { dark, light, system, auto }
+
+extension AppThemeModeX on AppThemeMode {
+  String get label => switch (this) {
+        AppThemeMode.dark   => 'Dark',
+        AppThemeMode.light  => 'Light',
+        AppThemeMode.system => 'System',
+        AppThemeMode.auto   => 'Auto (day/night)',
+      };
+
+  String get emoji => switch (this) {
+        AppThemeMode.dark   => '🌑',
+        AppThemeMode.light  => '☀️',
+        AppThemeMode.system => '📱',
+        AppThemeMode.auto   => '🌗',
+      };
+
+  /// Resolves this preference to a concrete [Brightness].
+  /// Called at build time; [platformBrightness] is only used when [system].
+  Brightness resolve(Brightness platformBrightness) {
+    switch (this) {
+      case AppThemeMode.dark:
+        return Brightness.dark;
+      case AppThemeMode.light:
+        return Brightness.light;
+      case AppThemeMode.system:
+        return platformBrightness;
+      case AppThemeMode.auto:
+        final hour = DateTime.now().hour;
+        // Dark from 8 PM (20:00) to 7 AM (07:00).
+        return (hour >= 20 || hour < 7)
+            ? Brightness.dark
+            : Brightness.light;
+    }
+  }
+
+  /// Maps to Flutter's [ThemeMode] for MaterialApp.
+  /// [auto] behaves like [dark] or [light] at a given moment —
+  /// we handle it via a resolved [ThemeData] swap, not ThemeMode.system.
+  ThemeMode toFlutterThemeMode() => switch (this) {
+        AppThemeMode.system => ThemeMode.system,
+        AppThemeMode.light  => ThemeMode.light,
+        _                   => ThemeMode.dark,
+      };
+
+  static AppThemeMode fromJson(dynamic raw) {
+    if (raw is String) {
+      return AppThemeMode.values.firstWhere(
+        (e) => e.name == raw,
+        orElse: () => AppThemeMode.dark,
+      );
+    }
+    return AppThemeMode.dark;
+  }
+}
+
 // ── AppSettings ───────────────────────────────────────────────────
 
 class AppSettings {
-  final SoundMode soundMode;
-  final bool notificationsEnabled;
+  final SoundMode      soundMode;
+  final bool           notificationsEnabled;
   final ReminderInterval interval;
-  final int quietStartHour;
-  final int quietEndHour;
-
-  /// SHA-256 hash of the user's 6-digit PIN.
-  /// Null or empty means no PIN has been set.
-  /// The raw PIN is NEVER stored here or anywhere else.
-  final String? pinHash;
-
-  /// Whether PIN protection is enabled.
-  /// Kept separate from [pinHash] so the hash is preserved if the user
-  /// temporarily disables then re-enables without re-entering the PIN.
-  final bool pinEnabled;
+  final int            quietStartHour;
+  final int            quietEndHour;
+  final String?        pinHash;
+  final bool           pinEnabled;
+  final AppThemeMode   themeMode;
 
   const AppSettings({
     this.notificationsEnabled = true,
@@ -110,17 +165,18 @@ class AppSettings {
     this.soundMode            = SoundMode.both,
     this.pinHash              = null,
     this.pinEnabled           = false,
+    this.themeMode            = AppThemeMode.dark,
   });
 
   AppSettings copyWith({
-    bool?             notificationsEnabled,
-    ReminderInterval? interval,
-    int?              quietStartHour,
-    int?              quietEndHour,
-    SoundMode?        soundMode,
-    // Use Object? sentinel so callers can explicitly pass null to clear pinHash.
-    Object?           pinHash        = _sentinel,
-    bool?             pinEnabled,
+    bool?              notificationsEnabled,
+    ReminderInterval?  interval,
+    int?               quietStartHour,
+    int?               quietEndHour,
+    SoundMode?         soundMode,
+    Object?            pinHash   = _sentinel,
+    bool?              pinEnabled,
+    AppThemeMode?      themeMode,
   }) =>
       AppSettings(
         notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -128,8 +184,9 @@ class AppSettings {
         quietStartHour:       quietStartHour       ?? this.quietStartHour,
         quietEndHour:         quietEndHour         ?? this.quietEndHour,
         soundMode:            soundMode            ?? this.soundMode,
-        pinHash:  identical(pinHash, _sentinel) ? this.pinHash : pinHash as String?,
+        pinHash: identical(pinHash, _sentinel) ? this.pinHash : pinHash as String?,
         pinEnabled:           pinEnabled           ?? this.pinEnabled,
+        themeMode:            themeMode            ?? this.themeMode,
       );
 
   static const Object _sentinel = Object();
@@ -140,9 +197,9 @@ class AppSettings {
         'quietStartHour':       quietStartHour,
         'quietEndHour':         quietEndHour,
         'soundMode':            soundMode.index,
-        // Only persist the hash, never a raw PIN.
         if (pinHash != null) 'pinHash': pinHash,
-        'pinEnabled': pinEnabled,
+        'pinEnabled':           pinEnabled,
+        'themeMode':            themeMode.name,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -154,5 +211,6 @@ class AppSettings {
             (json['soundMode'] as int?) ?? SoundMode.both.index],
         pinHash:    json['pinHash']    as String?,
         pinEnabled: json['pinEnabled'] as bool? ?? false,
+        themeMode:  AppThemeModeX.fromJson(json['themeMode']),
       );
 }

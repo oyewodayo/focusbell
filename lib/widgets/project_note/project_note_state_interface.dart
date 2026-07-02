@@ -127,6 +127,13 @@ mixin NoteStateInterface on State<ProjectNoteSheet> {
   String? get fullscreenImage;
   set fullscreenImage(String? v);
 
+  // ── Note reminder ─────────────────────────────────────────────────────────
+  /// The scheduled reminder DateTime for this note, or null when unset.
+  /// Loaded from NoteReminderService in initState; updated when the user
+  /// sets or clears a reminder via the ⋮ menu.
+  DateTime? get noteReminder;
+  set noteReminder(DateTime? v);
+
   // ── Convenience getters (implemented on the State class) ──────────────────
   NoteBlock? get activeBlock;
   NoteRichController? get activeCtrl;

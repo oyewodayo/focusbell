@@ -309,6 +309,21 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                   ),
                   const SizedBox(height: 12),
 
+                    // ── Appearance ───────────────────────────────────────────────────
+                    _Section(
+                    header: 'Appearance',
+                    children: AppThemeMode.values.map((mode) {
+                        final selected = _draft.themeMode == mode;
+                        return _SelectRow(
+                        label:    '${mode.emoji}  ${mode.label}',
+                        selected: selected,
+                        onTap:    () => setState(
+                            () => _draft = _draft.copyWith(themeMode: mode),
+                        ),
+                        );
+                    }).toList(),
+                    ),
+                    const SizedBox(height: 12),
                   // ── Security / PIN ───────────────────────────────
                   _Section(
                     header: 'Security',

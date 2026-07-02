@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:focusbell/services/continuity_service.dart';
+import 'package:focusbell/theme/app_theme.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -29,7 +30,6 @@ class StandaloneNoteController extends ChangeNotifier {
 
   Future<void> boot() async {
     final db = await _getDb();
-    await db.execute('DROP TABLE IF EXISTS standalone_notes');
     await _createTable(db);
     _notes = await _loadAll(db);
 
@@ -116,8 +116,8 @@ class StandaloneNoteController extends ChangeNotifier {
                 'and your context — so your brain doesn\'t have to. '
                 'This note is your complete guide. Read it once, '
                 'then delete it and start fresh.',
-            color: Colors.white70,
-          ),
+            color: null,   // inherits from theme at render time
+            ),
         ],
       ),
 

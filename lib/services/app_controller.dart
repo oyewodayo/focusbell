@@ -18,7 +18,8 @@ import 'storage_service.dart';
 import 'widget_service.dart';
 
 class AppController extends ChangeNotifier {
-  AppController._();
+  AppController.
+  _();
   static final AppController instance = AppController._();
 
   StorageService? _storage;
