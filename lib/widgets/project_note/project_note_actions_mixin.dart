@@ -10,11 +10,13 @@
 //   • pickPdf
 //   • showLinkDialog
 //   • startRecording / stopRecording / cancelRecording / togglePlayback / seekAudio
+//   • handleAppLifecycleForRecording (background/foreground tracking)
 //   • showMoveSheet  (move audio block to another project/note)
+//   • shareAudio
 //   • autoDetectLinks
 //   • saveNote / clearNote / confirmRemoveBlock
 //   • showColorPicker
-//   • setNoteReminder / clearNoteReminder   ← NEW
+//   • setNoteReminder / clearNoteReminder
 //
 // Accesses shared state via NoteStateInterface abstract getters — no casting.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -30,6 +32,7 @@ import 'package:focusbell/models/note_models.dart';
 import 'package:focusbell/services/app_controller.dart';
 import 'package:focusbell/services/note_rich_controller.dart';
 import 'package:focusbell/services/note_reminder_service.dart';
+import 'package:focusbell/services/recording_live_service.dart';
 import 'package:focusbell/services/reminder_service.dart';
 import 'package:focusbell/models/reminder_model.dart';
 import 'package:focusbell/services/standalone_note_controller.dart';
@@ -39,11 +42,20 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:focusbell/services/note_rich_controller.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:share_plus/share_plus.dart';
+
 import 'project_note_state_interface.dart';
 
 mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
+  // ─────────────────────────────────────────────────────────────────────────
+  // Recording state — dormant pause/resume fallback + background tracking.
+  // Not part of NoteStateInterface; local to this mixin.
+  // ─────────────────────────────────────────────────────────────────────────
+  Duration recAccumulated = Duration.zero;
+  bool recPausedByBackground = false;
+  bool _isBackgrounded = false;
+
   // ─────────────────────────────────────────────────────────────────────────
   // Formatting helpers
   // ─────────────────────────────────────────────────────────────────────────
@@ -160,25 +172,14 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // ─────────────────────────────────────────────────────────────────────────
   // Checkbox total auto-computation
   // ─────────────────────────────────────────────────────────────────────────
-  // ─────────────────────────────────────────────────────────────────────────
-  // Extracts the monetary/numeric amount from a checkbox block's text.
-  // Uses the LAST number found in the flattened text, supporting:
-  //   "1000"             → 1000
-  //   "food: 5000"       → 5000
-  //   "water – 2,000"    → 2000
-  //   "1000\ncloth–3000" → 3000  (last number)
-  // ─────────────────────────────────────────────────────────────────────────
   double? _extractBlockAmount(NoteBlock b) {
-    // Prefer live controller text (includes unsaved edits)
     final raw = (ctrl[b.id]?.text.isNotEmpty == true)
         ? ctrl[b.id]!.text
         : b.segs.map((s) => s.text).join();
 
-    // Match integers or decimals with optional comma-thousands separators
     final matches = RegExp(r'[\d,]+(?:\.\d+)?').allMatches(raw).toList();
     if (matches.isEmpty) return null;
 
-    // Walk backwards — first parseable number from the end is the amount
     for (final m in matches.reversed) {
       final val = double.tryParse(m.group(0)!.replaceAll(',', ''));
       if (val != null && val > 0) return val;
@@ -186,90 +187,82 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     return null;
   }
 
-    void recomputeCheckboxTotal() {
-  if (suppressTotalRecompute) {
-    suppressTotalRecompute = false;
-    return;
-  }
-
-  double sum = 0;
-  bool anyAmount = false;
-
-  for (final b in blocks) {
-    if (b.type != NoteBlockType.checkbox) continue;
-    // Skip the total row itself
-    final plainText = (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join());
-    if (plainText.trimLeft().startsWith('Checkbox Total:')) continue;
-
-    final amount = _extractBlockAmount(b);
-    if (amount != null) {
-      sum += amount;
-      anyAmount = true;
+  void recomputeCheckboxTotal() {
+    if (suppressTotalRecompute) {
+      suppressTotalRecompute = false;
+      return;
     }
-  }
 
-  if (!anyAmount) {
-    final hadTotal = blocks.any((b) =>
-        b.type == NoteBlockType.checkbox &&
-        (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
-            .trimLeft()
-            .startsWith('Checkbox Total:'));
-    if (hadTotal) {
-      blocks.removeWhere((b) =>
+    double sum = 0;
+    bool anyAmount = false;
+
+    for (final b in blocks) {
+      if (b.type != NoteBlockType.checkbox) continue;
+      final plainText = (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join());
+      if (plainText.trimLeft().startsWith('Checkbox Total:')) continue;
+
+      final amount = _extractBlockAmount(b);
+      if (amount != null) {
+        sum += amount;
+        anyAmount = true;
+      }
+    }
+
+    if (!anyAmount) {
+      final hadTotal = blocks.any((b) =>
           b.type == NoteBlockType.checkbox &&
           (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
               .trimLeft()
               .startsWith('Checkbox Total:'));
-      if (mounted) setState(() => dirty = true);
+      if (hadTotal) {
+        blocks.removeWhere((b) =>
+            b.type == NoteBlockType.checkbox &&
+            (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
+                .trimLeft()
+                .startsWith('Checkbox Total:'));
+        if (mounted) setState(() => dirty = true);
+      }
+      return;
     }
-    return;
+
+    final totalText = 'Checkbox Total: ${_fmtTotal(sum)}';
+
+    final existingIndex = blocks.indexWhere((b) =>
+        b.type == NoteBlockType.checkbox &&
+        (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
+            .trimLeft()
+            .startsWith('Checkbox Total:'));
+
+    if (existingIndex >= 0) {
+      final tb = blocks[existingIndex];
+      tb.segs = [NoteSeg(text: totalText)];
+      final c = ctrl[tb.id];
+      if (c != null) {
+        c.segs = [NoteSeg(text: totalText)];
+        c.rebuildText();
+      }
+    } else {
+      final tb = NoteBlock(
+        id: noteUid(),
+        type: NoteBlockType.checkbox,
+        segs: [NoteSeg(text: totalText)],
+      );
+      final c = NoteRichController(segs: [NoteSeg(text: totalText)]);
+      ctrl[tb.id] = c;
+      fn[tb.id] = FocusNode();
+      textKeys[tb.id] = GlobalKey();
+      blocks.add(tb);
+    }
+
+    if (mounted) setState(() => dirty = true);
   }
 
-  final totalText = 'Checkbox Total: ${_fmtTotal(sum)}';
-
-  // Use controller text for the lookup — not segs — so it's always current
-  final existingIndex = blocks.indexWhere((b) =>
-      b.type == NoteBlockType.checkbox &&
-      (ctrl[b.id]?.text ?? b.segs.map((s) => s.text).join())
-          .trimLeft()
-          .startsWith('Checkbox Total:'));
-
-  if (existingIndex >= 0) {
-    final tb = blocks[existingIndex];
-    // Sync BOTH segs and controller
-    tb.segs = [NoteSeg(text: totalText)];
-    final c = ctrl[tb.id];
-    if (c != null) {
-      c.segs = [NoteSeg(text: totalText)];
-      c.rebuildText();
-    }
-  } else {
-    final tb = NoteBlock(
-      id: noteUid(),
-      type: NoteBlockType.checkbox,
-      segs: [NoteSeg(text: totalText)],
-    );
-    final c = NoteRichController(segs: [NoteSeg(text: totalText)]);
-    ctrl[tb.id] = c;
-    fn[tb.id] = FocusNode();
-    textKeys[tb.id] = GlobalKey();
-    blocks.add(tb);
-  }
-
-  if (mounted) setState(() => dirty = true);
-}
-
-
-  /// Formats a double total with comma-grouping.
-  /// 11000.0  → "11,000"
-  /// 2500.5   → "2,500.5"
   String _fmtTotal(double v) {
     final isWhole = v == v.truncateToDouble();
     final raw = isWhole
         ? v.toInt().toString()
         : v.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '');
 
-    // Insert thousand-separators into the integer part
     final parts = raw.split('.');
     final intPart = parts[0];
     final decPart = parts.length > 1 ? '.${parts[1]}' : '';
@@ -626,167 +619,221 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-// Audio recording
-// ─────────────────────────────────────────────────────────────────────────
+  // Audio recording
+  // ─────────────────────────────────────────────────────────────────────────
 
-Future<void> toggleRecording() async =>
-    recording ? await stopRecording() : await startRecording();
+  Future<void> toggleRecording() async =>
+      recording ? await stopRecording() : await startRecording();
 
-Future<void> startRecording() async {
-  if (!await recorder.hasPermission()) {
-    if (mounted) {
-      AppToast.show(context,
-          msg: 'Microphone permission is required',
-          backgroundColor: const Color(0xFF2A1A1A),
-          textColor: const Color(0xFFFF3B30));
+  Future<void> startRecording() async {
+    if (!await recorder.hasPermission()) {
+      if (mounted) {
+        AppToast.show(context,
+            msg: 'Microphone permission is required',
+            backgroundColor: const Color(0xFF2A1A1A),
+            textColor: const Color(0xFFFF3B30));
+      }
+      return;
     }
-    return;
-  }
 
-  final dir = await getApplicationDocumentsDirectory();
-  final path =
-      '${dir.path}/note_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    final dir = await getApplicationDocumentsDirectory();
+    final path =
+        '${dir.path}/note_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
 
-  try {
-    // Keep the CPU/screen awake for the duration of the recording so the
-    // OS doesn't suspend the mic session mid-capture on long recordings.
-    await WakelockPlus.enable();
+    try {
+      // Keep the CPU/screen awake so the OS doesn't suspend the mic session
+      // mid-capture on long recordings.
+      await WakelockPlus.enable();
 
-    await recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        // Bump this up if you're recording lectures/seminars, not quick notes —
-        // higher bitrate = more reliable playback of speech over long durations.
-        bitRate: 128000,
-        sampleRate: 44100,
-      ),
-      path: path,
+      await recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
+        path: path,
+      );
+    } catch (e) {
+      await WakelockPlus.disable();
+      if (mounted) {
+        AppToast.show(context,
+            msg: '⚠️ Could not start recording: $e',
+            backgroundColor: const Color(0xFF2A1A1A),
+            textColor: const Color(0xFFFF3B30));
+      }
+      return;
+    }
+
+    // Native foreground service + live status-bar notification. This is what
+    // keeps capture genuinely uninterrupted while the app is backgrounded —
+    // Android's documented mechanism for "voice recorders and communication
+    // apps" continuing to capture from the background.
+    final noteTitle = titleCtrl.text.trim();
+    await RecordingLiveService.start(
+      title: noteTitle.isEmpty ? 'Voice note' : noteTitle,
     );
-  } catch (e) {
-    await WakelockPlus.disable();
-    if (mounted) {
-      AppToast.show(context,
-          msg: '⚠️ Could not start recording: $e',
-          backgroundColor: const Color(0xFF2A1A1A),
-          textColor: const Color(0xFFFF3B30));
-    }
-    return;
-  }
 
-  recStart = DateTime.now();
-  recElapsed = Duration.zero;
-  recTicker?.dispose();
-  recTicker = createTicker((_) {
-    if (recStart != null && mounted) {
-      setState(() => recElapsed = DateTime.now().difference(recStart!));
-    }
-  })..start();
-
-  if (mounted) setState(() => recording = true);
-}
-
-Future<void> stopRecording() async {
-  recTicker?.stop();
-
-  String? path;
-  try {
-    path = await recorder.stop();
-  } catch (e) {
-    await WakelockPlus.disable();
-    if (mounted) {
-      setState(() {
-        recording = false;
-        recElapsed = Duration.zero;
-      });
-      AppToast.show(context,
-          msg: '⚠️ Recording failed to stop cleanly: $e',
-          backgroundColor: const Color(0xFF2A1A1A),
-          textColor: const Color(0xFFFF3B30));
-    }
-    return;
-  }
-
-  await WakelockPlus.disable();
-
-  // Capture elapsed time BEFORE resetting it — this was the bug that made
-  // saved recordings show up with a duration of 0.
-  final capturedElapsed = recElapsed;
-
-  setState(() {
-    recording = false;
+    recStart = DateTime.now();
+    recAccumulated = Duration.zero;
     recElapsed = Duration.zero;
-  });
+    recPausedByBackground = false;
+    _startRecTicker();
 
-  if (path == null) {
-    if (mounted) {
-      AppToast.show(context,
-          msg: '⚠️ Recording did not produce a file',
-          backgroundColor: const Color(0xFF2A1A1A),
-          textColor: const Color(0xFFFF3B30));
+    if (mounted) setState(() => recording = true);
+  }
+
+  void _startRecTicker() {
+    recTicker?.dispose();
+    recTicker = createTicker((_) {
+      if (recStart != null && mounted) {
+        setState(() =>
+            recElapsed = recAccumulated + DateTime.now().difference(recStart!));
+      }
+    })..start();
+  }
+
+  Future<void> stopRecording() async {
+    recTicker?.stop();
+
+    String? path;
+    try {
+      path = await recorder.stop();
+    } catch (e) {
+      await WakelockPlus.disable();
+      await RecordingLiveService.stop();
+      if (mounted) {
+        setState(() {
+          recording = false;
+          recElapsed = Duration.zero;
+          recPausedByBackground = false;
+        });
+        AppToast.show(context,
+            msg: '⚠️ Recording failed to stop cleanly: $e',
+            backgroundColor: const Color(0xFF2A1A1A),
+            textColor: const Color(0xFFFF3B30));
+      }
+      return;
     }
-    return;
-  }
 
-  // Verify the file actually has content before trusting it. An .m4a whose
-  // container never got finalized (app killed / OS reclaimed mic mid-recording)
-  // can leave a near-empty or missing file — better to know now than to
-  // discover it later when the "note" turns out to hold nothing.
-  final file = File(path);
-  final exists = await file.exists();
-  final sizeBytes = exists ? await file.length() : 0;
-  const minPlausibleBytes = 2048; // a real recording is always well above this
+    await WakelockPlus.disable();
+    await RecordingLiveService.stop();
 
-  if (!exists || sizeBytes < minPlausibleBytes) {
-    if (mounted) {
-      AppToast.show(context,
-          msg: '⚠️ Recording looks empty or corrupted (${sizeBytes}B). '
-              'Check Settings → Storage for the raw file at:\n$path',
-          backgroundColor: const Color(0xFF2A1A1A),
-          textColor: const Color(0xFFFF3B30));
+    // Capture elapsed time BEFORE resetting it — this was the bug that made
+    // saved recordings show up with a duration of 0.
+    final capturedElapsed = recElapsed;
+
+    setState(() {
+      recording = false;
+      recElapsed = Duration.zero;
+      recPausedByBackground = false;
+    });
+
+    if (path == null) {
+      if (mounted) {
+        AppToast.show(context,
+            msg: '⚠️ Recording did not produce a file',
+            backgroundColor: const Color(0xFF2A1A1A),
+            textColor: const Color(0xFFFF3B30));
+      }
+      return;
     }
-    // Still fall through and attach the block below — you get the warning
-    // immediately AND keep the file reference/path in case it's partially
-    // recoverable, instead of silently losing the pointer to it.
+
+    // Verify the file actually has content before trusting it.
+    final file = File(path);
+    final exists = await file.exists();
+    final sizeBytes = exists ? await file.length() : 0;
+    const minPlausibleBytes = 2048;
+
+    if (!exists || sizeBytes < minPlausibleBytes) {
+      if (mounted) {
+        AppToast.show(context,
+            msg: '⚠️ Recording looks empty or corrupted (${sizeBytes}B). '
+                'Check Settings → Storage for the raw file at:\n$path',
+            backgroundColor: const Color(0xFF2A1A1A),
+            textColor: const Color(0xFFFF3B30));
+      }
+    }
+
+    final audioBlock = NoteBlock(
+      id: noteUid(),
+      type: NoteBlockType.audio,
+      audioPath: path,
+      audioDuration: capturedElapsed,
+    );
+    final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
+    final idx = activeId == null
+        ? blocks.length
+        : blocks.indexWhere((b) => b.id == activeId) + 1;
+
+    setState(() {
+      blocks.insert(idx, audioBlock);
+      blocks.insert(idx + 1, textAfter);
+      dirty = true;
+    });
+    initBlock(textAfter);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => fn[textAfter.id]?.requestFocus(),
+    );
+
+    if (sizeBytes >= minPlausibleBytes) {
+      await saveNote();
+    }
   }
 
-  final audioBlock = NoteBlock(
-    id: noteUid(),
-    type: NoteBlockType.audio,
-    audioPath: path,
-    audioDuration: capturedElapsed,
-  );
-  final textAfter = NoteBlock(id: noteUid(), type: NoteBlockType.text);
-  final idx = activeId == null
-      ? blocks.length
-      : blocks.indexWhere((b) => b.id == activeId) + 1;
-
-  setState(() {
-    blocks.insert(idx, audioBlock);
-    blocks.insert(idx + 1, textAfter);
-    dirty = true;
-  });
-  initBlock(textAfter);
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => fn[textAfter.id]?.requestFocus(),
-  );
-
-  // Save immediately after a successful recording — don't let a crash or
-  // an accidental back-swipe lose 50 minutes of audio that's just sitting
-  // dirty in memory.
-  if (sizeBytes >= minPlausibleBytes) {
-    await saveNote();
+  Future<void> cancelRecording() async {
+    recTicker?.stop();
+    await WakelockPlus.disable();
+    await RecordingLiveService.stop();
+    await recorder.cancel();
+    setState(() {
+      recording = false;
+      recElapsed = Duration.zero;
+      recAccumulated = Duration.zero;
+      recPausedByBackground = false;
+    });
   }
-}
 
-Future<void> cancelRecording() async {
-  recTicker?.stop();
-  await WakelockPlus.disable();
-  await recorder.cancel();
-  setState(() {
-    recording = false;
-    recElapsed = Duration.zero;
-  });
-}
+  // ─────────────────────────────────────────────────────────────────────────
+  // App lifecycle — tracks background state only. The microphone-type
+  // foreground service is what keeps capture alive while backgrounded, so we
+  // deliberately do NOT auto-pause here. _autoPauseForBackground /
+  // _autoResumeFromBackground are kept as a dormant fallback foundation for
+  // a future amplitude-based watchdog.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> handleAppLifecycleForRecording(AppLifecycleState state) async {
+    if (!recording) return;
+    _isBackgrounded =
+        state == AppLifecycleState.paused || state == AppLifecycleState.hidden;
+  }
+
+  Future<void> _autoPauseForBackground() async {
+    try {
+      await recorder.pause();
+      recTicker?.stop();
+      if (recStart != null) {
+        recAccumulated += DateTime.now().difference(recStart!);
+        recStart = null;
+      }
+      recElapsed = recAccumulated;
+      recPausedByBackground = true;
+      if (mounted) setState(() {});
+    } catch (_) {
+      await stopRecording();
+    }
+  }
+
+  Future<void> _autoResumeFromBackground() async {
+    try {
+      await recorder.resume();
+      recStart = DateTime.now();
+      _startRecTicker();
+      recPausedByBackground = false;
+      if (mounted) setState(() {});
+    } catch (_) {
+      if (mounted) setState(() => recPausedByBackground = false);
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Audio playback
@@ -987,6 +1034,41 @@ Future<void> cancelRecording() async {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Audio share / export
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> shareAudio(NoteBlock b) async {
+    if (b.audioPath == null) return;
+    final file = File(b.audioPath!);
+
+    if (!await file.exists()) {
+      if (mounted) {
+        AppToast.show(context,
+            msg: '⚠️ Audio file not found — it may have been moved or deleted',
+            backgroundColor: const Color(0xFF2A1A1A),
+            textColor: const Color(0xFFFF3B30));
+      }
+      return;
+    }
+
+    final title = titleCtrl.text.trim();
+    try {
+      await Share.shareXFiles(
+        [XFile(b.audioPath!, mimeType: 'audio/mp4')],
+        subject: title.isEmpty ? 'Voice note' : title,
+        text: title.isEmpty ? 'Voice note from FocusBell' : title,
+      );
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(context,
+            msg: '⚠️ Could not open share sheet: $e',
+            backgroundColor: const Color(0xFF2A1A1A),
+            textColor: const Color(0xFFFF3B30));
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // Auto-link detection
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -1161,12 +1243,9 @@ Future<void> cancelRecording() async {
   // Note reminder — set / clear
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Shows a date+time picker, then schedules a [Reminder] via [ReminderService]
-  /// and persists the DateTime in [NoteReminderService].
   Future<void> setNoteReminder() async {
     final now = DateTime.now();
 
-    // Step 1 — date picker.
     final date = await showDatePicker(
       context: context,
       initialDate: noteReminder ?? now.add(const Duration(hours: 1)),
@@ -1187,7 +1266,6 @@ Future<void> cancelRecording() async {
     );
     if (date == null || !mounted) return;
 
-    // Step 2 — time picker.
     final initialTime = noteReminder != null
         ? TimeOfDay.fromDateTime(noteReminder!)
         : TimeOfDay.fromDateTime(now.add(const Duration(hours: 1)));
@@ -1228,16 +1306,13 @@ Future<void> cancelRecording() async {
       return;
     }
 
-    // Cancel any existing reminder for this note before creating a new one.
     await _cancelExistingReminder();
 
-    // Build the title used in the Reminders screen.
     final noteTitle = titleCtrl.text.trim();
     final reminderTitle = noteTitle.isEmpty
         ? 'Note reminder'
         : 'Reminder: $noteTitle';
 
-    // Create a once-off Reminder via the shared ReminderService.
     final reminder = Reminder(
       id: 'note_${widget.project.id}',
       title: reminderTitle,
@@ -1261,7 +1336,6 @@ Future<void> cancelRecording() async {
     }
   }
 
-  /// Clears the scheduled reminder for this note.
   Future<void> clearNoteReminder() async {
     await _cancelExistingReminder();
     await NoteReminderService.instance.clear(widget.project.id);

@@ -333,7 +333,6 @@ mixin ProjectNoteMediaBlocksMixin
                             : Colors.white24,
                         fontSize: 11, fontWeight: FontWeight.w500)),
                 const Spacer(),
-
                 // Total duration.
                 if (dur != Duration.zero) ...[
                   Text(_fmtDur(dur),
@@ -341,6 +340,31 @@ mixin ProjectNoteMediaBlocksMixin
                           fontFeatures: [FontFeature.tabularFigures()])),
                   const SizedBox(width: 8),
                 ],
+
+                // Share / save-to-device button — opens the native share sheet,
+                // which includes "Save to Files" / download as one of its options.
+                GestureDetector(
+                  onTap: () => shareAudio(b),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.ios_share_rounded, size: 11, color: Colors.white54),
+                        SizedBox(width: 4),
+                        Text('Share',
+                            style: TextStyle(color: Colors.white54,
+                                fontSize: 11, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
 
                 // Move-to-project / move-to-note button.
                 GestureDetector(
@@ -357,6 +381,7 @@ mixin ProjectNoteMediaBlocksMixin
                       children: [
                         Icon(Icons.drive_file_move_outline, size: 11, color: Color(0xFF64D2FF)),
                         SizedBox(width: 4),
+                        
                         Text('Move',
                             style: TextStyle(color: Color(0xFF64D2FF),
                                 fontSize: 11, fontWeight: FontWeight.w600)),

@@ -16,6 +16,11 @@
 // and accesses shared state via the abstract getters — no casting, no `dynamic`.
 // _ProjectNoteSheetState simply declares each field and Dart satisfies the
 // abstract getters automatically.
+//
+// WidgetsBindingObserver: added so recording code can track foreground/
+// background transitions (see handleAppLifecycleForRecording in
+// ProjectNoteActionsMixin). It only tracks state right now — the microphone
+// foreground service is what keeps capture alive while backgrounded.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'dart:async';
@@ -74,6 +79,7 @@ class ProjectNoteSheet extends StatefulWidget {
 class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     with
         TickerProviderStateMixin,
+        WidgetsBindingObserver,
         NoteStateInterface,
         ProjectNoteActionsMixin,
         ProjectNoteMediaBlocksMixin,
@@ -214,6 +220,8 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
     blocks = NoteBlock.decodeList(widget.project.note);
     for (final b in blocks) initBlock(b);
     ensureTrailingTextBlock();
@@ -267,7 +275,13 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    handleAppLifecycleForRecording(state);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     positionPoller?.cancel();
     for (final c in ctrl.values) c.dispose();
     for (final f in fn.values) f.dispose();
