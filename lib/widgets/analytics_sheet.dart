@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../models/focus_session.dart';
 import '../models/project.dart';
 import '../services/focus_timer_service.dart';
+import '../theme/app_theme.dart';
 
 // ── Entry point ───────────────────────────────────────────────────
 
@@ -67,11 +68,12 @@ class _AnalyticsSheetState extends State<AnalyticsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       height:     MediaQuery.of(context).size.height * 0.92,
-      decoration: const BoxDecoration(
-        color:        Color(0xFF0E0E0E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      decoration: BoxDecoration(
+        color:        fb.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
         children: [
@@ -79,7 +81,7 @@ class _AnalyticsSheetState extends State<AnalyticsSheet> {
           Container(
             width: 40, height: 4,
             decoration: BoxDecoration(
-              color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              color: fb.onSurfaceFaint, borderRadius: BorderRadius.circular(2)),
           ),
           const SizedBox(height: 16),
 
@@ -96,18 +98,18 @@ class _AnalyticsSheetState extends State<AnalyticsSheet> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color:        Colors.white.withValues(alpha: 0.06),
+                        color:        fb.onSurface.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white54, size: 12),
-                          SizedBox(width: 4),
+                              color: fb.onSurface.withValues(alpha: 0.54), size: 12),
+                          const SizedBox(width: 4),
                           Text('Back',
                               style: TextStyle(
-                                  color: Colors.white54, fontSize: 12)),
+                                  color: fb.onSurface.withValues(alpha: 0.54), fontSize: 12)),
                         ],
                       ),
                     ),
@@ -121,8 +123,8 @@ class _AnalyticsSheetState extends State<AnalyticsSheet> {
                                 orElse: () => _summaries.first)
                             .projectName)
                         : 'Focus Analytics',
-                    style: const TextStyle(
-                      color:         Colors.white,
+                    style: TextStyle(
+                      color:         fb.onSurface,
                       fontSize:      20,
                       fontWeight:    FontWeight.w700,
                       letterSpacing: -0.5,
@@ -144,10 +146,10 @@ class _AnalyticsSheetState extends State<AnalyticsSheet> {
           const SizedBox(height: 20),
 
           if (_loading)
-            const Expanded(
+            Expanded(
               child: Center(
                 child: CircularProgressIndicator(
-                    color: Colors.white24, strokeWidth: 1.5),
+                    color: fb.onSurfaceFaint, strokeWidth: 1.5),
               ),
             )
           else if (_summaries.isEmpty)
@@ -183,9 +185,10 @@ class _RangeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       decoration: BoxDecoration(
-        color:        Colors.white.withValues(alpha: 0.06),
+        color:        fb.onSurface.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -210,6 +213,7 @@ class _ToggleChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -217,14 +221,14 @@ class _ToggleChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
           color: selected
-              ? Colors.white.withValues(alpha: 0.12)
+              ? fb.onSurface.withValues(alpha: 0.12)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
           label,
           style: TextStyle(
-            color:      selected ? Colors.white : Colors.white38,
+            color:      selected ? fb.onSurface : fb.onSurface.withValues(alpha: 0.38),
             fontSize:   12,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
           ),
@@ -284,27 +288,28 @@ class _GrandTotalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final h = totalSeconds ~/ 3600;
     final m = (totalSeconds % 3600) ~/ 60;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color:        const Color(0xFF1A1A1A),
+        color:        fb.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(
         children: [
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Total focus',
-                  style: TextStyle(color: Colors.white38, fontSize: 12)),
+              Text('Total focus',
+                  style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 12)),
               const SizedBox(height: 4),
               Text(
                 '${h}h ${m}m',
-                style: const TextStyle(
-                  color:      Colors.white,
+                style: TextStyle(
+                  color:      fb.onSurface,
                   fontSize:   30,
                   fontWeight: FontWeight.w300,
                 ),
@@ -312,7 +317,7 @@ class _GrandTotalCard extends StatelessWidget {
               Text(
                 'last $days days',
                 style:
-                    const TextStyle(color: Colors.white24, fontSize: 11),
+                    TextStyle(color: fb.onSurfaceFaint, fontSize: 11),
               ),
             ],
           ),
@@ -339,6 +344,7 @@ class _ProjectSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final h   = summary.totalFocusSeconds ~/ 3600;
     final m   = (summary.totalFocusSeconds % 3600) ~/ 60;
     final pct = maxSeconds == 0
@@ -350,9 +356,9 @@ class _ProjectSummaryCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color:        const Color(0xFF161616),
+          color:        fb.card,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -362,8 +368,8 @@ class _ProjectSummaryCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     summary.projectName,
-                    style: const TextStyle(
-                      color:      Colors.white70,
+                    style: TextStyle(
+                      color:      fb.onSurface.withValues(alpha: 0.70),
                       fontSize:   14,
                       fontWeight: FontWeight.w500,
                     ),
@@ -373,15 +379,15 @@ class _ProjectSummaryCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   '${h}h ${m}m',
-                  style: const TextStyle(
-                    color:      Colors.white,
+                  style: TextStyle(
+                    color:      fb.onSurface,
                     fontSize:   14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded,
-                    color: Colors.white24, size: 16),
+                Icon(Icons.chevron_right_rounded,
+                    color: fb.onSurfaceFaint, size: 16),
               ],
             ),
             const SizedBox(height: 10),
@@ -390,7 +396,7 @@ class _ProjectSummaryCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value:           pct,
                 minHeight:       5,
-                backgroundColor: Colors.white.withValues(alpha: 0.07),
+                backgroundColor: fb.onSurface.withValues(alpha: 0.07),
                 valueColor:
                     const AlwaysStoppedAnimation(Color(0xFFFF453A)),
               ),
@@ -515,6 +521,7 @@ class _DrillViewState extends State<_DrillView>
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final h = widget.summary.totalFocusSeconds ~/ 3600;
     final m = (widget.summary.totalFocusSeconds % 3600) ~/ 60;
 
@@ -558,19 +565,19 @@ class _DrillViewState extends State<_DrillView>
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 20),
           decoration: BoxDecoration(
-            color:        Colors.white.withValues(alpha: 0.05),
+            color:        fb.onSurface.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(12),
           ),
           child: TabBar(
             controller:         _tab,
             indicator:          BoxDecoration(
-              color:        Colors.white.withValues(alpha: 0.10),
+              color:        fb.onSurface.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(10),
             ),
             indicatorSize:      TabBarIndicatorSize.tab,
             dividerColor:       Colors.transparent,
-            labelColor:         Colors.white,
-            unselectedLabelColor: Colors.white38,
+            labelColor:         fb.onSurface,
+            unselectedLabelColor: fb.onSurface.withValues(alpha: 0.38),
             labelStyle: const TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w700),
             unselectedLabelStyle:
@@ -594,9 +601,9 @@ class _DrillViewState extends State<_DrillView>
 
               // ── Sessions tab ──────────────────────────
               _loadingSessions
-                  ? const Center(
+                  ? Center(
                       child: CircularProgressIndicator(
-                          color: Colors.white24, strokeWidth: 1.5),
+                          color: fb.onSurfaceFaint, strokeWidth: 1.5),
                     )
                   : _sessions.isEmpty
                       ? const _EmptySessionsState()
@@ -618,13 +625,14 @@ class _ChartTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
       children: [
-        const Text(
+        Text(
           'Daily focus (minutes)',
           style: TextStyle(
-              color: Colors.white38, fontSize: 11, letterSpacing: 0.5),
+              color: fb.onSurface.withValues(alpha: 0.38), fontSize: 11, letterSpacing: 0.5),
         ),
         const SizedBox(height: 12),
         _BarChart(stats: summary.dailyStats, days: days),
@@ -662,6 +670,7 @@ class _SessionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     // Group by date
     final Map<String, List<FocusSession>> grouped = {};
     for (final s in sessions) {
@@ -683,8 +692,8 @@ class _SessionList extends StatelessWidget {
               padding: EdgeInsets.only(bottom: 8, top: i == 0 ? 0 : 20),
               child: Text(
                 key,
-                style: const TextStyle(
-                  color:         Colors.white38,
+                style: TextStyle(
+                  color:         fb.onSurface.withValues(alpha: 0.38),
                   fontSize:      10,
                   fontWeight:    FontWeight.w700,
                   letterSpacing: 1.2,
@@ -761,6 +770,7 @@ class _SessionRowState extends State<_SessionRow> {
 
   @override
   Widget build(BuildContext context) {
+    final fb    = Theme.of(context).fb;
     final s     = widget.session;
     final color = _typeColor;
 
@@ -819,8 +829,8 @@ class _SessionRowState extends State<_SessionRow> {
                         const SizedBox(height: 1),
                         Text(
                           '${_time(s.startedAt)} → ${_time(s.endedAt)}',
-                          style: const TextStyle(
-                            color:    Colors.white38,
+                          style: TextStyle(
+                            color:    fb.onSurface.withValues(alpha: 0.38),
                             fontSize: 11,
                           ),
                         ),
@@ -847,9 +857,9 @@ class _SessionRowState extends State<_SessionRow> {
                           color: const Color(0xFFFF9F0A),
                         )
                       else if (_isUnderrun)
-                        const _MicroBadge(
+                        _MicroBadge(
                           label: 'cut short',
-                          color: Colors.white24,
+                          color: fb.onSurfaceFaint,
                         )
                       else if (s.completed)
                         _MicroBadge(
@@ -863,8 +873,8 @@ class _SessionRowState extends State<_SessionRow> {
                   AnimatedRotation(
                     turns:    _expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: const Icon(Icons.keyboard_arrow_down_rounded,
-                        color: Colors.white24, size: 16),
+                    child: Icon(Icons.keyboard_arrow_down_rounded,
+                        color: fb.onSurfaceFaint, size: 16),
                   ),
                 ],
               ),
@@ -875,7 +885,7 @@ class _SessionRowState extends State<_SessionRow> {
               Container(
                 height: 1,
                 margin: const EdgeInsets.symmetric(horizontal: 14),
-                color: Colors.white.withValues(alpha: 0.06),
+                color: fb.onSurface.withValues(alpha: 0.06),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
@@ -920,15 +930,15 @@ class _SessionRowState extends State<_SessionRow> {
                       value: s.completed ? 'Completed' : 'Interrupted',
                       valueColor: s.completed
                           ? const Color(0xFF32D74B)
-                          : Colors.white38,
+                          : fb.onSurface.withValues(alpha: 0.38),
                     ),
                     const SizedBox(height: 6),
                     // Efficiency bar
                     Row(
                       children: [
-                        const Text('Efficiency',
+                        Text('Efficiency',
                             style: TextStyle(
-                                color: Colors.white30, fontSize: 11)),
+                                color: fb.onSurface.withValues(alpha: 0.30), fontSize: 11)),
                         const Spacer(),
                         Text(
                           '${(s.efficiency * 100).round()}%',
@@ -946,7 +956,7 @@ class _SessionRowState extends State<_SessionRow> {
                       child: LinearProgressIndicator(
                         value:           s.efficiency.clamp(0.0, 1.0),
                         minHeight:       3,
-                        backgroundColor: Colors.white.withValues(alpha: 0.07),
+                        backgroundColor: fb.onSurface.withValues(alpha: 0.07),
                         valueColor:      AlwaysStoppedAnimation(color),
                       ),
                     ),
@@ -1003,20 +1013,21 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Row(
       children: [
         SizedBox(
           width: 70,
           child: Text(
             label,
-            style: const TextStyle(color: Colors.white30, fontSize: 11),
+            style: TextStyle(color: fb.onSurface.withValues(alpha: 0.30), fontSize: 11),
           ),
         ),
         Expanded(
           child: Text(
             value,
             style: TextStyle(
-              color:      valueColor ?? Colors.white70,
+              color:      valueColor ?? fb.onSurface.withValues(alpha: 0.70),
               fontSize:   11,
               fontWeight: FontWeight.w500,
             ),
@@ -1039,6 +1050,7 @@ class _BigStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1057,8 +1069,8 @@ class _BigStat extends StatelessWidget {
                 )),
             const SizedBox(height: 2),
             Text(label,
-                style: const TextStyle(
-                    color: Colors.white38, fontSize: 9)),
+                style: TextStyle(
+                    color: fb.onSurface.withValues(alpha: 0.38), fontSize: 9)),
           ],
         ),
       ),
@@ -1080,16 +1092,17 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Row(
       children: [
         Icon(icon, color: color, size: 16),
         const SizedBox(width: 8),
         Text(label,
-            style: const TextStyle(color: Colors.white54, fontSize: 13)),
+            style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54), fontSize: 13)),
         const Spacer(),
         Text(value,
-            style: const TextStyle(
-                color: Colors.white,
+            style: TextStyle(
+                color: fb.onSurface,
                 fontSize:   13,
                 fontWeight: FontWeight.w600)),
       ],
@@ -1106,6 +1119,7 @@ class _BarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final recent = stats.length > days
         ? stats.sublist(stats.length - days)
         : stats;
@@ -1138,7 +1152,7 @@ class _BarChart extends StatelessWidget {
                           : (frac > 0
                               ? const Color(0xFFFF453A)
                                   .withValues(alpha: 0.45)
-                              : Colors.white.withValues(alpha: 0.05)),
+                              : fb.onSurface.withValues(alpha: 0.05)),
                       borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(4)),
                     ),
@@ -1149,8 +1163,8 @@ class _BarChart extends StatelessWidget {
                       _shortDay(d.date),
                       style: TextStyle(
                         color:    isToday
-                            ? Colors.white54
-                            : Colors.white24,
+                            ? fb.onSurface.withValues(alpha: 0.54)
+                            : fb.onSurfaceFaint,
                         fontSize: 9,
                       ),
                     ),
@@ -1181,6 +1195,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36),
@@ -1192,23 +1207,23 @@ class _EmptyState extends StatelessWidget {
               color: const Color(0xFFFF453A),
             ),
             const SizedBox(height: 24),
-            const Text(
+            Text(
               'Your focus story starts here',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color:         Colors.white,
+                color:         fb.onSurface,
                 fontSize:      18,
                 fontWeight:    FontWeight.w700,
                 letterSpacing: -0.3,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Run your first session and this screen turns into '
               'streaks, totals, and a daily breakdown.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color:    Colors.white38,
+                color:    fb.onSurface.withValues(alpha: 0.38),
                 fontSize: 13,
                 height:   1.4,
               ),
@@ -1227,6 +1242,7 @@ class _EmptySessionsState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 36),
@@ -1239,18 +1255,18 @@ class _EmptySessionsState extends StatelessWidget {
               size:  56,
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Nothing in this window',
               style: TextStyle(
-                color:      Colors.white70,
+                color:      fb.onSurface.withValues(alpha: 0.70),
                 fontSize:   15,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Switch to 30d to see older sessions.',
-              style: TextStyle(color: Colors.white24, fontSize: 12),
+              style: TextStyle(color: fb.onSurfaceFaint, fontSize: 12),
             ),
           ],
         ),

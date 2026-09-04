@@ -74,6 +74,7 @@ class _AnalogClockState extends State<_AnalogClock>
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return AnimatedBuilder(
       animation:
           Listenable.merge([_sweepAnim, _resyncAnim]),
@@ -83,6 +84,13 @@ class _AnalogClockState extends State<_AnalogClock>
           sweepT: _sweepAnim.value,
           resyncT: _resyncAnim.value,
           resyncDone: !_resyncCtrl.isAnimating,
+          faceColor: fb.surfaceVar,
+          ringColor: fb.border,
+          tickMainColor: fb.onSurface.withValues(alpha: 0.54),
+          tickMinorColor: fb.onSurfaceFaint,
+          hourHandColor: fb.onSurface,
+          minHandColor: fb.onSurface.withValues(alpha: 0.70),
+          centerColor: fb.onSurface,
         ),
         child: const SizedBox.expand(),
       ),
@@ -99,12 +107,26 @@ class _ClockPainter extends CustomPainter {
   final double sweepT;
   final double resyncT;
   final bool resyncDone;
+  final Color faceColor;
+  final Color ringColor;
+  final Color tickMainColor;
+  final Color tickMinorColor;
+  final Color hourHandColor;
+  final Color minHandColor;
+  final Color centerColor;
 
   const _ClockPainter({
     required this.now,
     required this.sweepT,
     required this.resyncT,
     required this.resyncDone,
+    required this.faceColor,
+    required this.ringColor,
+    required this.tickMainColor,
+    required this.tickMinorColor,
+    required this.hourHandColor,
+    required this.minHandColor,
+    required this.centerColor,
   });
 
   @override
@@ -114,12 +136,12 @@ class _ClockPainter extends CustomPainter {
     final r = math.min(cx, cy);
 
     canvas.drawCircle(Offset(cx, cy), r,
-        Paint()..color = const Color(0xFF1A1A1A));
+        Paint()..color = faceColor);
     canvas.drawCircle(
         Offset(cx, cy),
         r,
         Paint()
-          ..color = const Color(0xFF2C2C2C)
+          ..color = ringColor
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5);
 
@@ -133,7 +155,7 @@ class _ClockPainter extends CustomPainter {
         Offset(cx + (r - 10 - len) * math.cos(angle),
             cy + (r - 10 - len) * math.sin(angle)),
         Paint()
-          ..color = isMain ? Colors.white54 : Colors.white24
+          ..color = isMain ? tickMainColor : tickMinorColor
           ..strokeWidth = isMain ? 2.0 : 1.2
           ..strokeCap = StrokeCap.round,
       );
@@ -160,12 +182,12 @@ class _ClockPainter extends CustomPainter {
         angle: hourAngle,
         length: r * 0.50,
         width: 5.0,
-        color: Colors.white);
+        color: hourHandColor);
     _hand(canvas, cx, cy,
         angle: minAngle,
         length: r * 0.68,
         width: 3.5,
-        color: Colors.white70);
+        color: minHandColor);
     _hand(canvas, cx, cy,
         angle: secAngle,
         length: r * 0.74,
@@ -174,7 +196,7 @@ class _ClockPainter extends CustomPainter {
         tail: r * 0.18);
 
     canvas.drawCircle(Offset(cx, cy), 5.5,
-        Paint()..color = Colors.white);
+        Paint()..color = centerColor);
     canvas.drawCircle(Offset(cx, cy), 3.0,
         Paint()..color = const Color(0xFF0A84FF));
   }
@@ -203,7 +225,14 @@ class _ClockPainter extends CustomPainter {
       old.now != now ||
       old.sweepT != sweepT ||
       old.resyncT != resyncT ||
-      old.resyncDone != resyncDone;
+      old.resyncDone != resyncDone ||
+      old.faceColor != faceColor ||
+      old.ringColor != ringColor ||
+      old.tickMainColor != tickMainColor ||
+      old.tickMinorColor != tickMinorColor ||
+      old.hourHandColor != hourHandColor ||
+      old.minHandColor != minHandColor ||
+      old.centerColor != centerColor;
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -403,19 +432,19 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                 setState(() => _page = 0);
               }
             },
-            child: const Row(
+            child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(CupertinoIcons.arrow_left,
-                      color: Colors.white12, size: 10),
-                  SizedBox(width: 4),
+                      color: Theme.of(context).fb.onSurface.withValues(alpha: 0.12), size: 10),
+                  const SizedBox(width: 4),
                   Text('swipe to clock',
                       style: TextStyle(
-                          color: Colors.white12,
+                          color: Theme.of(context).fb.onSurface.withValues(alpha: 0.12),
                           fontSize: 10)),
-                  SizedBox(width: 4),
+                  const SizedBox(width: 4),
                   Icon(CupertinoIcons.arrow_right,
-                      color: Colors.white12, size: 10),
+                      color: Theme.of(context).fb.onSurface.withValues(alpha: 0.12), size: 10),
                 ]),
           ),
         ),
@@ -427,6 +456,7 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
   // ── Clock page ──────────────────────────────────────────────
 
   Widget _buildClockPage() {
+    final fb = Theme.of(context).fb;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -460,8 +490,8 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                   child: Text(
                     DateFormat('hh:mm:ss a').format(widget.now),
                     key: ValueKey(widget.timezoneLabel),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: fb.onSurface,
                       fontSize: 38,
                       fontWeight: FontWeight.w200,
                       letterSpacing: -1.5,
@@ -471,8 +501,8 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                 const SizedBox(height: 4),
                 Text(
                   DateFormat('EEE, MMM d').format(widget.now),
-                  style: const TextStyle(
-                      color: Colors.white54,
+                  style: TextStyle(
+                      color: fb.onSurface.withValues(alpha: 0.54),
                       fontSize: 15),
                 ),
                 const SizedBox(height: 4),
@@ -490,15 +520,15 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                                 : widget.timezoneLabel,
                             key: ValueKey(
                                 widget.timezoneLabel),
-                            style: const TextStyle(
-                                color: Colors.white38,
+                            style: TextStyle(
+                                color: fb.onSurface.withValues(alpha: 0.38),
                                 fontSize: 13),
                           ),
                         ),
                         const SizedBox(width: 4),
-                        const Icon(
+                        Icon(
                             CupertinoIcons.chevron_down,
-                            color: Colors.white24,
+                            color: fb.onSurfaceFaint,
                             size: 11),
                       ]),
                 ),
@@ -512,6 +542,7 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
   // ── Calendar page ───────────────────────────────────────────
 
   Widget _buildCalendarPage() {
+    final fb = Theme.of(context).fb;
     final firstDay =
         DateTime(_calMonth.year, _calMonth.month, 1);
     final daysInMon =
@@ -547,14 +578,14 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white
-                              .withOpacity(0.06),
+                          color: fb.onSurface
+                              .withValues(alpha: 0.06),
                           borderRadius:
                               BorderRadius.circular(10),
                         ),
-                        child: const Icon(
+                        child: Icon(
                             CupertinoIcons.chevron_left,
-                            color: Colors.white70,
+                            color: fb.onSurface.withValues(alpha: 0.70),
                             size: 16),
                       ),
                     ),
@@ -586,8 +617,8 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                           DateFormat('MMMM yyyy')
                               .format(_calMonth),
                           key: ValueKey(_calMonth),
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: fb.onSurface,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -597,8 +628,8 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                       Text(
                         DateFormat('hh:mm a')
                             .format(widget.now),
-                        style: const TextStyle(
-                          color: Colors.white38,
+                        style: TextStyle(
+                          color: fb.onSurface.withValues(alpha: 0.38),
                           fontSize: 11,
                           fontWeight: FontWeight.w300,
                           letterSpacing: 0.5,
@@ -614,14 +645,14 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white
-                              .withOpacity(0.06),
+                          color: fb.onSurface
+                              .withValues(alpha: 0.06),
                           borderRadius:
                               BorderRadius.circular(10),
                         ),
-                        child: const Icon(
+                        child: Icon(
                             CupertinoIcons.chevron_right,
-                            color: Colors.white70,
+                            color: fb.onSurface.withValues(alpha: 0.70),
                             size: 16),
                       ),
                     ),
@@ -645,8 +676,8 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                   .map((d) => Expanded(
                         child: Center(
                           child: Text(d,
-                              style: const TextStyle(
-                                color: Colors.white24,
+                              style: TextStyle(
+                                color: fb.onSurfaceFaint,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               )),
@@ -733,13 +764,13 @@ class _ClockCalendarPanelState extends State<_ClockCalendarPanel>
                                       color: isSelected
                                           ? Colors.white
                                           : isPast
-                                              ? Colors
-                                                  .white24
+                                              ? fb
+                                                  .onSurfaceFaint
                                               : isToday
                                                   ? const Color(
                                                       0xFF0A84FF)
-                                                  : Colors
-                                                      .white70,
+                                                  : fb.onSurface
+                                                      .withValues(alpha: 0.70),
                                       fontSize: 15,
                                       fontWeight: isToday ||
                                               isSelected
@@ -1059,6 +1090,7 @@ class _PlacesAwarenessPanelState
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final watched =
         SavedPlacesService.instance.watchedPlaces;
 
@@ -1069,9 +1101,9 @@ class _PlacesAwarenessPanelState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Text('Places',
+            Text('Places',
                 style: TextStyle(
-                  color: Colors.white54,
+                  color: fb.onSurface.withValues(alpha: 0.54),
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.4,
@@ -1114,28 +1146,28 @@ class _PlacesAwarenessPanelState
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF141414),
+                  color: fb.surface,
                   borderRadius:
                       BorderRadius.circular(16),
                   border: Border.all(
-                      color: Colors.white
-                          .withOpacity(0.06)),
+                      color: fb.onSurface
+                          .withValues(alpha: 0.06)),
                 ),
                 child: Row(children: [
-                  const Icon(
+                  Icon(
                       CupertinoIcons.location_slash,
-                      color: Colors.white24,
+                      color: fb.onSurfaceFaint,
                       size: 18),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text('No places watched',
                         style: TextStyle(
-                            color: Colors.white38,
+                            color: fb.onSurface.withValues(alpha: 0.38),
                             fontSize: 14)),
                   ),
-                  const Icon(
+                  Icon(
                       CupertinoIcons.chevron_right,
-                      color: Colors.white12,
+                      color: fb.onSurface.withValues(alpha: 0.12),
                       size: 14),
                 ]),
               ),
@@ -1168,15 +1200,15 @@ class _PlacesAwarenessPanelState
                           color: inside
                               ? const Color(0xFF30D158)
                                   .withOpacity(0.12)
-                              : const Color(0xFF141414),
+                              : fb.surface,
                           borderRadius:
                               BorderRadius.circular(16),
                           border: Border.all(
                             color: inside
                                 ? const Color(0xFF30D158)
                                     .withOpacity(0.4)
-                                : Colors.white
-                                    .withOpacity(0.06),
+                                : fb.onSurface
+                                    .withValues(alpha: 0.06),
                           ),
                         ),
                         child: Column(
@@ -1195,7 +1227,7 @@ class _PlacesAwarenessPanelState
                                 color: inside
                                     ? const Color(
                                         0xFF30D158)
-                                    : Colors.white54,
+                                    : fb.onSurface.withValues(alpha: 0.54),
                                 fontSize: 11,
                                 fontWeight: inside
                                     ? FontWeight.w600
@@ -1213,7 +1245,7 @@ class _PlacesAwarenessPanelState
                                 color: inside
                                     ? const Color(
                                         0xFF30D158)
-                                    : Colors.white12,
+                                    : fb.onSurface.withValues(alpha: 0.12),
                               ),
                             ),
                           ],
@@ -1248,7 +1280,7 @@ class _PageDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: active
             ? const Color(0xFF0A84FF)
-            : Colors.white12,
+            : Theme.of(context).fb.onSurface.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(3),
       ),
     );

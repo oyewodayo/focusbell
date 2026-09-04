@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../services/notification_service.dart';
+import '../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // Project View Sheet
@@ -192,13 +193,14 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   // ── Status picker ─────────────────────────────────────────────
 
   void _showStatusPicker(Task task) {
+    final fb = Theme.of(context).fb;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: fb.surfaceVar,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
         child: Column(
@@ -210,16 +212,16 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: fb.onSurfaceFaint,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Set status',
               style: TextStyle(
-                color: Colors.white,
+                color: fb.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
@@ -245,12 +247,12 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: selected ? s.bgColor : const Color(0xFF242424),
+                    color: selected ? s.bgColor(fb.isDark) : fb.surfaceVar,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: selected
                           ? s.color.withValues(alpha: 0.5)
-                          : Colors.white10,
+                          : fb.border,
                       width: 1.5,
                     ),
                   ),
@@ -261,7 +263,9 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                       Text(
                         s.label,
                         style: TextStyle(
-                          color: selected ? s.color : Colors.white70,
+                          color: selected
+                              ? s.color
+                              : fb.onSurface.withValues(alpha: 0.70),
                           fontSize: 14,
                           fontWeight: selected
                               ? FontWeight.w600
@@ -286,31 +290,32 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   // ── Delete task ───────────────────────────────────────────────
 
   Future<void> _deleteTask(Task task) async {
+    final fb = Theme.of(context).fb;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
+        backgroundColor: fb.surfaceVar,
+        title: Text(
           'Delete task?',
-          style: TextStyle(color: Colors.white, fontSize: 16),
+          style: TextStyle(color: fb.onSurface, fontSize: 16),
         ),
         content: Text(
           '"${task.title}" will be removed.',
-          style: const TextStyle(color: Colors.white60, fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54)),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: Color(0xFFFF3B30)),
+              style: TextStyle(color: fb.danger),
             ),
           ),
         ],
@@ -347,15 +352,16 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final liveProject = _liveProject;
     final completedCount =
         _sortedTasks.where((t) => t.status == TaskStatus.completed).length;
     final isFinance = liveProject.category == ProjectCategory.finance;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: fb.surfaceVar,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.90,
@@ -376,7 +382,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: fb.onSurfaceFaint,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -419,13 +425,13 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.06),
+                    color: fb.onSurface.withValues(alpha: 0.06),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '${liveProject.category.emoji} ${liveProject.category.label}',
-                    style: const TextStyle(
-                      color: Colors.white38,
+                    style: TextStyle(
+                      color: fb.onSurface.withValues(alpha: 0.38),
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),
@@ -509,8 +515,8 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
           // ── Project name ─────────────────────────────────────────
           Text(
             liveProject.name,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: fb.onSurface,
               fontSize: 22,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.5,
@@ -527,10 +533,10 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                 children: [
                   // Description
                   if (liveProject.description.isEmpty)
-                    const Text(
+                    Text(
                       'No description provided.',
                       style: TextStyle(
-                        color: Colors.white30,
+                        color: fb.onSurface.withValues(alpha: 0.30),
                         fontSize: 14,
                         height: 1.6,
                       ),
@@ -558,52 +564,55 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                         }
                       },
                       styleSheet: MarkdownStyleSheet(
-                        p: const TextStyle(
-                          color: Colors.white70,
+                        p: TextStyle(
+                          color: fb.onSurface.withValues(alpha: 0.70),
                           fontSize: 14,
                           height: 1.6,
                         ),
+                        // NOTE: link color intentionally left as a fixed
+                        // pale blue-gray accent — no theme token covers
+                        // this distinct "link" hue.
                         a: const TextStyle(
                           color: Color.fromARGB(255, 212, 219, 222),
                           fontSize: 14,
                           decoration: TextDecoration.none,
                         ),
-                        h1: const TextStyle(
-                          color: Colors.white,
+                        h1: TextStyle(
+                          color: fb.onSurface,
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                         ),
-                        h2: const TextStyle(
-                          color: Colors.white,
+                        h2: TextStyle(
+                          color: fb.onSurface,
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
-                        h3: const TextStyle(
-                          color: Colors.white70,
+                        h3: TextStyle(
+                          color: fb.onSurface.withValues(alpha: 0.70),
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
-                        strong: const TextStyle(
-                          color: Colors.white,
+                        strong: TextStyle(
+                          color: fb.onSurface,
                           fontWeight: FontWeight.w700,
                         ),
-                        em: const TextStyle(
-                          color: Colors.white60,
+                        em: TextStyle(
+                          color: fb.onSurfaceDim,
                           fontStyle: FontStyle.italic,
                         ),
-                        code: const TextStyle(
-                          color: Color(0xFF64D2FF),
-                          backgroundColor: Color(0xFF252525),
+                        code: TextStyle(
+                          color: const Color(0xFF64D2FF),
+                          backgroundColor: fb.surfaceVar,
                           fontFamily: 'monospace',
                           fontSize: 13,
                         ),
                         codeblockDecoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
+                          color: fb.surfaceVar,
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white10),
+                          border: Border.all(color: fb.border),
                         ),
                         blockquoteDecoration: BoxDecoration(
-                          color: const Color(0xFF1C1C1C),
+                          color: fb.surfaceVar,
                           borderRadius: BorderRadius.circular(6),
                           border: const Border(
                             left: BorderSide(
@@ -612,12 +621,12 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                             ),
                           ),
                         ),
-                        blockquote: const TextStyle(
-                          color: Colors.white54,
+                        blockquote: TextStyle(
+                          color: fb.onSurface.withValues(alpha: 0.54),
                           fontSize: 14,
                         ),
                         listBullet:
-                            const TextStyle(color: Colors.white38),
+                            TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
                       ),
                     ),
 
@@ -628,10 +637,10 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                     // Tasks header with count
                     Row(
                       children: [
-                        const Text(
+                        Text(
                           'Tasks',
                           style: TextStyle(
-                            color: Colors.white54,
+                            color: fb.onSurface.withValues(alpha: 0.54),
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.5,
@@ -640,8 +649,8 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                         const SizedBox(width: 8),
                         Text(
                           '$completedCount/${_sortedTasks.length}',
-                          style: const TextStyle(
-                            color: Colors.white30,
+                          style: TextStyle(
+                            color: fb.onSurface.withValues(alpha: 0.30),
                             fontSize: 11,
                           ),
                         ),
@@ -682,25 +691,25 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 20),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF141414),
+                        color: fb.card,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white10),
+                        border: Border.all(color: fb.border),
                       ),
-                      child: const Column(
+                      child: Column(
                         children: [
                           Text(
                             '📋',
                             style: TextStyle(
                               fontSize: 28,
-                              color: Colors.white24,
+                              color: fb.onSurfaceFaint,
                             ),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(
                             'No tasks yet.\nTap "Add Task" to create one.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: Colors.white30,
+                              color: fb.onSurface.withValues(alpha: 0.30),
                               fontSize: 13,
                               height: 1.5,
                             ),

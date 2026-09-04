@@ -10,6 +10,7 @@ import 'package:focusbell/models/focus_settings.dart';
 import '../models/focus_session.dart';
 import '../models/project.dart';
 import '../services/focus_timer_service.dart';
+import '../theme/app_theme.dart';
 import 'focus_timer_sheet.dart';
 
 // ── Finished notification shown on home screen when sheet is closed ──────────
@@ -19,6 +20,7 @@ void showFinishedBannerIfNeeded(BuildContext context, Project project) {
   final svc = FocusTimerService.instance;
   if (!svc.pendingFinished) return;
 
+  final fb = Theme.of(context).fb;
   final s = svc.state;
   final isBreak = !s.isWork;
   final color = isBreak ? const Color(0xFF32D74B) : const Color(0xFFFF453A);
@@ -37,15 +39,15 @@ void showFinishedBannerIfNeeded(BuildContext context, Project project) {
           const SizedBox(width: 10),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: fb.onSurface,
               fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
           ),
         ],
       ),
-      backgroundColor: const Color(0xFF1E1E1E),
+      backgroundColor: fb.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: color.withValues(alpha: 0.35)),
@@ -125,6 +127,7 @@ class _LiveBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final color = _phaseColor;
     final isPaused = state.phase == TimerPhase.paused;
 
@@ -182,13 +185,13 @@ class _LiveBanner extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.07),
+                          color: fb.onSurface.withValues(alpha: 0.07),
                           borderRadius: BorderRadius.circular(6),
                         ),
-                        child: const Text(
+                        child: Text(
                           'PAUSED',
                           style: TextStyle(
-                            color: Colors.white38,
+                            color: fb.onSurface.withValues(alpha: 0.38),
                             fontSize: 9,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1,
@@ -234,7 +237,7 @@ class _LiveBanner extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: state.progress,
                 minHeight: 3,
-                backgroundColor: Colors.white.withValues(alpha: 0.07),
+                backgroundColor: fb.onSurface.withValues(alpha: 0.07),
                 valueColor: AlwaysStoppedAnimation(color),
               ),
             ),
@@ -247,7 +250,7 @@ class _LiveBanner extends StatelessWidget {
                 // Sessions done
                 Text(
                   '${state.completedWork} session${state.completedWork == 1 ? '' : 's'} done',
-                  style: const TextStyle(color: Colors.white30, fontSize: 11),
+                  style: TextStyle(color: fb.onSurface.withValues(alpha: 0.30), fontSize: 11),
                 ),
 
                 const Spacer(),
@@ -267,8 +270,8 @@ class _LiveBanner extends StatelessWidget {
                             ? Icons.volume_up_rounded
                             : Icons.volume_off_rounded,
                         color: svc.settings.focusSound != FocusSound.silent
-                            ? Colors.white38
-                            : Colors.white24,
+                            ? fb.onSurface.withValues(alpha: 0.38)
+                            : fb.onSurfaceFaint,
                         size: 14,
                       ),
                       const SizedBox(width: 4),
@@ -276,8 +279,8 @@ class _LiveBanner extends StatelessWidget {
                         svc.settings.focusSound != FocusSound.silent ? 'Tick on' : 'Tick off',
                         style: TextStyle(
                           color: svc.settings.focusSound != FocusSound.silent
-                              ? Colors.white38
-                              : Colors.white24,
+                              ? fb.onSurface.withValues(alpha: 0.38)
+                              : fb.onSurfaceFaint,
                           fontSize: 11,
                         ),
                       ),
@@ -323,22 +326,23 @@ class _OtherProjectBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
+        color: fb.onSurface.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.timer_outlined, color: Colors.white24, size: 14),
+          Icon(Icons.timer_outlined, color: fb.onSurfaceFaint, size: 14),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
               'Focusing on "${state.projectName ?? 'another project'}" · ${state.mmss}',
-              style: const TextStyle(color: Colors.white30, fontSize: 12),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.30), fontSize: 12),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -356,15 +360,18 @@ class _StartButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).fb.isDark;
     return GestureDetector(
       onTap: () => showFocusTimerSheet(context, project),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
         decoration: BoxDecoration(
-          color: project.priority.color.withValues(alpha: 0.10),
+          color: project.priority.color
+              .withValues(alpha: isDark ? 0.10 : 0.16),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: project.priority.color.withValues(alpha: 0.30),
+            color: project.priority.color
+                .withValues(alpha: isDark ? 0.30 : 0.5),
           ),
         ),
         child: Row(

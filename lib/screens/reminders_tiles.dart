@@ -120,6 +120,7 @@ class _ReminderTileState extends State<_ReminderTile>
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final diff = widget.reminder.dateTime.difference(widget.now);
     final isPast = diff.isNegative;
     final hrs = diff.inHours.abs();
@@ -208,7 +209,7 @@ class _ReminderTileState extends State<_ReminderTile>
                       margin: const EdgeInsets.symmetric(
                           vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFF3B30),
+                        color: fb.danger,
                         borderRadius:
                             BorderRadius.circular(16),
                       ),
@@ -242,7 +243,7 @@ class _ReminderTileState extends State<_ReminderTile>
             child: GestureDetector(
               onLongPress: widget.onMoveGroup,
               child: Container(
-                color: const Color(0xFF0A0A0A),
+                color: fb.scaffoldBg,
                 padding:
                     const EdgeInsets.symmetric(vertical: 12),
                 child: Row(
@@ -268,16 +269,17 @@ class _ReminderTileState extends State<_ReminderTile>
                       height: 46,
                       decoration: BoxDecoration(
                         color: isPast
-                            ? const Color(0xFF1E1E1E)
-                            : _priorityColor
-                                .withOpacity(0.14),
+                            ? fb.surfaceVar
+                            : _priorityColor.withValues(
+                                alpha: fb.isDark ? 0.14 : 0.20),
                         borderRadius:
                             BorderRadius.circular(13),
                       ),
                       child: Icon(
                           CupertinoIcons.bell_fill,
                           color: isPast
-                              ? Colors.white12
+                              ? fb.onSurface
+                                  .withValues(alpha: fb.isDark ? 0.12 : 0.32)
                               : _priorityColor,
                           size: 20),
                     ),
@@ -302,8 +304,8 @@ class _ReminderTileState extends State<_ReminderTile>
                                   TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: isPast
-                                    ? Colors.white24
-                                    : Colors.white,
+                                    ? fb.onSurfaceFaint
+                                    : fb.onSurface,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -315,8 +317,8 @@ class _ReminderTileState extends State<_ReminderTile>
                                   '$dateStr · $timeStr',
                                   overflow:
                                       TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      color: Colors.white38,
+                                  style: TextStyle(
+                                      color: fb.onSurface.withValues(alpha: 0.38),
                                       fontSize: 12),
                                 ),
                               ),
@@ -388,8 +390,8 @@ class _ReminderTileState extends State<_ReminderTile>
                                 maxLines: 1,
                                 overflow:
                                     TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    color: Colors.white24,
+                                style: TextStyle(
+                                    color: fb.onSurfaceFaint,
                                     fontSize: 12),
                               ),
                             ],
@@ -415,8 +417,8 @@ class _ReminderTileState extends State<_ReminderTile>
                               timeStr,
                               style: TextStyle(
                                 color: isPast
-                                    ? Colors.white24
-                                    : Colors.white,
+                                    ? fb.onSurfaceFaint
+                                    : fb.onSurface,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w200,
                                 letterSpacing: -0.5,
@@ -426,7 +428,7 @@ class _ReminderTileState extends State<_ReminderTile>
                           _CountdownLabel(
                             text: countdown,
                             color: isPast
-                                ? Colors.white24
+                                ? fb.onSurfaceFaint
                                 : _priorityColor,
                             pulse: shouldPulse,
                           ),
@@ -494,6 +496,7 @@ class _GroupedReminderListState
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final groups =
         ReminderGroupService.instance.groups.value;
     final all = widget.reminders;
@@ -570,15 +573,15 @@ class _GroupedReminderListState
                       Container(
                         width: 10,
                         height: 10,
-                        decoration: const BoxDecoration(
-                          color: Colors.white24,
+                        decoration: BoxDecoration(
+                          color: fb.onSurfaceFaint,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Text('Ungrouped',
+                      Text('Ungrouped',
                           style: TextStyle(
-                            color: Colors.white38,
+                            color: fb.onSurface.withValues(alpha: 0.38),
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                           )),
@@ -590,8 +593,8 @@ class _GroupedReminderListState
                               horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
                         color: (group?.color ??
-                                Colors.white24)
-                            .withOpacity(0.12),
+                                fb.onSurfaceFaint)
+                            .withValues(alpha: 0.12),
                         borderRadius:
                             BorderRadius.circular(10),
                       ),
@@ -599,7 +602,7 @@ class _GroupedReminderListState
                           '${reminders.length}',
                           style: TextStyle(
                             color: group?.color ??
-                                Colors.white38,
+                                fb.onSurface.withValues(alpha: 0.38),
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
                           )),
@@ -609,9 +612,9 @@ class _GroupedReminderListState
                       turns: isCollapsed ? -0.25 : 0,
                       duration: const Duration(
                           milliseconds: 200),
-                      child: const Icon(
+                      child: Icon(
                           CupertinoIcons.chevron_down,
-                          color: Colors.white24,
+                          color: fb.onSurfaceFaint,
                           size: 13),
                     ),
                   ]),
@@ -632,13 +635,13 @@ class _GroupedReminderListState
                   margin: const EdgeInsets.symmetric(
                       horizontal: 16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF111111),
+                    color: fb.surface,
                     borderRadius:
                         BorderRadius.circular(18),
                     border: Border.all(
                       color: group != null
                           ? group.color.withOpacity(0.15)
-                          : Colors.white.withOpacity(0.05),
+                          : fb.onSurface.withValues(alpha: 0.05),
                     ),
                   ),
                   child: ClipRRect(
@@ -666,10 +669,10 @@ class _GroupedReminderListState
                                 widget.onMoveGroup(r),
                           ),
                           if (!isLast)
-                            const Divider(
+                            Divider(
                               height: 1,
                               indent: 68,
-                              color: Color(0xFF1E1E1E),
+                              color: fb.border,
                             ),
                         ]);
                       }),
@@ -721,20 +724,21 @@ class _EmptyReminders extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final (emoji, headline, sub) =
         _contextFor(DateTime.now());
     return Padding(
       padding: const EdgeInsets.symmetric(
           horizontal: 40, vertical: 32),
       child: Column(children: [
-        const Divider(color: Color(0xFF1E1E1E)),
+        Divider(color: fb.border),
         const SizedBox(height: 36),
         Text(emoji,
             style: const TextStyle(fontSize: 48)),
         const SizedBox(height: 16),
         Text(headline,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: fb.onSurface,
               fontSize: 20,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.3,
@@ -743,8 +747,8 @@ class _EmptyReminders extends StatelessWidget {
         Text(
           sub,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white38,
+          style: TextStyle(
+            color: fb.onSurface.withValues(alpha: 0.38),
             fontSize: 14,
             height: 1.5,
           ),

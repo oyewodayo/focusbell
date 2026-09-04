@@ -14,8 +14,8 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
         text,
-        style: const TextStyle(
-          color: Colors.white38,
+        style: TextStyle(
+          color: Theme.of(context).fb.onSurface.withValues(alpha: 0.38),
           fontSize: 12,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.8,
@@ -34,6 +34,7 @@ class _RepeatPresets extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final presets = [
       ('Once', RepeatDays.once()),
       ('Daily', RepeatDays.daily()),
@@ -54,18 +55,18 @@ class _RepeatPresets extends StatelessWidget {
             decoration: BoxDecoration(
               color: isSelected
                   ? const Color(0xFF0A84FF)
-                  : const Color(0xFF1C1C1E),
+                  : fb.surfaceVar,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isSelected
                     ? const Color(0xFF0A84FF)
-                    : Colors.white12,
+                    : fb.onSurface.withValues(alpha: 0.12),
               ),
             ),
             child: Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.white54,
+                color: isSelected ? Colors.white : fb.onSurface.withValues(alpha: 0.54),
                 fontSize: 13,
                 fontWeight: isSelected
                     ? FontWeight.w600
@@ -91,6 +92,7 @@ class _DayCheckboxGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: Weekday.ordered.map((day) {
@@ -105,12 +107,12 @@ class _DayCheckboxGrid extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isOn
                     ? const Color(0xFF0A84FF)
-                    : const Color(0xFF1C1C1E),
+                    : fb.surfaceVar,
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: isOn
                       ? const Color(0xFF0A84FF)
-                      : Colors.white12,
+                      : fb.onSurface.withValues(alpha: 0.12),
                   width: 1.5,
                 ),
               ),
@@ -120,8 +122,8 @@ class _DayCheckboxGrid extends StatelessWidget {
                         color: Colors.white, size: 16)
                     : Text(
                         Weekday.shortName(day).substring(0, 1),
-                        style: const TextStyle(
-                          color: Colors.white38,
+                        style: TextStyle(
+                          color: fb.onSurface.withValues(alpha: 0.38),
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -134,7 +136,7 @@ class _DayCheckboxGrid extends StatelessWidget {
               style: TextStyle(
                 color: isOn
                     ? const Color(0xFF0A84FF)
-                    : Colors.white38,
+                    : fb.onSurface.withValues(alpha: 0.38),
                 fontSize: 9,
                 fontWeight:
                     isOn ? FontWeight.w600 : FontWeight.w400,
@@ -165,6 +167,7 @@ class _PrioritySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Row(
       children: _items.map((item) {
         final (mode, label, color) = item;
@@ -178,18 +181,18 @@ class _PrioritySelector extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? color.withOpacity(0.18)
-                    : const Color(0xFF1C1C1E),
+                    ? color.withValues(alpha: 0.18)
+                    : fb.surfaceVar,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: isSelected ? color : Colors.white12,
+                  color: isSelected ? color : fb.onSurface.withValues(alpha: 0.12),
                 ),
               ),
               child: Center(
                 child: Text(
                   label,
                   style: TextStyle(
-                    color: isSelected ? color : Colors.white38,
+                    color: isSelected ? color : fb.onSurface.withValues(alpha: 0.38),
                     fontSize: 13,
                     fontWeight: isSelected
                         ? FontWeight.w600
@@ -217,6 +220,7 @@ class _TimeOnlyPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: () async {
         final time = await showTimePicker(
@@ -234,13 +238,13 @@ class _TimeOnlyPicker extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
+          color: fb.surfaceVar,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         child: Row(children: [
-          const Icon(CupertinoIcons.clock,
-              color: Colors.white38, size: 18),
+          Icon(CupertinoIcons.clock,
+              color: fb.onSurface.withValues(alpha: 0.38), size: 18),
           const SizedBox(width: 12),
           Text(
             selected == null
@@ -248,16 +252,16 @@ class _TimeOnlyPicker extends StatelessWidget {
                 : DateFormat('hh:mm a').format(selected!),
             style: TextStyle(
               color:
-                  selected == null ? Colors.white24 : Colors.white,
+                  selected == null ? fb.onSurfaceFaint : fb.onSurface,
               fontSize: 15,
             ),
           ),
           const Spacer(),
           if (selected != null)
-            const Text(
+            Text(
               'repeats on selected days',
               style:
-                  TextStyle(color: Colors.white24, fontSize: 11),
+                  TextStyle(color: fb.onSurfaceFaint, fontSize: 11),
             ),
         ]),
       ),
@@ -338,6 +342,7 @@ class _MultiDateTimePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -347,13 +352,13 @@ class _MultiDateTimePicker extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
                 horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
+              color: fb.surfaceVar,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: fb.border),
             ),
             child: Row(children: [
-              const Icon(CupertinoIcons.calendar,
-                  color: Colors.white38, size: 18),
+              Icon(CupertinoIcons.calendar,
+                  color: fb.onSurface.withValues(alpha: 0.38), size: 18),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -363,8 +368,8 @@ class _MultiDateTimePicker extends StatelessWidget {
                           .format(selected!),
                   style: TextStyle(
                     color: selected == null
-                        ? Colors.white24
-                        : Colors.white,
+                        ? fb.onSurfaceFaint
+                        : fb.onSurface,
                     fontSize: 15,
                   ),
                 ),
@@ -444,8 +449,8 @@ class _MultiDateTimePicker extends StatelessWidget {
             padding: const EdgeInsets.only(top: 6, left: 2),
             child: Text(
               '${extraDates.length + 1} reminder${extraDates.length + 1 == 1 ? '' : 's'} will be created',
-              style: const TextStyle(
-                  color: Colors.white38, fontSize: 11),
+              style: TextStyle(
+                  color: fb.onSurface.withValues(alpha: 0.38), fontSize: 11),
             ),
           ),
         ],
@@ -466,6 +471,7 @@ class _DateTimePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: () async {
         final date = await showDatePicker(
@@ -490,13 +496,13 @@ class _DateTimePicker extends StatelessWidget {
         padding: const EdgeInsets.symmetric(
             horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C1C1E),
+          color: fb.surfaceVar,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         child: Row(children: [
-          const Icon(CupertinoIcons.calendar,
-              color: Colors.white38, size: 18),
+          Icon(CupertinoIcons.calendar,
+              color: fb.onSurface.withValues(alpha: 0.38), size: 18),
           const SizedBox(width: 12),
           Text(
             selected == null
@@ -505,7 +511,7 @@ class _DateTimePicker extends StatelessWidget {
                     .format(selected!),
             style: TextStyle(
               color:
-                  selected == null ? Colors.white24 : Colors.white,
+                  selected == null ? fb.onSurfaceFaint : fb.onSurface,
               fontSize: 15,
             ),
           ),
@@ -547,7 +553,7 @@ class _GroupPicker extends StatelessWidget {
                   _GroupPill(
                     label: 'None',
                     emoji: '—',
-                    color: Colors.white24,
+                    color: Theme.of(context).fb.onSurfaceFaint,
                     isSelected: selectedGroupId == null,
                     onTap: () => onSelect(null),
                   ),
@@ -590,6 +596,7 @@ class _GroupPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -598,11 +605,11 @@ class _GroupPill extends StatelessWidget {
             horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: isSelected
-              ? color.withOpacity(0.18)
-              : const Color(0xFF1C1C1E),
+              ? color.withValues(alpha: 0.18)
+              : fb.surfaceVar,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? color : Colors.white12,
+            color: isSelected ? color : fb.onSurface.withValues(alpha: 0.12),
             width: isSelected ? 1.5 : 1,
           ),
         ),
@@ -615,7 +622,7 @@ class _GroupPill extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: isSelected ? color : Colors.white54,
+              color: isSelected ? color : fb.onSurface.withValues(alpha: 0.54),
               fontSize: 12,
               fontWeight: isSelected
                   ? FontWeight.w700
@@ -640,6 +647,7 @@ class _LocationToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final hasGeo = geofence != null;
     return GestureDetector(
       onTap: onTap,
@@ -650,12 +658,12 @@ class _LocationToggle extends StatelessWidget {
         decoration: BoxDecoration(
           color: hasGeo
               ? const Color(0xFF30D158).withOpacity(0.10)
-              : const Color(0xFF1C1C1E),
+              : fb.surfaceVar,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: hasGeo
                 ? const Color(0xFF30D158).withOpacity(0.4)
-                : Colors.white10,
+                : fb.border,
           ),
         ),
         child: Row(children: [
@@ -665,7 +673,7 @@ class _LocationToggle extends StatelessWidget {
                 : CupertinoIcons.location,
             color: hasGeo
                 ? const Color(0xFF30D158)
-                : Colors.white38,
+                : fb.onSurface.withValues(alpha: 0.38),
             size: 18,
           ),
           const SizedBox(width: 12),
@@ -680,7 +688,7 @@ class _LocationToggle extends StatelessWidget {
                   style: TextStyle(
                     color: hasGeo
                         ? const Color(0xFF30D158)
-                        : Colors.white70,
+                        : fb.onSurface.withValues(alpha: 0.70),
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
@@ -689,8 +697,8 @@ class _LocationToggle extends StatelessWidget {
                   hasGeo
                       ? geofence!.fullLabel
                       : 'Fire when you arrive or leave a place',
-                  style: const TextStyle(
-                      color: Colors.white38, fontSize: 12),
+                  style: TextStyle(
+                      color: fb.onSurface.withValues(alpha: 0.38), fontSize: 12),
                 ),
               ],
             ),
@@ -699,7 +707,7 @@ class _LocationToggle extends StatelessWidget {
             hasGeo
                 ? CupertinoIcons.xmark_circle
                 : CupertinoIcons.chevron_right,
-            color: Colors.white24,
+            color: fb.onSurfaceFaint,
             size: 16,
           ),
         ]),
@@ -754,7 +762,7 @@ class _TopIconBtn extends StatelessWidget {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.all(8),
-        child: Icon(icon, color: Colors.white38, size: 22),
+        child: Icon(icon, color: Theme.of(context).fb.onSurface.withValues(alpha: 0.38), size: 22),
       ),
     );
   }

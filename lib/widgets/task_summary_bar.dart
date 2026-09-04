@@ -3,6 +3,7 @@ import 'package:focusbell/widgets/finance_info_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/project.dart';
+import '../theme/app_theme.dart';
 import '../utils/task_value_parser.dart';
 
 // ─────────────────────────────────────────────────────────────────
@@ -13,6 +14,12 @@ import '../utils/task_value_parser.dart';
 // • First render → shows a one-time tip snackbar.
 // • ⓘ icon on the bar → opens the info dialog on demand.
 // • Tap the bar body → opens the full breakdown dialog.
+//
+// NOTE: the collapsed bar below intentionally keeps its fixed dark-green
+// "Finance" branding in both light and dark mode (no light-pastel token
+// exists for this feature accent in the shared theme) — only the
+// breakdown dialog's generic chrome (background/border/neutral text) is
+// theme-aware.
 // ─────────────────────────────────────────────────────────────────
 
 const _kTipSeenKey = 'finance_summary_tip_seen';
@@ -251,14 +258,15 @@ class _BreakdownDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: fb.surfaceVar,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -269,10 +277,10 @@ class _BreakdownDialog extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 20, 16, 0),
               child: Row(
                 children: [
-                  const Text(
+                  Text(
                     '💰 Finance Breakdown',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: fb.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
@@ -283,12 +291,12 @@ class _BreakdownDialog extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.white10,
+                        color: fb.border,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.close_rounded,
-                        color: Colors.white54,
+                        color: fb.onSurface.withValues(alpha: 0.54),
                         size: 16,
                       ),
                     ),
@@ -304,9 +312,9 @@ class _BreakdownDialog extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 16),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF0D0D0D),
+                color: fb.scaffoldBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(color: fb.border),
               ),
               child: Row(
                 children: [
@@ -314,13 +322,13 @@ class _BreakdownDialog extends StatelessWidget {
                     label: 'Total',
                     compact: formatTaskValue(summary.total),
                     full: formatTaskValueFull(summary.total),
-                    color: Colors.white70,
+                    color: fb.onSurface.withValues(alpha: 0.70),
                   ),
                   Container(
                     width: 1,
                     height: 36,
                     margin: const EdgeInsets.symmetric(horizontal: 12),
-                    color: Colors.white10,
+                    color: fb.border,
                   ),
                   _TotalCell(
                     label: 'Paid',
@@ -332,7 +340,7 @@ class _BreakdownDialog extends StatelessWidget {
                     width: 1,
                     height: 36,
                     margin: const EdgeInsets.symmetric(horizontal: 12),
-                    color: Colors.white10,
+                    color: fb.border,
                   ),
                   _TotalCell(
                     label: 'Owed',
@@ -414,14 +422,15 @@ class _TotalCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white38,
+            style: TextStyle(
+              color: fb.onSurface.withValues(alpha: 0.38),
               fontSize: 10,
               fontWeight: FontWeight.w500,
               letterSpacing: 0.4,
@@ -463,6 +472,7 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Row(
       children: [
         Container(
@@ -483,7 +493,7 @@ class _SectionHeader extends StatelessWidget {
         const SizedBox(width: 6),
         Text(
           '$count item${count == 1 ? '' : 's'}',
-          style: const TextStyle(color: Colors.white30, fontSize: 10),
+          style: TextStyle(color: fb.onSurface.withValues(alpha: 0.30), fontSize: 10),
         ),
       ],
     );
@@ -500,6 +510,7 @@ class _TaskBreakdownRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final value = parseTaskValue(task.title);
     final fullValue = value != null ? formatTaskValueFull(value) : '—';
 
@@ -507,9 +518,9 @@ class _TaskBreakdownRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF242424),
+        color: fb.surfaceVar,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(
         children: [
@@ -518,8 +529,8 @@ class _TaskBreakdownRow extends StatelessWidget {
           Expanded(
             child: Text(
               task.title,
-              style: const TextStyle(
-                color: Colors.white70,
+              style: TextStyle(
+                color: fb.onSurface.withValues(alpha: 0.70),
                 fontSize: 13,
                 height: 1.3,
               ),

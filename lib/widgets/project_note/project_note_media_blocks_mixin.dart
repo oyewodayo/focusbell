@@ -20,6 +20,7 @@ import 'package:focusbell/widgets/note_waveform_bars.dart';
 import 'package:focusbell/widgets/project_note_sheet.dart';
 import 'package:open_filex/open_filex.dart';
 
+import '../../theme/app_theme.dart';
 import 'project_note_state_interface.dart';
 import 'project_note_actions_mixin.dart';
 
@@ -31,6 +32,7 @@ mixin ProjectNoteMediaBlocksMixin
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget buildImageBlock(NoteBlock b) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       // Tap anywhere on the image to open the fullscreen viewer.
       onTap: () => setState(() => fullscreenImage = b.imagePath),
@@ -39,7 +41,7 @@ mixin ProjectNoteMediaBlocksMixin
         constraints: const BoxConstraints(maxHeight: 280),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
@@ -50,9 +52,9 @@ mixin ProjectNoteMediaBlocksMixin
               fit: BoxFit.cover,
               width: double.infinity,
               height: double.infinity,
-              errorBuilder: (_, __, ___) => const Center(
+              errorBuilder: (_, __, ___) => Center(
                 child: Icon(Icons.broken_image_outlined,
-                    color: Colors.white24, size: 40),
+                    color: fb.onSurfaceFaint, size: 40),
               ),
             ),
 
@@ -107,12 +109,13 @@ mixin ProjectNoteMediaBlocksMixin
   /// Slides in at the bottom of the screen while a recording is in progress.
   /// Shows a pulsing red dot, elapsed time, Cancel, and Stop buttons.
   Widget buildRecordingPanel() {
+    final fb = Theme.of(context).fb;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF130A0A),
+        color: fb.dangerBg,
         border: Border(
-            top: BorderSide(color: const Color(0xFFFF3B30).withValues(alpha: 0.2))),
+            top: BorderSide(color: fb.danger.withValues(alpha: 0.2))),
       ),
       child: Row(
         children: [
@@ -123,10 +126,10 @@ mixin ProjectNoteMediaBlocksMixin
               width: 10, height: 10,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Color.fromRGBO(255, 59, 48, pulseAnim.value),
+                color: fb.danger.withValues(alpha: pulseAnim.value),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFFF3B30).withValues(alpha: pulseAnim.value * 0.6),
+                    color: fb.danger.withValues(alpha: pulseAnim.value * 0.6),
                     blurRadius: 8, spreadRadius: 2,
                   ),
                 ],
@@ -136,17 +139,17 @@ mixin ProjectNoteMediaBlocksMixin
           const SizedBox(width: 12),
 
           // "REC" badge.
-          const Text('REC',
-              style: TextStyle(color: Color(0xFFFF3B30), fontSize: 11,
+          Text('REC',
+              style: TextStyle(color: fb.danger, fontSize: 11,
                   fontWeight: FontWeight.w800, letterSpacing: 1.2)),
           const SizedBox(width: 10),
 
           // Elapsed time counter (MM:SS).
           Text(
             _fmtDur(recElapsed),
-            style: const TextStyle(
-                color: Colors.white, fontSize: 18, fontWeight: FontWeight.w300,
-                fontFeatures: [FontFeature.tabularFigures()], letterSpacing: 1),
+            style: TextStyle(
+                color: fb.onSurface, fontSize: 18, fontWeight: FontWeight.w300,
+                fontFeatures: const [FontFeature.tabularFigures()], letterSpacing: 1),
           ),
 
           const Spacer(),
@@ -157,12 +160,12 @@ mixin ProjectNoteMediaBlocksMixin
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.06),
+                color: fb.onSurface.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white12),
+                border: Border.all(color: fb.onSurface.withValues(alpha: 0.12)),
               ),
-              child: const Text('Cancel',
-                  style: TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.w500)),
+              child: Text('Cancel',
+                  style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54), fontSize: 13, fontWeight: FontWeight.w500)),
             ),
           ),
           const SizedBox(width: 10),
@@ -173,7 +176,7 @@ mixin ProjectNoteMediaBlocksMixin
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 7),
               decoration: BoxDecoration(
-                  color: const Color(0xFFFF3B30), borderRadius: BorderRadius.circular(20)),
+                  color: fb.danger, borderRadius: BorderRadius.circular(20)),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -198,6 +201,7 @@ mixin ProjectNoteMediaBlocksMixin
   /// Supports play/pause, seek scrubbing, duration display,
   /// drag-to-reorder, delete, and move-to-project.
   Widget buildAudioBlock(NoteBlock b) {
+    final fb = Theme.of(context).fb;
     final isPlaying = playing[b.id] ?? false;
     final pos = playPos[b.id] ?? Duration.zero;
     final dur = playDur[b.id] ?? b.audioDuration;
@@ -209,12 +213,12 @@ mixin ProjectNoteMediaBlocksMixin
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: fb.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isPlaying
               ? const Color(0xFF0A84FF).withValues(alpha: 0.35)
-              : Colors.white.withValues(alpha: 0.07),
+              : fb.onSurface.withValues(alpha: 0.07),
         ),
         boxShadow: isPlaying
             ? [BoxShadow(
@@ -269,14 +273,14 @@ mixin ProjectNoteMediaBlocksMixin
                         children: [
                           Text(_fmtDur(pos),
                               style: TextStyle(
-                                color: isPlaying ? const Color(0xFF0A84FF) : Colors.white38,
+                                color: isPlaying ? const Color(0xFF0A84FF) : fb.onSurface.withValues(alpha: 0.38),
                                 fontSize: 11, fontWeight: FontWeight.w600,
                                 fontFeatures: const [FontFeature.tabularFigures()],
                               )),
                           const Spacer(),
                           Text('-${_fmtDur(remaining)}',
-                              style: const TextStyle(color: Colors.white24, fontSize: 11,
-                                  fontFeatures: [FontFeature.tabularFigures()])),
+                              style: TextStyle(color: fb.onSurfaceFaint, fontSize: 11,
+                                  fontFeatures: const [FontFeature.tabularFigures()])),
                         ],
                       ),
                     ],
@@ -290,8 +294,8 @@ mixin ProjectNoteMediaBlocksMixin
                   child: Container(
                     width: 30, height: 30,
                     decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.04), shape: BoxShape.circle),
-                    child: const Icon(Icons.drag_handle_rounded, size: 14, color: Colors.white24),
+                        color: fb.onSurface.withValues(alpha: 0.04), shape: BoxShape.circle),
+                    child: Icon(Icons.drag_handle_rounded, size: 14, color: fb.onSurfaceFaint),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -302,10 +306,10 @@ mixin ProjectNoteMediaBlocksMixin
                   child: Container(
                     width: 30, height: 30,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05), shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                      color: fb.onSurface.withValues(alpha: 0.05), shape: BoxShape.circle,
+                      border: Border.all(color: fb.onSurface.withValues(alpha: 0.08)),
                     ),
-                    child: const Icon(Icons.close_rounded, size: 14, color: Colors.white30),
+                    child: Icon(Icons.close_rounded, size: 14, color: fb.onSurface.withValues(alpha: 0.3)),
                   ),
                 ),
               ],
@@ -316,7 +320,7 @@ mixin ProjectNoteMediaBlocksMixin
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
+              color: fb.onSurface.withValues(alpha: 0.03),
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
             ),
             child: Row(
@@ -324,20 +328,20 @@ mixin ProjectNoteMediaBlocksMixin
                 Icon(Icons.mic_rounded, size: 12,
                     color: isPlaying
                         ? const Color(0xFF0A84FF).withValues(alpha: 0.7)
-                        : Colors.white24),
+                        : fb.onSurfaceFaint),
                 const SizedBox(width: 5),
                 Text('Voice note',
                     style: TextStyle(
                         color: isPlaying
                             ? const Color(0xFF0A84FF).withValues(alpha: 0.7)
-                            : Colors.white24,
+                            : fb.onSurfaceFaint,
                         fontSize: 11, fontWeight: FontWeight.w500)),
                 const Spacer(),
                 // Total duration.
                 if (dur != Duration.zero) ...[
                   Text(_fmtDur(dur),
-                      style: const TextStyle(color: Colors.white70, fontSize: 11,
-                          fontFeatures: [FontFeature.tabularFigures()])),
+                      style: TextStyle(color: fb.onSurface.withValues(alpha: 0.7), fontSize: 11,
+                          fontFeatures: const [FontFeature.tabularFigures()])),
                   const SizedBox(width: 8),
                 ],
 
@@ -348,17 +352,17 @@ mixin ProjectNoteMediaBlocksMixin
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
+                      color: fb.onSurface.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+                      border: Border.all(color: fb.onSurface.withValues(alpha: 0.12)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.ios_share_rounded, size: 11, color: Colors.white54),
-                        SizedBox(width: 4),
+                        Icon(Icons.ios_share_rounded, size: 11, color: fb.onSurface.withValues(alpha: 0.54)),
+                        const SizedBox(width: 4),
                         Text('Share',
-                            style: TextStyle(color: Colors.white54,
+                            style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54),
                                 fontSize: 11, fontWeight: FontWeight.w600)),
                       ],
                     ),
@@ -402,6 +406,7 @@ mixin ProjectNoteMediaBlocksMixin
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget buildPdfBlock(NoteBlock b) {
+    final fb = Theme.of(context).fb;
     final name = b.pdfName ?? 'document.pdf';
     final sizeLabel = _fmtBytes(b.pdfSizeBytes);
     final pageLabel = b.pdfPageCount > 0
@@ -414,7 +419,7 @@ mixin ProjectNoteMediaBlocksMixin
         margin: const EdgeInsets.symmetric(vertical: 6),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: fb.surfaceVar,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFFF6B9D).withValues(alpha: 0.25)),
         ),
@@ -447,13 +452,13 @@ mixin ProjectNoteMediaBlocksMixin
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white, fontSize: 13,
+                      style: TextStyle(color: fb.onSurface, fontSize: 13,
                           fontWeight: FontWeight.w600, height: 1.3)),
                   const SizedBox(height: 4),
                   Row(children: [
-                    Text(pageLabel, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                    const Text(' · ', style: TextStyle(color: Colors.white24, fontSize: 11)),
-                    Text(sizeLabel, style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    Text(pageLabel, style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 11)),
+                    Text(' · ', style: TextStyle(color: fb.onSurfaceFaint, fontSize: 11)),
+                    Text(sizeLabel, style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 11)),
                   ]),
                 ],
               ),
@@ -480,8 +485,8 @@ mixin ProjectNoteMediaBlocksMixin
               child: Container(
                 width: 28, height: 28,
                 decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.07), shape: BoxShape.circle),
-                child: const Icon(Icons.close_rounded, size: 14, color: Colors.white38),
+                    color: fb.onSurface.withValues(alpha: 0.07), shape: BoxShape.circle),
+                child: Icon(Icons.close_rounded, size: 14, color: fb.onSurface.withValues(alpha: 0.38)),
               ),
             ),
           ],

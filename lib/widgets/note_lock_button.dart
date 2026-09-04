@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
 import '../services/pin_service.dart';
+import '../theme/app_theme.dart';
 import 'pin_entry_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -82,23 +83,24 @@ class NoteLockButton extends StatelessWidget {
   // ─────────────────────────────────────────────────────────────
 
   void _showNoPinDialog(BuildContext context) {
+    final fb = Theme.of(context).fb;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: fb.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'No PIN set',
-          style: TextStyle(color: Colors.white, fontSize: 17),
+          style: TextStyle(color: fb.onSurface, fontSize: 17),
         ),
-        content: const Text(
+        content: Text(
           'Go to Settings → Security to set a PIN before locking notes.',
-          style: TextStyle(color: Colors.white60, fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK', style: TextStyle(color: Color(0xFF4CAF50))),
+            child: Text('OK', style: TextStyle(color: fb.primary)),
           ),
         ],
       ),
@@ -117,6 +119,7 @@ class NoteLockButton extends StatelessWidget {
   // ── Compact: small icon for list cards ──────────────────────
 
   Widget _buildIconOnly(BuildContext context) {
+    final fb     = Theme.of(context).fb;
     final locked = project.isNoteLocked;
     return GestureDetector(
       onTap:    () => _toggle(context),
@@ -129,7 +132,7 @@ class NoteLockButton extends StatelessWidget {
             locked ? Icons.lock_rounded : Icons.lock_open_rounded,
             key:   ValueKey(locked),
             size:  16,
-            color: locked ? const Color(0xFF4CAF50) : Colors.white24,
+            color: locked ? fb.success : fb.onSurfaceFaint,
           ),
         ),
       ),
@@ -139,6 +142,7 @@ class NoteLockButton extends StatelessWidget {
   // ── Full pill: labelled button for the note sheet top bar ───
 
   Widget _buildPill(BuildContext context) {
+    final fb     = Theme.of(context).fb;
     final locked = project.isNoteLocked;
     return GestureDetector(
       onTap: () => _toggle(context),
@@ -147,12 +151,12 @@ class NoteLockButton extends StatelessWidget {
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: locked ? const Color(0xFF1C2E1C) : const Color(0xFF1C1C1C),
+          color: locked ? fb.successBg : fb.surfaceVar,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: locked
-                ? const Color(0xFF4CAF50).withValues(alpha: 0.4)
-                : Colors.white10,
+                ? fb.success.withValues(alpha: 0.4)
+                : fb.border,
           ),
         ),
         child: Row(
@@ -164,14 +168,14 @@ class NoteLockButton extends StatelessWidget {
                 locked ? Icons.lock_rounded : Icons.lock_open_rounded,
                 key:   ValueKey(locked),
                 size:  12,
-                color: locked ? const Color(0xFF4CAF50) : Colors.white38,
+                color: locked ? fb.success : fb.onSurface.withValues(alpha: 0.38),
               ),
             ),
             const SizedBox(width: 4),
             Text(
               locked ? 'Locked' : 'Lock',
               style: TextStyle(
-                color:      locked ? const Color(0xFF4CAF50) : Colors.white38,
+                color:      locked ? fb.success : fb.onSurface.withValues(alpha: 0.38),
                 fontSize:   12,
                 fontWeight: FontWeight.w600,
               ),

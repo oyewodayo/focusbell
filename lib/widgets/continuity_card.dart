@@ -21,6 +21,7 @@ import 'package:intl/intl.dart';
 
 import '../services/continuity_service.dart';
 import '../services/focus_timer_service.dart';
+import '../theme/app_theme.dart';
 
 class ContinuityCard extends StatefulWidget {
   final ContinuitySnapshot snapshot;
@@ -116,6 +117,7 @@ class _ContinuityCardState extends State<ContinuityCard>
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return SlideTransition(
       position: _slide,
       child: FadeTransition(
@@ -131,7 +133,7 @@ class _ContinuityCardState extends State<ContinuityCard>
             child: Container(
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF141414),
+                color: fb.card,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: _accentColor.withOpacity(0.3),
@@ -161,9 +163,9 @@ class _ContinuityCardState extends State<ContinuityCard>
                       Text(_urgencyEmoji,
                           style: const TextStyle(fontSize: 14)),
                       const SizedBox(width: 8),
-                      const Text('Quick Brief',
+                      Text('Quick Brief',
                           style: TextStyle(
-                            color:      Colors.white,
+                            color:      fb.onSurface,
                             fontSize:   13,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.2,
@@ -183,13 +185,13 @@ class _ContinuityCardState extends State<ContinuityCard>
                           CircularProgressIndicator(
                             value:        _dismissProgress,
                             strokeWidth:  2,
-                            color:        Colors.white12,
+                            color:        fb.onSurface.withValues(alpha: 0.12),
                             backgroundColor: Colors.transparent,
                           ),
                           GestureDetector(
                             onTap: _dismiss,
-                            child: const Icon(CupertinoIcons.xmark,
-                                color: Colors.white38, size: 11),
+                            child: Icon(CupertinoIcons.xmark,
+                                color: fb.onSurface.withValues(alpha: 0.38), size: 11),
                           ),
                         ]),
                       ),
@@ -201,8 +203,8 @@ class _ContinuityCardState extends State<ContinuityCard>
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                     child: Text(
                       widget.snapshot.briefing,
-                      style: const TextStyle(
-                        color:      Colors.white70,
+                      style: TextStyle(
+                        color:      fb.onSurface.withValues(alpha: 0.70),
                         fontSize:   14,
                         height:     1.55,
                         letterSpacing: 0.1,
@@ -307,14 +309,14 @@ class _ContinuityCardState extends State<ContinuityCard>
                       Container(
                         width: 32, height: 3,
                         decoration: BoxDecoration(
-                          color: Colors.white12,
+                          color: fb.onSurface.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text('swipe up to dismiss',
+                      Text('swipe up to dismiss',
                           style: TextStyle(
-                              color: Colors.white12, fontSize: 10)),
+                              color: fb.onSurface.withValues(alpha: 0.12), fontSize: 10)),
                     ]),
                   ),
                   const SizedBox(height: 10),
@@ -368,6 +370,7 @@ class _UpcomingChipState extends State<_UpcomingChip> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final mins = _remaining.inMinutes;
     final label = mins < 1  ? 'Now!'
         : mins < 60         ? 'in ${mins}m'
@@ -394,7 +397,7 @@ class _UpcomingChipState extends State<_UpcomingChip> {
             )),
         const SizedBox(width: 8),
         Text(label, style: TextStyle(
-          color:      isUrgent ? const Color(0xFFFF453A) : Colors.white38,
+          color:      isUrgent ? const Color(0xFFFF453A) : fb.onSurface.withValues(alpha: 0.38),
           fontSize:   11,
           fontWeight: isUrgent ? FontWeight.w700 : FontWeight.w400,
         )),

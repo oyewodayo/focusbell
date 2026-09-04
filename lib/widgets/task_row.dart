@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/project.dart';
+import '../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // Single task row
@@ -30,6 +31,7 @@ class _TaskRowState extends State<TaskRow> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final s = widget.task.status;
     final done = s == TaskStatus.completed;
     final overdue = widget.task.isOverdue;
@@ -42,12 +44,12 @@ class _TaskRowState extends State<TaskRow> {
         curve: Curves.easeInOut,
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
-          color: overdue ? const Color(0xFF200A0A) : const Color(0xFF1E1E1E),
+          color: overdue ? fb.dangerBg : fb.surfaceVar,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: overdue
-                ? const Color(0xFFFF3B30).withValues(alpha: 0.35)
-                : Colors.white10,
+                ? fb.danger.withValues(alpha: 0.35)
+                : fb.border,
           ),
         ),
         child: Column(
@@ -78,12 +80,14 @@ class _TaskRowState extends State<TaskRow> {
                       firstChild: Text(
                         widget.task.title,
                         style: TextStyle(
-                          color: done ? Colors.white38 : Colors.white70,
+                          color: done
+                              ? fb.onSurface.withValues(alpha: 0.38)
+                              : fb.onSurface.withValues(alpha: 0.70),
                           fontSize: 14,
                           decoration: done
                               ? TextDecoration.lineThrough
                               : TextDecoration.none,
-                          decorationColor: Colors.white38,
+                          decorationColor: fb.onSurface.withValues(alpha: 0.38),
                           height: 1.3,
                         ),
                         maxLines: 2,
@@ -92,12 +96,14 @@ class _TaskRowState extends State<TaskRow> {
                       secondChild: Text(
                         widget.task.title,
                         style: TextStyle(
-                          color: done ? Colors.white38 : Colors.white70,
+                          color: done
+                              ? fb.onSurface.withValues(alpha: 0.38)
+                              : fb.onSurface.withValues(alpha: 0.70),
                           fontSize: 14,
                           decoration: done
                               ? TextDecoration.lineThrough
                               : TextDecoration.none,
-                          decorationColor: Colors.white38,
+                          decorationColor: fb.onSurface.withValues(alpha: 0.38),
                           height: 1.3,
                         ),
                       ),
@@ -136,12 +142,12 @@ class _TaskRowState extends State<TaskRow> {
                       ),
                     ),
                     PopupMenuButton<String>(
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.more_horiz_rounded,
-                        color: Colors.white30,
+                        color: fb.onSurface.withValues(alpha: 0.30),
                         size: 18,
                       ),
-                      color: const Color(0xFF222222),
+                      color: fb.surfaceVar,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -150,40 +156,40 @@ class _TaskRowState extends State<TaskRow> {
                         if (value == 'delete') widget.onDelete();
                       },
                       itemBuilder: (_) => [
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'edit',
                           child: Row(
                             children: [
-                              Icon(
+                              const Icon(
                                 Icons.edit_outlined,
                                 color: Color(0xFFFFD60A),
                                 size: 16,
                               ),
-                              SizedBox(width: 10),
+                              const SizedBox(width: 10),
                               Text(
                                 'Edit',
                                 style: TextStyle(
-                                  color: Colors.white70,
+                                  color: fb.onSurface.withValues(alpha: 0.70),
                                   fontSize: 13,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const PopupMenuItem(
+                        PopupMenuItem(
                           value: 'delete',
                           child: Row(
                             children: [
                               Icon(
                                 Icons.delete_outline,
-                                color: Color(0xFFFF3B30),
+                                color: fb.danger,
                                 size: 16,
                               ),
-                              SizedBox(width: 10),
+                              const SizedBox(width: 10),
                               Text(
                                 'Delete',
                                 style: TextStyle(
-                                  color: Color(0xFFFF3B30),
+                                  color: fb.danger,
                                   fontSize: 13,
                                 ),
                               ),
@@ -232,8 +238,9 @@ class DuePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final Color pillColor = overdue
-        ? const Color(0xFFFF3B30)
+        ? fb.danger
         : dueSoon
             ? const Color(0xFFFF8C00)
             : const Color(0xFF8E8E93);

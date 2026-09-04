@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 abstract final class AppTheme {
   static const _green     = Color(0xFF4CAF50);
   static const _greenDark = Color(0xFF388E3C);
+  static const _amber     = Color(0xFFFFCC00);
+  static const _red       = Color(0xFFFF3B30);
 
   static ThemeData get dark => _build(
         brightness:     Brightness.dark,
@@ -17,20 +19,32 @@ abstract final class AppTheme {
         onSurfaceFaint: const Color(0x3DFFFFFF),   // white 24%
         primary:        _green,
         primaryDark:    _greenDark,
+        success:        _green,
+        successBg:      const Color(0xFF1A2E1A),
+        warning:        _amber,
+        warningBg:      const Color(0xFF2E2A0A),
+        danger:         _red,
+        dangerBg:       const Color(0xFF2E0A0A),
       );
 
   static ThemeData get light => _build(
         brightness:     Brightness.light,
         scaffoldBg:     const Color(0xFFF2F2F7),   // iOS-style warm off-white
         surface:        const Color(0xFFFFFFFF),
-        surfaceVar:     const Color(0xFFE8E8ED),   // slightly deeper for separation
+        surfaceVar:     const Color(0xFFDDDDE4),   // firmly deeper than scaffold/surface — reads as a distinct layer
         card:           const Color(0xFFFFFFFF),
-        border:         const Color(0x1A000000),   // black 10%
+        border:         const Color(0x33000000),   // black 20% — needs more weight than dark mode's white 10% to read on a light surface
         onSurface:      const Color(0xFF0A0A0A),
         onSurfaceDim:   const Color(0x99000000),   // black 60%
-        onSurfaceFaint: const Color(0x4D000000),   // black 30%
+        onSurfaceFaint: const Color(0x73000000),   // black 45% — 30% washed out to near-invisible on white
         primary:        _green,
         primaryDark:    _greenDark,
+        success:        _greenDark,
+        successBg:      const Color(0xFFDFF2DF),
+        warning:        const Color(0xFFB8860B),
+        warningBg:      const Color(0xFFFBF0D6),
+        danger:         _red,
+        dangerBg:       const Color(0xFFFCE1DF),
       );
 
   static ThemeData _build({
@@ -45,6 +59,12 @@ abstract final class AppTheme {
     required Color onSurfaceFaint,
     required Color primary,
     required Color primaryDark,
+    required Color success,
+    required Color successBg,
+    required Color warning,
+    required Color warningBg,
+    required Color danger,
+    required Color dangerBg,
   }) {
     final isDark = brightness == Brightness.dark;
     final base   = isDark ? ThemeData.dark() : ThemeData.light();
@@ -60,7 +80,7 @@ abstract final class AppTheme {
         onPrimary:   Colors.white,
         secondary:   primaryDark,
         onSecondary: Colors.white,
-        error:       const Color(0xFFFF3B30),
+        error:       danger,
         onError:     Colors.white,
         surface:     surface,
         onSurface:   onSurface,
@@ -78,8 +98,8 @@ abstract final class AppTheme {
 
       cardTheme: CardThemeData(
         color:     card,
-        elevation: isDark ? 0 : 1,
-        shadowColor: Colors.black.withValues(alpha: 0.06),
+        elevation: isDark ? 0 : 2,
+        shadowColor: Colors.black.withValues(alpha: isDark ? 0.06 : 0.12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
           side:         BorderSide(color: border),
@@ -130,6 +150,12 @@ abstract final class AppTheme {
           onSurfaceFaint: onSurfaceFaint,
           primary:        primary,
           isDark:         isDark,
+          success:        success,
+          successBg:      successBg,
+          warning:        warning,
+          warningBg:      warningBg,
+          danger:         danger,
+          dangerBg:       dangerBg,
         ),
       ],
     );
@@ -149,6 +175,12 @@ class FocusBellColors extends ThemeExtension<FocusBellColors> {
   final Color onSurfaceFaint;
   final Color primary;
   final bool  isDark;
+  final Color success;
+  final Color successBg;
+  final Color warning;
+  final Color warningBg;
+  final Color danger;
+  final Color dangerBg;
 
   const FocusBellColors({
     required this.scaffoldBg,
@@ -161,6 +193,12 @@ class FocusBellColors extends ThemeExtension<FocusBellColors> {
     required this.onSurfaceFaint,
     required this.primary,
     required this.isDark,
+    required this.success,
+    required this.successBg,
+    required this.warning,
+    required this.warningBg,
+    required this.danger,
+    required this.dangerBg,
   });
 
   @override
@@ -169,6 +207,9 @@ class FocusBellColors extends ThemeExtension<FocusBellColors> {
     Color? card, Color? border, Color? onSurface,
     Color? onSurfaceDim, Color? onSurfaceFaint, Color? primary,
     bool? isDark,
+    Color? success, Color? successBg,
+    Color? warning, Color? warningBg,
+    Color? danger, Color? dangerBg,
   }) =>
       FocusBellColors(
         scaffoldBg:     scaffoldBg     ?? this.scaffoldBg,
@@ -181,6 +222,12 @@ class FocusBellColors extends ThemeExtension<FocusBellColors> {
         onSurfaceFaint: onSurfaceFaint ?? this.onSurfaceFaint,
         primary:        primary        ?? this.primary,
         isDark:         isDark         ?? this.isDark,
+        success:        success        ?? this.success,
+        successBg:      successBg      ?? this.successBg,
+        warning:        warning        ?? this.warning,
+        warningBg:      warningBg      ?? this.warningBg,
+        danger:         danger         ?? this.danger,
+        dangerBg:       dangerBg       ?? this.dangerBg,
       );
 
   @override
@@ -197,6 +244,12 @@ class FocusBellColors extends ThemeExtension<FocusBellColors> {
       onSurfaceFaint: Color.lerp(onSurfaceFaint, other.onSurfaceFaint, t)!,
       primary:        Color.lerp(primary,        other.primary,        t)!,
       isDark:         t < 0.5 ? isDark : (other.isDark),
+      success:        Color.lerp(success,        other.success,        t)!,
+      successBg:      Color.lerp(successBg,      other.successBg,      t)!,
+      warning:        Color.lerp(warning,        other.warning,        t)!,
+      warningBg:      Color.lerp(warningBg,      other.warningBg,      t)!,
+      danger:         Color.lerp(danger,         other.danger,         t)!,
+      dangerBg:       Color.lerp(dangerBg,       other.dangerBg,       t)!,
     );
   }
 }

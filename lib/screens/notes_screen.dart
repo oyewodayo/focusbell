@@ -24,6 +24,7 @@ import '../services/pin_service.dart';
 import '../services/reminder_service.dart';
 import '../models/reminder_model.dart';
 import '../services/standalone_note_controller.dart';
+import '../theme/app_theme.dart';
 import '../utils/app_toast.dart';
 import '../widgets/pin_entry_sheet.dart';
 import '../widgets/project_note_sheet.dart';
@@ -274,10 +275,7 @@ class _NotesScreenState extends State<NotesScreen>
       if (ok != true || !mounted) return;
       await _ctrl.updateNoteLockState(live.id, isLocked: false);
       if (mounted) {
-        AppToast.show(context,
-            msg: '🔓 Note unlocked',
-            backgroundColor: const Color(0xFF1A2E1A),
-            textColor: const Color(0xFF4CAF50));
+        AppToast.success(context, '🔓 Note unlocked');
       }
     } else {
       await _ctrl.updateNoteLockState(live.id, isLocked: true);
@@ -304,13 +302,13 @@ class _NotesScreenState extends State<NotesScreen>
       lastDate: now.add(const Duration(days: 365)),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFFF9F0A),
-            onPrimary: Colors.black,
-            surface: Color(0xFF1E1E1E),
-            onSurface: Colors.white,
-          ),
-          dialogBackgroundColor: const Color(0xFF1A1A1A),
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary:   const Color(0xFFFF9F0A),
+                onPrimary: Colors.black,
+                surface:   Theme.of(ctx).fb.surfaceVar,
+                onSurface: Theme.of(ctx).fb.onSurface,
+              ),
+          dialogBackgroundColor: Theme.of(ctx).fb.card,
         ),
         child: child!,
       ),
@@ -327,13 +325,13 @@ class _NotesScreenState extends State<NotesScreen>
       initialTime: initialTime,
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFFF9F0A),
-            onPrimary: Colors.black,
-            surface: Color(0xFF1E1E1E),
-            onSurface: Colors.white,
-          ),
-          dialogBackgroundColor: const Color(0xFF1A1A1A),
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary:   const Color(0xFFFF9F0A),
+                onPrimary: Colors.black,
+                surface:   Theme.of(ctx).fb.surfaceVar,
+                onSurface: Theme.of(ctx).fb.onSurface,
+              ),
+          dialogBackgroundColor: Theme.of(ctx).fb.card,
         ),
         child: child!,
       ),
@@ -344,10 +342,7 @@ class _NotesScreenState extends State<NotesScreen>
         date.year, date.month, date.day, time.hour, time.minute);
 
     if (remindAt.isBefore(now)) {
-      AppToast.show(context,
-          msg: 'Choose a future time',
-          backgroundColor: const Color(0xFF2A1A1A),
-          textColor: const Color(0xFFFF3B30));
+      AppToast.error(context, 'Choose a future time');
       return;
     }
 
@@ -370,10 +365,7 @@ class _NotesScreenState extends State<NotesScreen>
 
     if (mounted) {
       setState(() => _reminders[note.id] = remindAt);
-      AppToast.show(context,
-          msg: '🔔 Reminder set',
-          backgroundColor: const Color(0xFF1A1F0A),
-          textColor: const Color(0xFFFF9F0A));
+      AppToast.warning(context, '🔔 Reminder set');
     }
   }
 
@@ -382,10 +374,7 @@ class _NotesScreenState extends State<NotesScreen>
     await NoteReminderService.instance.clear(note.id);
     if (mounted) {
       setState(() => _reminders[note.id] = null);
-      AppToast.show(context,
-          msg: 'Reminder removed',
-          backgroundColor: const Color(0xFF1A1A1A),
-          textColor: const Color(0xFFFF3B30));
+      AppToast.error(context, 'Reminder removed');
     }
   }
 
@@ -396,23 +385,24 @@ class _NotesScreenState extends State<NotesScreen>
   }
 
   void _showNoPinDialog() {
+    final fb = Theme.of(context).fb;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: fb.surface,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16)),
-        title: const Text('No PIN set',
-            style: TextStyle(color: Colors.white, fontSize: 17)),
-        content: const Text(
+        title: Text('No PIN set',
+            style: TextStyle(color: fb.onSurface, fontSize: 17)),
+        content: Text(
           'Go to Settings → Security to set a PIN before locking notes.',
-          style: TextStyle(color: Colors.white60, fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK',
-                style: TextStyle(color: Color(0xFF4CAF50))),
+            child: Text('OK',
+                style: TextStyle(color: fb.primary)),
           ),
         ],
       ),
@@ -420,28 +410,29 @@ class _NotesScreenState extends State<NotesScreen>
   }
 
   Future<void> _deleteNote(StandaloneNote note) async {
+    final fb = Theme.of(context).fb;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: fb.surface,
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14)),
-        title: const Text('Delete note?',
-            style: TextStyle(color: Colors.white, fontSize: 16)),
-        content: const Text(
+        title: Text('Delete note?',
+            style: TextStyle(color: fb.onSurface, fontSize: 16)),
+        content: Text(
           'This note will be permanently removed.',
-          style: TextStyle(color: Colors.white54, fontSize: 13),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel',
-                style: TextStyle(color: Colors.white54)),
+            child: Text('Cancel',
+                style: TextStyle(color: fb.onSurfaceDim)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete',
-                style: TextStyle(color: Color(0xFFFF3B30))),
+            child: Text('Delete',
+                style: TextStyle(color: fb.danger)),
           ),
         ],
       ),
@@ -459,7 +450,6 @@ class _NotesScreenState extends State<NotesScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0E0E0F),
       body: SafeArea(
         child: ListenableBuilder(
           listenable: _ctrl,
@@ -483,10 +473,11 @@ class _NotesScreenState extends State<NotesScreen>
   // ── Top bar ───────────────────────────────────────────────────
 
   Widget _buildTopBar() {
+    final fb = Theme.of(context).fb;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 14, 16, 12),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFF1A1A1A))),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: fb.border)),
       ),
       child: Row(
         children: [
@@ -495,14 +486,14 @@ class _NotesScreenState extends State<NotesScreen>
             child: Container(
               padding: const EdgeInsets.all(8),
               child: Icon(Icons.arrow_back_ios_rounded,
-                  color: Colors.white.withValues(alpha: 0.6),
+                  color: fb.onSurfaceDim,
                   size: 18),
             ),
           ),
           const SizedBox(width: 4),
-          const Text('Notes',
+          Text('Notes',
               style: TextStyle(
-                  color: Colors.white,
+                  color: fb.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.4)),
@@ -512,12 +503,12 @@ class _NotesScreenState extends State<NotesScreen>
               padding: const EdgeInsets.symmetric(
                   horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.07),
+                color: fb.onSurface.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text('${_ctrl.notes.length}',
-                  style: const TextStyle(
-                      color: Colors.white38,
+                  style: TextStyle(
+                      color: fb.onSurfaceFaint,
                       fontSize: 12,
                       fontWeight: FontWeight.w600)),
             ),
@@ -539,7 +530,7 @@ class _NotesScreenState extends State<NotesScreen>
                     : CupertinoIcons.search,
                 color: _searching
                     ? const Color(0xFF64D2FF)
-                    : Colors.white38,
+                    : fb.onSurfaceFaint,
                 size: 20,
               ),
             ),
@@ -579,32 +570,33 @@ class _NotesScreenState extends State<NotesScreen>
   // ── Search bar ────────────────────────────────────────────────
 
   Widget _buildSearchBar() {
+    final fb = Theme.of(context).fb;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 10, 16, 2),
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
+        color: fb.surfaceVar,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(
         children: [
-          const Icon(CupertinoIcons.search,
-              color: Colors.white24, size: 16),
+          Icon(CupertinoIcons.search,
+              color: fb.onSurfaceFaint, size: 16),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
               controller: _searchCtrl,
               autofocus: true,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 14),
-              decoration: const InputDecoration(
+              style: TextStyle(
+                  color: fb.onSurface, fontSize: 14),
+              decoration: InputDecoration(
                 hintText: 'Search notes…',
-                hintStyle: TextStyle(color: Colors.white24),
+                hintStyle: TextStyle(color: fb.onSurfaceFaint),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding:
-                    EdgeInsets.symmetric(vertical: 10),
+                    const EdgeInsets.symmetric(vertical: 10),
               ),
               onChanged: (v) => setState(() => _query = v),
             ),
@@ -615,9 +607,9 @@ class _NotesScreenState extends State<NotesScreen>
                 _query = '';
                 _searchCtrl.clear();
               }),
-              child: const Icon(
+              child: Icon(
                   CupertinoIcons.xmark_circle_fill,
-                  color: Colors.white24,
+                  color: fb.onSurfaceFaint,
                   size: 16),
             ),
         ],
@@ -628,6 +620,7 @@ class _NotesScreenState extends State<NotesScreen>
   // ── Body ──────────────────────────────────────────────────────
 
   Widget _buildBody() {
+    final fb = Theme.of(context).fb;
     if (!_ctrl.ready) {
       return const Center(
         child: CircularProgressIndicator(
@@ -646,12 +639,12 @@ class _NotesScreenState extends State<NotesScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(CupertinoIcons.search,
-                color: Colors.white12, size: 36),
+            Icon(CupertinoIcons.search,
+                color: fb.onSurface.withValues(alpha: 0.12), size: 36),
             const SizedBox(height: 12),
             Text('No notes match "$_query"',
-                style: const TextStyle(
-                    color: Colors.white38, fontSize: 14)),
+                style: TextStyle(
+                    color: fb.onSurface.withValues(alpha: 0.38), fontSize: 14)),
           ],
         ),
       );
@@ -725,6 +718,7 @@ class _NoteCardState extends State<_NoteCard> {
 
   @override
   Widget build(BuildContext context) {
+    final fb      = Theme.of(context).fb;
     final note    = widget.note;
     final isEmpty = widget.preview.isEmpty && note.title.isEmpty;
     final locked  = note.isLocked;
@@ -743,15 +737,15 @@ class _NoteCardState extends State<_NoteCard> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: _pressing
-              ? const Color(0xFF1E1E20)
-              : const Color(0xFF161618),
+              ? fb.surfaceVar
+              : fb.card,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: locked
-                ? const Color(0xFF4CAF50).withValues(alpha: 0.25)
+                ? fb.success.withValues(alpha: 0.25)
                 : _pressing
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.white.withValues(alpha: 0.06),
+                    ? fb.onSurface.withValues(alpha: 0.12)
+                    : fb.onSurface.withValues(alpha: 0.06),
           ),
         ),
         child: Column(
@@ -760,8 +754,8 @@ class _NoteCardState extends State<_NoteCard> {
             // ── Title row ──────────────────────────────────────
             Row(children: [
               if (locked) ...[
-                const Icon(Icons.lock_rounded,
-                    size: 12, color: Color(0xFF4CAF50)),
+                Icon(Icons.lock_rounded,
+                    size: 12, color: fb.success),
                 const SizedBox(width: 5),
               ],
               Expanded(
@@ -769,8 +763,8 @@ class _NoteCardState extends State<_NoteCard> {
                   note.title.isEmpty ? 'Untitled' : note.title,
                   style: TextStyle(
                     color: note.title.isEmpty
-                        ? Colors.white24
-                        : Colors.white.withValues(alpha: 0.9),
+                        ? fb.onSurfaceFaint
+                        : fb.onSurface.withValues(alpha: 0.9),
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.2,
@@ -781,8 +775,8 @@ class _NoteCardState extends State<_NoteCard> {
               ),
               const SizedBox(width: 8),
               Text(widget.relTime,
-                  style: const TextStyle(
-                      color: Colors.white24, fontSize: 11)),
+                  style: TextStyle(
+                      color: fb.onSurfaceFaint, fontSize: 11)),
               const SizedBox(width: 4),
               _NoteCardMenu(
                 isLocked: locked,
@@ -812,12 +806,12 @@ class _NoteCardState extends State<_NoteCard> {
               Row(children: [
                 Icon(Icons.lock_outline_rounded,
                     size: 11,
-                    color: const Color(0xFF4CAF50)
+                    color: fb.success
                         .withValues(alpha: 0.5)),
                 const SizedBox(width: 5),
                 Text('Content protected',
                     style: TextStyle(
-                      color: const Color(0xFF4CAF50)
+                      color: fb.success
                           .withValues(alpha: 0.5),
                       fontSize: 12,
                       fontStyle: FontStyle.italic,
@@ -826,8 +820,8 @@ class _NoteCardState extends State<_NoteCard> {
             ] else if (!isEmpty) ...[
               const SizedBox(height: 6),
               Text(widget.preview,
-                  style: const TextStyle(
-                      color: Colors.white38,
+                  style: TextStyle(
+                      color: fb.onSurface.withValues(alpha: 0.38),
                       fontSize: 13,
                       height: 1.5),
                   maxLines: 2,
@@ -899,8 +893,9 @@ class _ReminderChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     const amber = Color(0xFFFF9F0A);
-    final chipColor = isPast ? Colors.white24 : amber;
+    final chipColor = isPast ? fb.onSurfaceFaint : amber;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -942,11 +937,11 @@ class _ReminderChip extends StatelessWidget {
             height: 20,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.06),
+              color: fb.onSurface.withValues(alpha: 0.06),
             ),
-            child: const Center(
+            child: Center(
               child: Icon(Icons.close_rounded,
-                  size: 11, color: Colors.white38),
+                  size: 11, color: fb.onSurface.withValues(alpha: 0.38)),
             ),
           ),
         ),
@@ -976,6 +971,7 @@ class _NoteCardMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return PopupMenuButton<_NoteCardMenuAction>(
       onSelected: (action) {
         switch (action) {
@@ -987,17 +983,17 @@ class _NoteCardMenu extends StatelessWidget {
             onDelete();
         }
       },
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Icon(Icons.more_horiz_rounded,
-            color: Colors.white38, size: 18),
+            color: fb.onSurface.withValues(alpha: 0.38), size: 18),
       ),
-      color: const Color(0xFF1E1E1E),
+      color: fb.surfaceVar,
       elevation: 8,
       shadowColor: Colors.black54,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Colors.white10),
+        side: BorderSide(color: fb.border),
       ),
       itemBuilder: (_) => [
         // ── Lock / Unlock ─────────────────────────────────────
@@ -1011,14 +1007,14 @@ class _NoteCardMenu extends StatelessWidget {
               size: 16,
               color: isLocked
                   ? const Color(0xFFFF9F0A)
-                  : const Color(0xFF4CAF50),
+                  : fb.success,
             ),
             const SizedBox(width: 12),
             Text(isLocked ? 'Unlock note' : 'Lock note',
                 style: TextStyle(
                     color: isLocked
                         ? const Color(0xFFFF9F0A)
-                        : Colors.white,
+                        : fb.onSurface,
                     fontSize: 14)),
             if (isLocked) ...[
               const SizedBox(width: 8),
@@ -1057,7 +1053,7 @@ class _NoteCardMenu extends StatelessWidget {
               size: 16,
               color: hasReminder
                   ? const Color(0xFFFF9F0A)
-                  : Colors.white54,
+                  : fb.onSurfaceDim,
             ),
             const SizedBox(width: 12),
             Text(
@@ -1065,7 +1061,7 @@ class _NoteCardMenu extends StatelessWidget {
               style: TextStyle(
                   color: hasReminder
                       ? const Color(0xFFFF9F0A)
-                      : Colors.white,
+                      : fb.onSurface,
                   fontSize: 14),
             ),
             if (hasReminder) ...[
@@ -1097,13 +1093,13 @@ class _NoteCardMenu extends StatelessWidget {
         // ── Delete ────────────────────────────────────────────
         PopupMenuItem<_NoteCardMenuAction>(
           value: _NoteCardMenuAction.delete,
-          child: const Row(children: [
+          child: Row(children: [
             Icon(Icons.delete_outline_rounded,
-                size: 16, color: Color(0xFFFF3B30)),
-            SizedBox(width: 12),
+                size: 16, color: fb.danger),
+            const SizedBox(width: 12),
             Text('Delete note',
                 style: TextStyle(
-                    color: Color(0xFFFF3B30), fontSize: 14)),
+                    color: fb.danger, fontSize: 14)),
           ]),
         ),
       ],
@@ -1167,6 +1163,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -1181,27 +1178,27 @@ class _EmptyState extends StatelessWidget {
                   height: 80,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF1A1A1A),
-                    border: Border.all(color: Colors.white10),
+                    color: fb.surfaceVar,
+                    border: Border.all(color: fb.border),
                   ),
                 ),
-                const Icon(CupertinoIcons.square_pencil,
-                    color: Colors.white24, size: 32),
+                Icon(CupertinoIcons.square_pencil,
+                    color: fb.onSurfaceFaint, size: 32),
               ],
             ),
             const SizedBox(height: 20),
-            const Text('No notes yet',
+            Text('No notes yet',
                 style: TextStyle(
-                    color: Colors.white,
+                    color: fb.onSurface,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.4)),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Capture ideas, plans, voice memos,\nimages — anything worth keeping.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                  color: Colors.white38,
+                  color: fb.onSurface.withValues(alpha: 0.38),
                   fontSize: 13,
                   height: 1.6),
             ),

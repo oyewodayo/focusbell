@@ -14,6 +14,7 @@ import '../models/focus_session.dart';
 import '../models/focus_settings.dart';
 import '../models/project.dart';
 import '../services/focus_timer_service.dart';
+import '../theme/app_theme.dart';
 
 // ── Entry point ───────────────────────────────────────────────────
 
@@ -101,14 +102,15 @@ class _FocusTimerSheetState extends State<FocusTimerSheet> {
     if (!_isLocked) return true;
     // Show a brief locked toast.
     if (mounted) {
+      final fb = Theme.of(context).fb;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Row(
+          content: Row(
             children: [
-              Text('🔒', style: TextStyle(fontSize: 16)),
-              SizedBox(width: 10),
+              const Text('🔒', style: TextStyle(fontSize: 16)),
+              const SizedBox(width: 10),
               Text('Strict mode: finish or pause to leave.',
-                  style: TextStyle(color: Colors.white, fontSize: 13)),
+                  style: TextStyle(color: fb.onSurface, fontSize: 13)),
             ],
           ),
           backgroundColor: const Color(0xFF2C1A00),
@@ -165,6 +167,7 @@ void _showFinishedDialog() {
 
   @override
   Widget build(BuildContext context) {
+    final fb    = Theme.of(context).fb;
     final s     = _svc.state;
     final color = _phaseColor(s.sessionType);
 
@@ -181,9 +184,9 @@ void _showFinishedDialog() {
             : null,
         child: Container(
           height: MediaQuery.of(context).size.height * 0.93,
-          decoration: const BoxDecoration(
-            color:        Color(0xFF0E0E0E),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          decoration: BoxDecoration(
+            color:        fb.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: Column(
             children: [
@@ -194,7 +197,7 @@ void _showFinishedDialog() {
                 decoration: BoxDecoration(
                   color: _isLocked
                       ? const Color(0xFFFF9F0A).withValues(alpha: 0.5)
-                      : Colors.white24,
+                      : fb.onSurfaceFaint,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -216,7 +219,7 @@ void _showFinishedDialog() {
                         decoration: BoxDecoration(
                           color: _isLocked
                               ? const Color(0xFFFF9F0A).withValues(alpha: 0.12)
-                              : Colors.white.withValues(alpha: 0.06),
+                              : fb.onSurface.withValues(alpha: 0.06),
                           borderRadius: BorderRadius.circular(10),
                           border: _isLocked
                               ? Border.all(
@@ -230,7 +233,7 @@ void _showFinishedDialog() {
                               : Icons.keyboard_arrow_down_rounded,
                           color: _isLocked
                               ? const Color(0xFFFF9F0A)
-                              : Colors.white54,
+                              : fb.onSurface.withValues(alpha: 0.54),
                           size: 20,
                         ),
                       ),
@@ -242,7 +245,7 @@ void _showFinishedDialog() {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 5),
                       decoration: BoxDecoration(
-                        color: widget.project.priority.bgColor,
+                        color: widget.project.priority.bgColor(fb.isDark),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: widget.project.priority.color
@@ -277,13 +280,13 @@ void _showFinishedDialog() {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color:        Colors.white.withValues(alpha: 0.06),
+                        color:        fb.onSurface.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         '${s.completedWork} done',
-                        style: const TextStyle(
-                          color:      Colors.white38,
+                        style: TextStyle(
+                          color:      fb.onSurface.withValues(alpha: 0.38),
                           fontSize:   12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -298,11 +301,11 @@ void _showFinishedDialog() {
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color:        Colors.white.withValues(alpha: 0.06),
+                          color:        fb.onSurface.withValues(alpha: 0.06),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.more_vert_rounded,
-                            color: Colors.white38, size: 18),
+                        child: Icon(Icons.more_vert_rounded,
+                            color: fb.onSurface.withValues(alpha: 0.38), size: 18),
                       ),
                     ),
                   ],
@@ -393,7 +396,7 @@ void _showFinishedDialog() {
               const SizedBox(height: 4),
               Text(
                 _subtitle(s),
-                style: const TextStyle(color: Colors.white30, fontSize: 12),
+                style: TextStyle(color: fb.onSurface.withValues(alpha: 0.30), fontSize: 12),
               ),
 
               const SizedBox(height: 28),
@@ -427,13 +430,13 @@ void _showFinishedDialog() {
                           horizontal: 14, vertical: 7),
                       decoration: BoxDecoration(
                         color: _svc.settings.tickEnabled
-                            ? Colors.white.withValues(alpha: 0.08)
+                            ? fb.onSurface.withValues(alpha: 0.08)
                             : Colors.transparent,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: _svc.settings.tickEnabled
-                              ? Colors.white24
-                              : Colors.white12,
+                              ? fb.onSurfaceFaint
+                              : fb.onSurface.withValues(alpha: 0.12),
                         ),
                       ),
                       child: Row(
@@ -444,8 +447,8 @@ void _showFinishedDialog() {
                                 ? Icons.volume_up_rounded
                                 : Icons.volume_off_rounded,
                             color: _svc.settings.tickEnabled
-                                ? Colors.white54
-                                : Colors.white24,
+                                ? fb.onSurface.withValues(alpha: 0.54)
+                                : fb.onSurfaceFaint,
                             size: 15,
                           ),
                           const SizedBox(width: 6),
@@ -455,8 +458,8 @@ void _showFinishedDialog() {
                                 : 'Tick off',
                             style: TextStyle(
                               color: _svc.settings.tickEnabled
-                                  ? Colors.white54
-                                  : Colors.white24,
+                                  ? fb.onSurface.withValues(alpha: 0.54)
+                                  : fb.onSurfaceFaint,
                               fontSize:   12,
                               fontWeight: FontWeight.w500,
                             ),
@@ -553,10 +556,11 @@ class _SessionSettingsSheetState extends State<_SessionSettingsSheet> {
 
   @override
 Widget build(BuildContext context) {
+  final fb = Theme.of(context).fb;
   return Container(
-    decoration: const BoxDecoration(
-      color: Color(0xFF141414),
-      borderRadius: BorderRadius.vertical(
+    decoration: BoxDecoration(
+      color: fb.surface,
+      borderRadius: const BorderRadius.vertical(
         top: Radius.circular(24),
       ),
     ),
@@ -575,19 +579,19 @@ Widget build(BuildContext context) {
                     width: 36,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.white24,
+                      color: fb.onSurfaceFaint,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
                 ),
                 const SizedBox(height: 20),
 
-                const Align(
+                Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'Session Settings',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: fb.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
@@ -596,12 +600,12 @@ Widget build(BuildContext context) {
 
                 const SizedBox(height: 4),
 
-                const Align(
+                Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
                     'These preferences persist across all sessions.',
                     style: TextStyle(
-                      color: Colors.white30,
+                      color: fb.onSurface.withValues(alpha: 0.30),
                       fontSize: 12,
                     ),
                   ),
@@ -641,12 +645,12 @@ Widget build(BuildContext context) {
                           decoration: BoxDecoration(
                             color: sel
                                 ? const Color(0xFF0A84FF).withValues(alpha: 0.07)
-                                : Colors.white.withValues(alpha: 0.03),
+                                : fb.onSurface.withValues(alpha: 0.03),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: sel
                                   ? const Color(0xFF0A84FF).withValues(alpha: 0.25)
-                                  : Colors.white.withValues(alpha: 0.07),
+                                  : fb.onSurface.withValues(alpha: 0.07),
                             ),
                           ),
                           child: Row(
@@ -668,7 +672,7 @@ Widget build(BuildContext context) {
                                 child: Text(
                                   sound.label,
                                   style: TextStyle(
-                                    color: sel ? Colors.white : Colors.white60,
+                                    color: sel ? fb.onSurface : fb.onSurfaceDim,
                                     fontSize:   13,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -742,12 +746,13 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Align(
       alignment: Alignment.centerLeft,
       child: Text(
         text,
-        style: const TextStyle(
-          color:         Colors.white24,
+        style: TextStyle(
+          color:         fb.onSurfaceFaint,
           fontSize:      10,
           fontWeight:    FontWeight.w700,
           letterSpacing: 1.5,
@@ -776,18 +781,19 @@ class _ToggleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: value
             ? color.withValues(alpha: 0.07)
-            : Colors.white.withValues(alpha: 0.03),
+            : fb.onSurface.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: value
               ? color.withValues(alpha: 0.25)
-              : Colors.white.withValues(alpha: 0.07),
+              : fb.onSurface.withValues(alpha: 0.07),
         ),
       ),
       child: Row(
@@ -799,7 +805,7 @@ class _ToggleRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon,
-                color: value ? color : Colors.white30, size: 17),
+                color: value ? color : fb.onSurface.withValues(alpha: 0.30), size: 17),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -808,14 +814,14 @@ class _ToggleRow extends StatelessWidget {
               children: [
                 Text(title,
                     style: TextStyle(
-                      color:      value ? Colors.white : Colors.white60,
+                      color:      value ? fb.onSurface : fb.onSurfaceDim,
                       fontSize:   13,
                       fontWeight: FontWeight.w600,
                     )),
                 const SizedBox(height: 2),
                 Text(subtitle,
-                    style: const TextStyle(
-                        color: Colors.white30, fontSize: 11)),
+                    style: TextStyle(
+                        color: fb.onSurface.withValues(alpha: 0.30), fontSize: 11)),
               ],
             ),
           ),
@@ -823,8 +829,8 @@ class _ToggleRow extends StatelessWidget {
             value:           value,
             onChanged:       onChanged,
             activeColor:     color,
-            inactiveThumbColor: Colors.white30,
-            inactiveTrackColor: Colors.white12,
+            inactiveThumbColor: fb.onSurface.withValues(alpha: 0.30),
+            inactiveTrackColor: fb.onSurface.withValues(alpha: 0.12),
           ),
         ],
       ),
@@ -836,13 +842,13 @@ class _ToggleRow extends StatelessWidget {
 
 class _FinishedDialog extends StatelessWidget {
   final FocusTimerService svc;
-  final SessionType?      completedType; 
+  final SessionType?      completedType;
   final VoidCallback      onStart;
   final VoidCallback      onStop;
 
   const _FinishedDialog({
     required this.svc,
-    required this.completedType, 
+    required this.completedType,
     required this.onStart,
     required this.onStop,
   });
@@ -855,6 +861,7 @@ class _FinishedDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     // At this point _advanceToNextSegment has run, so state = next segment idle.
     return ListenableBuilder(
       listenable: svc,
@@ -880,7 +887,7 @@ class _FinishedDialog extends StatelessWidget {
               );
 
         return AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
+          backgroundColor: fb.card,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22)),
           title: Column(
@@ -889,8 +896,8 @@ class _FinishedDialog extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 headline,
-                style: const TextStyle(
-                  color: Colors.white, fontSize: 18,
+                style: TextStyle(
+                  color: fb.onSurface, fontSize: 18,
                   fontWeight: FontWeight.w700),
                 textAlign: TextAlign.center,
               ),
@@ -903,8 +910,8 @@ class _FinishedDialog extends StatelessWidget {
               if (isBreak)
                 Text(
                   '${s.completedWork} session${s.completedWork == 1 ? '' : 's'} done today.',
-                  style: const TextStyle(
-                      color: Colors.white38, fontSize: 13),
+                  style: TextStyle(
+                      color: fb.onSurface.withValues(alpha: 0.38), fontSize: 13),
                   textAlign: TextAlign.center,
                 ),
               const SizedBox(height: 6),
@@ -912,8 +919,8 @@ class _FinishedDialog extends StatelessWidget {
               // What's next
               Text(
                 readyLine,
-                style: const TextStyle(
-                    color: Colors.white60, fontSize: 14, height: 1.5),
+                style: TextStyle(
+                    color: fb.onSurfaceDim, fontSize: 14, height: 1.5),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 4),
@@ -954,8 +961,8 @@ class _FinishedDialog extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: onStop,
-              child: const Text('Stop',
-                  style: TextStyle(color: Colors.white30, fontSize: 13)),
+              child: Text('Stop',
+                  style: TextStyle(color: fb.onSurface.withValues(alpha: 0.30), fontSize: 13)),
             ),
             const SizedBox(width: 8),
             ElevatedButton(
@@ -1023,6 +1030,7 @@ class _PresetPickerState extends State<_PresetPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1057,11 +1065,13 @@ class _PresetPickerState extends State<_PresetPicker> {
                       horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(
                     color: sel
-                        ? Colors.white.withValues(alpha: 0.10)
+                        ? fb.onSurface.withValues(alpha: 0.10)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: sel ? Colors.white38 : Colors.white12),
+                        color: sel
+                            ? fb.onSurface.withValues(alpha: 0.38)
+                            : fb.onSurface.withValues(alpha: 0.12)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1069,7 +1079,7 @@ class _PresetPickerState extends State<_PresetPicker> {
                       Text(
                         p.label,
                         style: TextStyle(
-                          color: sel ? Colors.white : Colors.white38,
+                          color: sel ? fb.onSurface : fb.onSurface.withValues(alpha: 0.38),
                           fontSize:   12,
                           fontWeight: sel
                               ? FontWeight.w700
@@ -1080,7 +1090,7 @@ class _PresetPickerState extends State<_PresetPicker> {
                       if (p == TimerPreset.custom && !sel) ...[
                         const SizedBox(width: 4),
                         Icon(Icons.add_rounded,
-                            color: Colors.white24, size: 12),
+                            color: fb.onSurfaceFaint, size: 12),
                       ],
                     ],
                   ),
@@ -1115,9 +1125,9 @@ class _PresetPickerState extends State<_PresetPicker> {
                         child: Container(
                           height: 40,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.06),
+                            color: fb.onSurface.withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white12),
+                            border: Border.all(color: fb.onSurface.withValues(alpha: 0.12)),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -1128,8 +1138,8 @@ class _PresetPickerState extends State<_PresetPicker> {
                                   controller:  _ctrl,
                                   keyboardType: TextInputType.number,
                                   textAlign:   TextAlign.center,
-                                  style: const TextStyle(
-                                    color:      Colors.white,
+                                  style: TextStyle(
+                                    color:      fb.onSurface,
                                     fontSize:   15,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -1141,9 +1151,9 @@ class _PresetPickerState extends State<_PresetPicker> {
                                   onSubmitted: (_) => _commitCustom(),
                                 ),
                               ),
-                              const Text(' min',
+                              Text(' min',
                                   style: TextStyle(
-                                      color:    Colors.white38,
+                                      color:    fb.onSurface.withValues(alpha: 0.38),
                                       fontSize: 13)),
                             ],
                           ),
@@ -1207,18 +1217,21 @@ class _StepBtn extends StatelessWidget {
   const _StepBtn({required this.icon, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return GestureDetector(
         onTap: onTap,
         child: Container(
           width: 36, height: 36,
           decoration: BoxDecoration(
-            color:        Colors.white.withValues(alpha: 0.06),
+            color:        fb.onSurface.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(10),
-            border:       Border.all(color: Colors.white12),
+            border:       Border.all(color: fb.onSurface.withValues(alpha: 0.12)),
           ),
-          child: Icon(icon, color: Colors.white38, size: 18),
+          child: Icon(icon, color: fb.onSurface.withValues(alpha: 0.38), size: 18),
         ),
       );
+  }
 }
 // ── Circular ring ─────────────────────────────────────────────────
 
@@ -1245,11 +1258,16 @@ class _TimerRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     const size = 240.0;
     return SizedBox(
       width: size, height: size,
       child: CustomPaint(
-        painter: _RingPainter(progress: progress, color: color),
+        painter: _RingPainter(
+          progress:   progress,
+          color:      color,
+          trackColor: fb.onSurface.withValues(alpha: 0.06),
+        ),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1268,8 +1286,8 @@ class _TimerRing extends StatelessWidget {
               ),
               Text(
                 '/ ${_fmt(total)}',
-                style: const TextStyle(
-                    color: Colors.white24, fontSize: 13),
+                style: TextStyle(
+                    color: fb.onSurfaceFaint, fontSize: 13),
               ),
             ],
           ),
@@ -1282,7 +1300,8 @@ class _TimerRing extends StatelessWidget {
 class _RingPainter extends CustomPainter {
   final double progress;
   final Color  color;
-  _RingPainter({required this.progress, required this.color});
+  final Color  trackColor;
+  _RingPainter({required this.progress, required this.color, required this.trackColor});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1294,7 +1313,7 @@ class _RingPainter extends CustomPainter {
 
     canvas.drawArc(rect, 0, math.pi * 2, false,
       Paint()
-        ..color       = Colors.white.withValues(alpha: 0.06)
+        ..color       = trackColor
         ..strokeWidth = sw
         ..style       = PaintingStyle.stroke
         ..strokeCap   = StrokeCap.round);
@@ -1319,7 +1338,7 @@ class _RingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RingPainter o) =>
-      o.progress != progress || o.color != color;
+      o.progress != progress || o.color != color || o.trackColor != trackColor;
 }
 
 // ── Controls ──────────────────────────────────────────────────────
@@ -1342,12 +1361,13 @@ class _Controls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final showSide = phase == TimerPhase.running || phase == TimerPhase.paused;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (showSide) ...[
-          _SideBtn(icon: Icons.refresh_rounded, color: Colors.white30,
+          _SideBtn(icon: Icons.refresh_rounded, color: fb.onSurface.withValues(alpha: 0.30),
               onTap: onReset),
           const SizedBox(width: 16),
         ],
@@ -1355,7 +1375,7 @@ class _Controls extends StatelessWidget {
             onStart: onStart, onPause: onPause, onResume: onResume),
         if (showSide) ...[
           const SizedBox(width: 16),
-          _SideBtn(icon: Icons.skip_next_rounded, color: Colors.white30,
+          _SideBtn(icon: Icons.skip_next_rounded, color: fb.onSurface.withValues(alpha: 0.30),
               onTap: () => onSkip()),
         ],
       ],
@@ -1411,16 +1431,19 @@ class _SideBtn extends StatelessWidget {
   const _SideBtn({required this.icon, required this.color, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return GestureDetector(
         onTap: onTap,
         child: Container(
           width: 44, height: 44,
           decoration: BoxDecoration(
-            color:  Colors.white.withValues(alpha: 0.05),
+            color:  fb.onSurface.withValues(alpha: 0.05),
             shape:  BoxShape.circle,
-            border: Border.all(color: Colors.white12),
+            border: Border.all(color: fb.onSurface.withValues(alpha: 0.12)),
           ),
           child: Icon(icon, color: color, size: 20),
         ),
       );
+  }
 }

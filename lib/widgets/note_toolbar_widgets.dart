@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // _TChip — heading-style chip (H1 / H2 / H3 / H4 / body)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -13,7 +15,9 @@ class NoteTChip extends StatelessWidget {
       {super.key});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
@@ -22,19 +26,22 @@ class NoteTChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected
                 ? accent.withValues(alpha: 0.18)
-                : const Color(0xFF1C1C1C),
+                : fb.surfaceVar,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
-                color: selected ? accent.withValues(alpha: 0.5) : Colors.white12),
+                color: selected
+                    ? accent.withValues(alpha: 0.5)
+                    : fb.onSurface.withValues(alpha: 0.12)),
           ),
           child: Text(label,
               style: TextStyle(
-                  color: selected ? accent : Colors.white38,
+                  color: selected ? accent : fb.onSurface.withValues(alpha: 0.38),
                   fontSize: 13,
                   fontWeight:
                       selected ? FontWeight.w700 : FontWeight.w500)),
         ),
       );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,7 +64,9 @@ class NoteFBtn extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
@@ -66,16 +75,18 @@ class NoteFBtn extends StatelessWidget {
           margin: const EdgeInsets.only(right: 4),
           decoration: BoxDecoration(
             color: active
-                ? Colors.white.withValues(alpha: 0.12)
+                ? fb.onSurface.withValues(alpha: 0.12)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
             border: Border.all(
-                color: active ? Colors.white30 : Colors.white10),
+                color: active
+                    ? fb.onSurface.withValues(alpha: 0.3)
+                    : fb.border),
           ),
           child: Center(
             child: Text(label,
                 style: TextStyle(
-                  color: active ? Colors.white : Colors.white38,
+                  color: active ? fb.onSurface : fb.onSurface.withValues(alpha: 0.38),
                   fontSize: 14,
                   fontWeight: bold ? FontWeight.w900 : FontWeight.w400,
                   fontStyle:
@@ -88,6 +99,7 @@ class NoteFBtn extends StatelessWidget {
           ),
         ),
       );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,7 +113,9 @@ class NoteIBtn extends StatelessWidget {
   const NoteIBtn(this.icon, this.active, this.onTap, {super.key});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
@@ -110,17 +124,20 @@ class NoteIBtn extends StatelessWidget {
           margin: const EdgeInsets.only(right: 4),
           decoration: BoxDecoration(
             color: active
-                ? Colors.white.withValues(alpha: 0.12)
+                ? fb.onSurface.withValues(alpha: 0.12)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
             border: Border.all(
-                color: active ? Colors.white30 : Colors.white10),
+                color: active
+                    ? fb.onSurface.withValues(alpha: 0.3)
+                    : fb.border),
           ),
           child: Icon(icon,
               size: 16,
-              color: active ? Colors.white : Colors.white38),
+              color: active ? fb.onSurface : fb.onSurface.withValues(alpha: 0.38)),
         ),
       );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,6 +162,7 @@ class NoteColorDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -158,9 +176,9 @@ class NoteColorDot extends StatelessWidget {
               : (color ?? Colors.transparent),
           border: Border.all(
             color: selected
-                ? Colors.white70
+                ? fb.onSurface.withValues(alpha: 0.7)
                 : (color == null && !isCustom)
-                    ? Colors.white30
+                    ? fb.onSurface.withValues(alpha: 0.3)
                     : Colors.transparent,
             width: selected ? 2 : 1,
           ),
@@ -169,11 +187,13 @@ class NoteColorDot extends StatelessWidget {
             ? Icon(
                 Icons.colorize_rounded,
                 size: 14,
-                color: customPreview != null ? Colors.white : Colors.white38,
+                color: customPreview != null
+                    ? fb.onSurface
+                    : fb.onSurface.withValues(alpha: 0.38),
               )
             : (color == null
-                ? const Icon(Icons.block_rounded,
-                    size: 14, color: Colors.white30)
+                ? Icon(Icons.block_rounded,
+                    size: 14, color: fb.onSurface.withValues(alpha: 0.3))
                 : (selected
                     ? const Icon(Icons.check_rounded,
                         size: 14, color: Colors.black)
@@ -195,7 +215,7 @@ class NoteToolbarSep extends StatelessWidget {
       width: 1,
       height: 20,
       margin: const EdgeInsets.symmetric(horizontal: 6),
-      color: Colors.white12);
+      color: Theme.of(context).fb.onSurface.withValues(alpha: 0.12));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -221,7 +241,9 @@ class NoteBarBtn extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return GestureDetector(
         onTap: onTap,
         child: SizedBox(
           width: 44,
@@ -231,19 +253,20 @@ class NoteBarBtn extends StatelessWidget {
             children: [
               Icon(icon,
                   size: 22,
-                  color: active ? activeColor : Colors.white38),
+                  color: active ? activeColor : fb.onSurface.withValues(alpha: 0.38)),
               if (label != null) ...[
                 const SizedBox(height: 1),
                 Text(label!,
                     style: TextStyle(
                         fontSize: 9,
-                        color: active ? activeColor : Colors.white24,
+                        color: active ? activeColor : fb.onSurfaceFaint,
                         fontWeight: FontWeight.w600)),
               ],
             ],
           ),
         ),
       );
+  }
 }
 
 // Heading chip

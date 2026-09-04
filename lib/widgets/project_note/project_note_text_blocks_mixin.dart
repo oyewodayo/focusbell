@@ -106,7 +106,7 @@ mixin ProjectNoteTextBlocksMixin
           if (widget.project.hasNote)
             _TopBarIconBtn(
               icon: Icons.delete_outline_rounded,
-              color: const Color(0xFFFF3B30),
+              color: fb.danger,
               tooltip: 'Clear note',
               onTap: clearNote,
               fb: fb,
@@ -177,7 +177,6 @@ mixin ProjectNoteTextBlocksMixin
 
   Future<void> _handleLockToggle() async {
     final settings = AppController.instance.settings;
-    final fb = Theme.of(context).fb;
 
     if (!PinService.isSet(settings.pinHash) || !settings.pinEnabled) {
       _showNoPinDialog();
@@ -202,10 +201,7 @@ mixin ProjectNoteTextBlocksMixin
         isNoteLocked: false,
       );
       if (mounted) {
-        AppToast.show(context,
-            msg: '🔓 Note unlocked',
-            backgroundColor: const Color(0xFF1A2E1A),
-            textColor: const Color(0xFF4CAF50));
+        AppToast.success(context, '🔓 Note unlocked');
       }
     } else {
       await AppController.instance.updateProjectLockState(
@@ -239,8 +235,8 @@ mixin ProjectNoteTextBlocksMixin
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK',
-                style: TextStyle(color: Color(0xFF4CAF50))),
+            child: Text('OK',
+                style: TextStyle(color: fb.primary)),
           ),
         ],
       ),
@@ -961,7 +957,7 @@ class _NoteOverflowMenu extends StatelessWidget {
               size:  18,
               color: isLocked
                   ? const Color(0xFFFF9F0A)
-                  : const Color(0xFF4CAF50),
+                  : fb.success,
             ),
             const SizedBox(width: 12),
             Text(

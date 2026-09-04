@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/project.dart';
+import '../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // Task Form Bottom Sheet
@@ -79,6 +80,8 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
     });
   }
 
+  // Date/time pickers are intentionally always presented in the dark
+  // Material palette (regardless of app theme) for consistent legibility.
   Widget _darkPickerTheme(BuildContext ctx, Widget? child) => Theme(
         data: ThemeData.dark().copyWith(
           colorScheme: const ColorScheme.dark(
@@ -115,6 +118,7 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final hasDue = _dueDate != null;
     final overdue = hasDue && _dueDate!.isBefore(DateTime.now());
 
@@ -123,9 +127,9 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: fb.surfaceVar,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
         child: Column(
@@ -138,7 +142,7 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: fb.onSurfaceFaint,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -148,8 +152,8 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
             // Title
             Text(
               _isEdit ? 'Edit Task' : 'New Task',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fb.onSurface,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
               ),
@@ -161,13 +165,13 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
               controller: _titleCtrl,
               maxLines: 3,
               autofocus: !_isEdit,
-              style: const TextStyle(color: Colors.white, fontSize: 15),
+              style: TextStyle(color: fb.onSurface, fontSize: 15),
               decoration: InputDecoration(
                 hintText: 'Task title…',
                 hintStyle:
-                    const TextStyle(color: Colors.white38, fontSize: 15),
+                    TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 15),
                 filled: true,
-                fillColor: const Color(0xFF252525),
+                fillColor: fb.surfaceVar,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -193,16 +197,16 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                 decoration: BoxDecoration(
                   color: hasDue
                       ? (overdue
-                          ? const Color(0xFF2E0A0A)
+                          ? fb.dangerBg
                           : const Color(0xFF001A33))
-                      : const Color(0xFF252525),
+                      : fb.surfaceVar,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: hasDue
                         ? (overdue
-                            ? const Color(0xFFFF3B30).withValues(alpha: 0.5)
+                            ? fb.danger.withValues(alpha: 0.5)
                             : const Color(0xFF0A84FF).withValues(alpha: 0.5))
-                        : Colors.white10,
+                        : fb.border,
                   ),
                 ),
                 child: Row(
@@ -212,9 +216,9 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                       size: 16,
                       color: hasDue
                           ? (overdue
-                              ? const Color(0xFFFF3B30)
+                              ? fb.danger
                               : const Color(0xFF0A84FF))
-                          : Colors.white38,
+                          : fb.onSurface.withValues(alpha: 0.38),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -225,9 +229,9 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                         style: TextStyle(
                           color: hasDue
                               ? (overdue
-                                  ? const Color(0xFFFF3B30)
-                                  : Colors.white70)
-                              : Colors.white38,
+                                  ? fb.danger
+                                  : fb.onSurface.withValues(alpha: 0.70))
+                              : fb.onSurface.withValues(alpha: 0.38),
                           fontSize: 14,
                         ),
                       ),
@@ -236,12 +240,12 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                       GestureDetector(
                         onTap: _removeDueDate,
                         behavior: HitTestBehavior.opaque,
-                        child: const Padding(
-                          padding: EdgeInsets.only(left: 8),
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
                           child: Icon(
                             Icons.close_rounded,
                             size: 16,
-                            color: Colors.white38,
+                            color: fb.onSurface.withValues(alpha: 0.38),
                           ),
                         ),
                       ),
@@ -271,7 +275,7 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                 child: Text(
                   '⚠️ This time is in the past — notification won\'t fire.',
                   style: TextStyle(
-                    color: const Color(0xFFFF3B30).withValues(alpha: 0.8),
+                    color: fb.danger.withValues(alpha: 0.8),
                     fontSize: 12,
                   ),
                 ),
@@ -287,8 +291,8 @@ class _TaskFormSheetState extends State<TaskFormSheet> {
                   child: OutlinedButton(
                     onPressed: () => Navigator.pop(context),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white54,
-                      side: const BorderSide(color: Colors.white12),
+                      foregroundColor: fb.onSurface.withValues(alpha: 0.54),
+                      side: BorderSide(color: fb.onSurface.withValues(alpha: 0.12)),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),

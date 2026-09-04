@@ -18,6 +18,7 @@ import '../models/reminder_model.dart';
 import '../services/alarm_service.dart';
 import '../services/focus_timer_service.dart';
 import '../services/reminder_service.dart';
+import '../theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────
 // Snooze option model
@@ -212,6 +213,8 @@ class _AlarmScreenState extends State<AlarmScreen>
     // Show held-for-focus screen when session is active
     if (_focusActive) return _buildFocusGuardScreen();
 
+    final fb = Theme.of(context).fb;
+
     // Show post-focus summary if reminders were held
     final held = FocusGuardQueue.instance.heldReminders;
     final allReminders = {
@@ -225,11 +228,11 @@ class _AlarmScreenState extends State<AlarmScreen>
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF0D0D0D), Color(0xFF0A0A0A)],
+              colors: [fb.surface, fb.scaffoldBg],
             ),
           ),
           child: SafeArea(
@@ -280,8 +283,8 @@ class _AlarmScreenState extends State<AlarmScreen>
                       child: _ActionBtn(
                         label: 'Snooze  ${_kSnoozeOptions[_selectedSnooze].label}',
                         icon: CupertinoIcons.moon_zzz_fill,
-                        color: const Color(0xFF2C2C2E),
-                        textColor: Colors.white70,
+                        color: fb.surfaceVar,
+                        textColor: fb.onSurface.withValues(alpha: 0.70),
                         onTap: _snooze,
                       ),
                     ),
@@ -308,6 +311,7 @@ class _AlarmScreenState extends State<AlarmScreen>
   // ── Header with animated bell ─────────────────────────────────
 
   Widget _buildHeader(List<Reminder> all) {
+    final fb = Theme.of(context).fb;
     final held = all.where((r) =>
         FocusGuardQueue.instance.heldReminders.contains(r)).length;
 
@@ -336,8 +340,8 @@ class _AlarmScreenState extends State<AlarmScreen>
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             all.length == 1 ? 'Reminder' : '${all.length} Reminders',
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: fb.onSurface,
               fontSize: 22,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.4,
@@ -355,15 +359,15 @@ class _AlarmScreenState extends State<AlarmScreen>
           else
             Text(
               _timeLabel(),
-              style: const TextStyle(color: Colors.white38, fontSize: 13),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 13),
             ),
         ]),
       ),
       GestureDetector(
         onTap: _done,
-        child: const Padding(
-          padding: EdgeInsets.all(8),
-          child: Icon(CupertinoIcons.xmark, color: Colors.white24, size: 20),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(CupertinoIcons.xmark, color: fb.onSurfaceFaint, size: 20),
         ),
       ),
     ]);
@@ -380,14 +384,15 @@ class _AlarmScreenState extends State<AlarmScreen>
   // ── Focus guard screen ────────────────────────────────────────
 
   Widget _buildFocusGuardScreen() {
+    final fb = Theme.of(context).fb;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [Color(0xFF0D0D10), Color(0xFF0A0A0A)],
+            colors: [fb.surface, fb.scaffoldBg],
           ),
         ),
         child: SafeArea(
@@ -414,10 +419,10 @@ class _AlarmScreenState extends State<AlarmScreen>
                   ),
                 ),
                 const SizedBox(height: 28),
-                const Text(
+                Text(
                   'Held for Focus',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: fb.onSurface,
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.5,
@@ -429,8 +434,8 @@ class _AlarmScreenState extends State<AlarmScreen>
                       ? '1 reminder arrived while you were\nin a focus session.'
                       : '${widget.reminders.length} reminders arrived while\nyou were in a focus session.',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white54,
+                  style: TextStyle(
+                    color: fb.onSurface.withValues(alpha: 0.54),
                     fontSize: 15,
                     height: 1.5,
                   ),
@@ -444,13 +449,13 @@ class _AlarmScreenState extends State<AlarmScreen>
                 if (widget.reminders.length > 3)
                   Text(
                     '+ ${widget.reminders.length - 3} more',
-                    style: const TextStyle(color: Colors.white24, fontSize: 13),
+                    style: TextStyle(color: fb.onSurfaceFaint, fontSize: 13),
                   ),
                 const SizedBox(height: 40),
-                const Text(
+                Text(
                   "You'll see these when your session ends.",
                   style: TextStyle(
-                    color: Colors.white24,
+                    color: fb.onSurfaceFaint,
                     fontSize: 13,
                     fontStyle: FontStyle.italic,
                   ),
@@ -462,13 +467,13 @@ class _AlarmScreenState extends State<AlarmScreen>
                     FocusGuardQueue.instance.clear();
                     Navigator.of(context).pop();
                   },
-                  child: const Text(
+                  child: Text(
                     'Dismiss anyway',
                     style: TextStyle(
-                      color: Colors.white24,
+                      color: fb.onSurfaceFaint,
                       fontSize: 13,
                       decoration: TextDecoration.underline,
-                      decorationColor: Colors.white24,
+                      decorationColor: fb.onSurfaceFaint,
                     ),
                   ),
                 ),
@@ -522,10 +527,11 @@ class _ReminderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: fb.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: wasHeld
@@ -553,8 +559,8 @@ class _ReminderCard extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               reminder.title,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fb.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
@@ -565,7 +571,7 @@ class _ReminderCard extends StatelessWidget {
                 reminder.notes!,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white38, fontSize: 12),
+                style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 12),
               ),
             ],
           ]),
@@ -601,22 +607,23 @@ class _HeldReminderChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: fb.card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(children: [
-        const Icon(CupertinoIcons.bell, color: Colors.white38, size: 16),
+        Icon(CupertinoIcons.bell, color: fb.onSurface.withValues(alpha: 0.38), size: 16),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             reminder.title,
-            style: const TextStyle(
-              color: Colors.white70,
+            style: TextStyle(
+              color: fb.onSurface.withValues(alpha: 0.70),
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
@@ -639,13 +646,14 @@ class _SnoozeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Padding(
-        padding: EdgeInsets.only(left: 2, bottom: 10),
+      Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 10),
         child: Text(
           'SNOOZE FOR',
           style: TextStyle(
-            color: Colors.white24,
+            color: fb.onSurfaceFaint,
             fontSize: 11,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,
@@ -670,12 +678,12 @@ class _SnoozeSelector extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: isSelected
                       ? const Color(0xFF0A84FF)
-                      : const Color(0xFF1C1C1E),
+                      : fb.surfaceVar,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: isSelected
                         ? const Color(0xFF0A84FF)
-                        : Colors.white10,
+                        : fb.border,
                   ),
                   boxShadow: isSelected
                       ? [BoxShadow(
@@ -690,7 +698,7 @@ class _SnoozeSelector extends StatelessWidget {
                     Text(
                       opt.label,
                       style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.white70,
+                        color: isSelected ? Colors.white : fb.onSurface.withValues(alpha: 0.70),
                         fontSize: 13,
                         fontWeight: isSelected
                             ? FontWeight.w700
@@ -703,7 +711,7 @@ class _SnoozeSelector extends StatelessWidget {
                       style: TextStyle(
                         color: isSelected
                             ? Colors.white70
-                            : Colors.white24,
+                            : fb.onSurfaceFaint,
                         fontSize: 10,
                       ),
                     ),

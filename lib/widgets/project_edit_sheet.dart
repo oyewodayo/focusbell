@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
+import '../theme/app_theme.dart';
 import '../utils/app_toast.dart';
 
 Future<void> showProjectEditSheet(BuildContext context, Project project) {
@@ -45,15 +46,16 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final bottomPadding  = keyboardHeight > 0
         ? keyboardHeight + 24
         : MediaQuery.of(context).padding.bottom + 24;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: fb.surfaceVar,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: AnimatedPadding(
         duration: const Duration(milliseconds: 180),
@@ -73,7 +75,7 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: Colors.white24,
+                      color: fb.onSurfaceFaint,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -81,10 +83,10 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
               ),
 
               // ── Title ────────────────────────────────────────
-              const Text(
+              Text(
                 'Edit Project',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: fb.onSurface,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5,
@@ -96,12 +98,12 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
               TextField(
                 controller: _nameCtrl,
                 autofocus: true,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: fb.onSurface),
                 decoration: InputDecoration(
                   hintText: 'Project name…',
-                  hintStyle: const TextStyle(color: Colors.white38),
+                  hintStyle: TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
                   filled: true,
-                  fillColor: const Color(0xFF252525),
+                  fillColor: fb.surfaceVar,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -118,12 +120,12 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
               TextField(
                 controller: _descCtrl,
                 maxLines: 3,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: fb.onSurface),
                 decoration: InputDecoration(
                   hintText: 'Project description (optional)…',
-                  hintStyle: const TextStyle(color: Colors.white38),
+                  hintStyle: TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
                   filled: true,
-                  fillColor: const Color(0xFF252525),
+                  fillColor: fb.surfaceVar,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -137,9 +139,9 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
               const SizedBox(height: 20),
 
               // ── Category label ────────────────────────────────
-              const Text(
+              Text(
                 'Category',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+                style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54), fontSize: 12),
               ),
               const SizedBox(height: 8),
 
@@ -160,12 +162,12 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                       decoration: BoxDecoration(
                         color: selected
                             ? const Color(0xFF0A84FF).withValues(alpha: 0.15)
-                            : const Color(0xFF252525),
+                            : fb.surfaceVar,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: selected
                               ? const Color(0xFF0A84FF).withValues(alpha: 0.6)
-                              : Colors.white10,
+                              : fb.border,
                           width: 1.5,
                         ),
                       ),
@@ -174,7 +176,7 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                         style: TextStyle(
                           color: selected
                               ? const Color(0xFF0A84FF)
-                              : Colors.white38,
+                              : fb.onSurface.withValues(alpha: 0.38),
                           fontSize: 13,
                           fontWeight: selected
                               ? FontWeight.w600
@@ -188,9 +190,9 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
               const SizedBox(height: 20),
 
               // ── Priority label ────────────────────────────────
-              const Text(
+              Text(
                 'Priority',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+                style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54), fontSize: 12),
               ),
               const SizedBox(height: 8),
 
@@ -207,8 +209,8 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         decoration: BoxDecoration(
                           color: selected
-                              ? pr.bgColor
-                              : const Color(0xFF252525),
+                              ? pr.bgColor(fb.isDark)
+                              : fb.surfaceVar,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: selected
@@ -227,7 +229,9 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                             Text(
                               pr.label,
                               style: TextStyle(
-                                color: selected ? pr.color : Colors.white38,
+                                color: selected
+                                    ? pr.color
+                                    : fb.onSurface.withValues(alpha: 0.38),
                                 fontSize: 9,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -248,8 +252,8 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white54,
-                        side: const BorderSide(color: Colors.white12),
+                        foregroundColor: fb.onSurface.withValues(alpha: 0.54),
+                        side: BorderSide(color: fb.onSurface.withValues(alpha: 0.12)),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -263,8 +267,8 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                     flex: 2,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2A2A2A),
-                        foregroundColor: Colors.white,
+                        backgroundColor: fb.surfaceVar,
+                        foregroundColor: fb.onSurface,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -290,7 +294,7 @@ class _ProjectEditSheetState extends State<_ProjectEditSheet> {
                         AppToast.show(
                           context,
                           msg:             '${_priority.emoji} "$name" updated',
-                          backgroundColor: _priority.bgColor,
+                          backgroundColor: _priority.bgColor(fb.isDark),
                           textColor:       _priority.color,
                         );
                       },

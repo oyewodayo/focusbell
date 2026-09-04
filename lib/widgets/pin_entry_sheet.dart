@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:focusbell/services/pin_service.dart';
+import 'package:focusbell/theme/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PinEntryMode
@@ -37,6 +38,8 @@ Future<T?> showPinEntry<T>(
   return Navigator.of(context).push<T>(
     PageRouteBuilder(
       opaque: false,
+      // Modal scrim — kept a fixed black regardless of theme, matching the
+      // rest of the app's modal barriers (dimming, not surface chrome).
       barrierColor: Colors.black87,
       barrierDismissible: false,
       pageBuilder: (_, __, ___) => PinEntrySheet(
@@ -275,21 +278,22 @@ class _PinEntrySheetState extends State<PinEntrySheet>
 
   void _showBanner(String message) {
     if (!mounted) return;
+    final fb = Theme.of(context).fb;
     ScaffoldMessenger.of(context)
       ..hideCurrentMaterialBanner()
       ..showMaterialBanner(
         MaterialBanner(
           content: Text(
             message,
-            style: const TextStyle(color: Colors.white70, fontSize: 13),
+            style: TextStyle(color: fb.onSurface.withValues(alpha: 0.7), fontSize: 13),
           ),
-          backgroundColor: const Color(0xFF2E1A1A),
+          backgroundColor: fb.dangerBg,
           dividerColor: Colors.transparent,
           actions: [
             TextButton(
               onPressed: () =>
                   ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-              child: const Text('OK', style: TextStyle(color: Color(0xFFFF6B6B))),
+              child: Text('OK', style: TextStyle(color: fb.danger)),
             ),
           ],
         ),
@@ -315,6 +319,8 @@ class _PinEntrySheetState extends State<PinEntrySheet>
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -324,9 +330,9 @@ class _PinEntrySheetState extends State<PinEntrySheet>
               margin: const EdgeInsets.symmetric(horizontal: 28),
               padding: const EdgeInsets.fromLTRB(24, 36, 24, 28),
               decoration: BoxDecoration(
-                color: const Color(0xFF141414),
+                color: fb.card,
                 borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(color: fb.border),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.6),
@@ -338,15 +344,15 @@ class _PinEntrySheetState extends State<PinEntrySheet>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildLockIcon(),
+                  _buildLockIcon(fb),
                   const SizedBox(height: 20),
-                  _buildTitleBlock(),
+                  _buildTitleBlock(fb),
                   const SizedBox(height: 30),
-                  _buildDotRow(),
+                  _buildDotRow(fb),
                   const SizedBox(height: 36),
-                  _buildNumpad(),
+                  _buildNumpad(fb),
                   const SizedBox(height: 22),
-                  _buildCancelButton(),
+                  _buildCancelButton(fb),
                 ],
               ),
             ),
@@ -360,40 +366,40 @@ class _PinEntrySheetState extends State<PinEntrySheet>
   // Sub-builders
   // ─────────────────────────────────────────────────────────────
 
-  Widget _buildLockIcon() {
+  Widget _buildLockIcon(FocusBellColors fb) {
     return Container(
       width: 60,
       height: 60,
       decoration: BoxDecoration(
-        color: const Color(0xFF1C2E1C),
+        color: fb.successBg,
         shape: BoxShape.circle,
         border: Border.all(
-          color: const Color(0xFF4CAF50).withValues(alpha: 0.35),
+          color: fb.success.withValues(alpha: 0.35),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF4CAF50).withValues(alpha: 0.15),
+            color: fb.success.withValues(alpha: 0.15),
             blurRadius: 16,
             spreadRadius: 2,
           ),
         ],
       ),
-      child: const Icon(
+      child: Icon(
         Icons.lock_outline_rounded,
-        color: Color(0xFF4CAF50),
+        color: fb.success,
         size: 28,
       ),
     );
   }
 
-  Widget _buildTitleBlock() {
+  Widget _buildTitleBlock(FocusBellColors fb) {
     return Column(
       children: [
         Text(
           _title,
-          style: const TextStyle(
-            color: Colors.white,
+          style: TextStyle(
+            color: fb.onSurface,
             fontSize: 17,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.3,
@@ -404,7 +410,7 @@ class _PinEntrySheetState extends State<PinEntrySheet>
           const SizedBox(height: 6),
           Text(
             _subtitle!,
-            style: const TextStyle(color: Colors.white38, fontSize: 13),
+            style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 13),
             textAlign: TextAlign.center,
           ),
         ],
@@ -413,7 +419,7 @@ class _PinEntrySheetState extends State<PinEntrySheet>
   }
 
   /// Six animated dots that fill as the user types; shakes on wrong input.
-  Widget _buildDotRow() {
+  Widget _buildDotRow(FocusBellColors fb) {
     return AnimatedBuilder(
       animation: _shakeAnim,
       builder: (_, child) => Transform.translate(
@@ -432,15 +438,15 @@ class _PinEntrySheetState extends State<PinEntrySheet>
             height: filled ? 15 : 13,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: filled ? const Color(0xFF4CAF50) : Colors.transparent,
+              color: filled ? fb.success : Colors.transparent,
               border: Border.all(
-                color: filled ? const Color(0xFF4CAF50) : Colors.white30,
+                color: filled ? fb.success : fb.onSurface.withValues(alpha: 0.3),
                 width: 1.5,
               ),
               boxShadow: filled
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF4CAF50).withValues(alpha: 0.45),
+                        color: fb.success.withValues(alpha: 0.45),
                         blurRadius: 7,
                         spreadRadius: 1,
                       ),
@@ -453,7 +459,7 @@ class _PinEntrySheetState extends State<PinEntrySheet>
     );
   }
 
-  Widget _buildNumpad() {
+  Widget _buildNumpad(FocusBellColors fb) {
     const rows = [
       ['1', '2', '3'],
       ['4', '5', '6'],
@@ -480,15 +486,15 @@ class _PinEntrySheetState extends State<PinEntrySheet>
     );
   }
 
-  Widget _buildCancelButton() {
+  Widget _buildCancelButton(FocusBellColors fb) {
     return TextButton(
       onPressed: _onCancel,
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10),
       ),
-      child: const Text(
+      child: Text(
         'Cancel',
-        style: TextStyle(color: Colors.white38, fontSize: 14),
+        style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 14),
       ),
     );
   }
@@ -517,6 +523,8 @@ class _NumKey extends StatelessWidget {
     // Empty cell preserves grid spacing without rendering anything.
     if (_isEmpty) return const SizedBox(width: 84, height: 66);
 
+    final fb = Theme.of(context).fb;
+
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
@@ -525,23 +533,23 @@ class _NumKey extends StatelessWidget {
         height: 66,
         margin: const EdgeInsets.symmetric(horizontal: 5),
         decoration: BoxDecoration(
-          color: _isDelete ? Colors.transparent : const Color(0xFF1E1E1E),
+          color: _isDelete ? Colors.transparent : fb.surfaceVar,
           borderRadius: BorderRadius.circular(16),
           border: _isDelete
               ? null
-              : Border.all(color: Colors.white.withValues(alpha: 0.07)),
+              : Border.all(color: fb.onSurface.withValues(alpha: 0.07)),
         ),
         child: Center(
           child: _isDelete
-              ? const Icon(
+              ? Icon(
                   Icons.backspace_outlined,
-                  color: Colors.white54,
+                  color: fb.onSurface.withValues(alpha: 0.54),
                   size: 20,
                 )
               : Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: fb.onSurface,
                     fontSize: 26,
                     fontWeight: FontWeight.w300,
                   ),

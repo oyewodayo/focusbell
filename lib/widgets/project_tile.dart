@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../services/app_controller.dart';
+import '../theme/app_theme.dart';
 
 /// Full-detail bottom sheet for a project, including its task list.
 class ProjectViewSheet extends StatefulWidget {
@@ -21,16 +22,17 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   // ── Add task ─────────────────────────────────────────────────
 
   void _showAddTaskDialog() {
+    final fb = Theme.of(context).fb;
     final titleCtrl = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: fb.surfaceVar,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text(
+        title: Text(
           'New Task',
           style: TextStyle(
-            color: Colors.white,
+            color: fb.onSurface,
             fontSize: 17,
             fontWeight: FontWeight.w700,
           ),
@@ -38,12 +40,12 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
         content: TextField(
           controller: titleCtrl,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: fb.onSurface),
           decoration: InputDecoration(
             hintText: 'Task title…',
-            hintStyle: const TextStyle(color: Colors.white38),
+            hintStyle: TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
             filled: true,
-            fillColor: const Color(0xFF252525),
+            fillColor: fb.surfaceVar,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -58,15 +60,15 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white38),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
             ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2A2A2A),
-              foregroundColor: Colors.white,
+              backgroundColor: fb.surfaceVar,
+              foregroundColor: fb.onSurface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -94,16 +96,17 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   // ── Rename task ───────────────────────────────────────────────
 
   void _showRenameDialog(Task task) {
+    final fb = Theme.of(context).fb;
     final titleCtrl = TextEditingController(text: task.title);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: fb.surfaceVar,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Text(
+        title: Text(
           'Rename Task',
           style: TextStyle(
-            color: Colors.white,
+            color: fb.onSurface,
             fontSize: 17,
             fontWeight: FontWeight.w700,
           ),
@@ -111,12 +114,12 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
         content: TextField(
           controller: titleCtrl,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: fb.onSurface),
           decoration: InputDecoration(
             hintText: 'Task title…',
-            hintStyle: const TextStyle(color: Colors.white38),
+            hintStyle: TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
             filled: true,
-            fillColor: const Color(0xFF252525),
+            fillColor: fb.surfaceVar,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide.none,
@@ -131,15 +134,15 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white38),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
             ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2A2A2A),
-              foregroundColor: Colors.white,
+              backgroundColor: fb.surfaceVar,
+              foregroundColor: fb.onSurface,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -168,13 +171,14 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   // ── Status picker ─────────────────────────────────────────────
 
   void _showStatusPicker(Task task) {
+    final fb = Theme.of(context).fb;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A1A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        decoration: BoxDecoration(
+          color: fb.surfaceVar,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
         child: Column(
@@ -186,16 +190,16 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: fb.onSurfaceFaint,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'Set status',
               style: TextStyle(
-                color: Colors.white,
+                color: fb.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
@@ -217,12 +221,12 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: selected ? s.bgColor : const Color(0xFF242424),
+                    color: selected ? s.bgColor(fb.isDark) : fb.surfaceVar,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: selected
                           ? s.color.withValues(alpha: 0.5)
-                          : Colors.white10,
+                          : fb.border,
                       width: 1.5,
                     ),
                   ),
@@ -233,7 +237,9 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                       Text(
                         s.label,
                         style: TextStyle(
-                          color: selected ? s.color : Colors.white70,
+                          color: selected
+                              ? s.color
+                              : fb.onSurface.withValues(alpha: 0.70),
                           fontSize: 14,
                           fontWeight: selected
                               ? FontWeight.w600
@@ -258,31 +264,32 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
   // ── Delete task ───────────────────────────────────────────────
 
   Future<void> _deleteTask(Task task) async {
+    final fb = Theme.of(context).fb;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
+        backgroundColor: fb.surfaceVar,
+        title: Text(
           'Delete task?',
-          style: TextStyle(color: Colors.white, fontSize: 16),
+          style: TextStyle(color: fb.onSurface, fontSize: 16),
         ),
         content: Text(
           '"${task.title}" will be removed.',
-          style: const TextStyle(color: Colors.white60, fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54)),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: Color(0xFFFF3B30)),
+              style: TextStyle(color: fb.danger),
             ),
           ),
         ],
@@ -302,6 +309,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
     return ListenableBuilder(
       listenable: _ctrl,
       builder: (context, _) {
+        final fb = Theme.of(context).fb;
         final liveProject = _ctrl.findProject(p.id) ?? p;
         final tasks = [...liveProject.tasks]
           ..sort((a, b) {
@@ -314,9 +322,9 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
           });
 
         return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: fb.surfaceVar,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: EdgeInsets.only(
             left: 24,
@@ -334,7 +342,7 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: fb.onSurfaceFaint,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -418,8 +426,8 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
               // Project name
               Text(
                 liveProject.name,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: fb.onSurface,
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5,
@@ -434,8 +442,8 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                     : liveProject.description,
                 style: TextStyle(
                   color: liveProject.description.isEmpty
-                      ? Colors.white30
-                      : Colors.white60,
+                      ? fb.onSurface.withValues(alpha: 0.30)
+                      : fb.onSurfaceDim,
                   fontSize: 14,
                   height: 1.6,
                 ),
@@ -446,10 +454,10 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    const Text(
+                    Text(
                       'Tasks',
                       style: TextStyle(
-                        color: Colors.white54,
+                        color: fb.onSurface.withValues(alpha: 0.54),
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.5,
@@ -458,8 +466,8 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                     const SizedBox(width: 8),
                     Text(
                       '${tasks.where((t) => t.status == TaskStatus.completed).length}/${tasks.length}',
-                      style: const TextStyle(
-                        color: Colors.white30,
+                      style: TextStyle(
+                        color: fb.onSurface.withValues(alpha: 0.30),
                         fontSize: 11,
                       ),
                     ),
@@ -502,22 +510,22 @@ class _ProjectViewSheetState extends State<ProjectViewSheet> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF141414),
+                    color: fb.card,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: fb.border),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
                       Text(
                         '📋',
-                        style: TextStyle(fontSize: 28, color: Colors.white24),
+                        style: TextStyle(fontSize: 28, color: fb.onSurfaceFaint),
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
                         'No tasks yet.\nTap "Add Task" to create one.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Colors.white30,
+                          color: fb.onSurface.withValues(alpha: 0.30),
                           fontSize: 13,
                           height: 1.5,
                         ),
@@ -554,15 +562,16 @@ class _TaskRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final s = task.status;
     final done = s == TaskStatus.completed;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
+        color: fb.surfaceVar,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(
         children: [
@@ -580,12 +589,14 @@ class _TaskRow extends StatelessWidget {
             child: Text(
               task.title,
               style: TextStyle(
-                color: done ? Colors.white38 : Colors.white70,
+                color: done
+                    ? fb.onSurface.withValues(alpha: 0.38)
+                    : fb.onSurface.withValues(alpha: 0.70),
                 fontSize: 14,
                 decoration: done
                     ? TextDecoration.lineThrough
                     : TextDecoration.none,
-                decorationColor: Colors.white38,
+                decorationColor: fb.onSurface.withValues(alpha: 0.38),
                 height: 1.3,
               ),
               maxLines: 2,
@@ -617,12 +628,12 @@ class _TaskRow extends StatelessWidget {
 
           // Context menu (rename / delete)
           PopupMenuButton<String>(
-            icon: const Icon(
+            icon: Icon(
               Icons.more_vert_rounded,
-              color: Colors.white30,
+              color: fb.onSurface.withValues(alpha: 0.30),
               size: 18,
             ),
-            color: const Color(0xFF222222),
+            color: fb.surfaceVar,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -631,36 +642,36 @@ class _TaskRow extends StatelessWidget {
               if (value == 'delete') onDelete();
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'rename',
                 child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.edit_outlined,
                       color: Color(0xFFFFD60A),
                       size: 16,
                     ),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 10),
                     Text(
                       'Rename',
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                      style: TextStyle(color: fb.onSurface.withValues(alpha: 0.70), fontSize: 13),
                     ),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'delete',
                 child: Row(
                   children: [
                     Icon(
                       Icons.delete_outline,
-                      color: Color(0xFFFF3B30),
+                      color: fb.danger,
                       size: 16,
                     ),
-                    SizedBox(width: 10),
+                    const SizedBox(width: 10),
                     Text(
                       'Delete',
-                      style: TextStyle(color: Color(0xFFFF3B30), fontSize: 13),
+                      style: TextStyle(color: fb.danger, fontSize: 13),
                     ),
                   ],
                 ),

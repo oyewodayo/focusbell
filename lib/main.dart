@@ -208,10 +208,10 @@ class _LoaderState extends State<_Loader> with TickerProviderStateMixin {
       listenable: AppController.instance,
       builder: (context, _) {
         final ctrl = AppController.instance;
+        final fb   = Theme.of(context).fb;
 
         if (ctrl.loading) {
           return Scaffold(
-            backgroundColor: const Color(0xFF0A0A0A),
             body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -265,7 +265,6 @@ class _LoaderState extends State<_Loader> with TickerProviderStateMixin {
 
         if (ctrl.bootError != null) {
           return Scaffold(
-            backgroundColor: const Color(0xFF0A0A0A),
             body: SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(28),
@@ -273,9 +272,9 @@ class _LoaderState extends State<_Loader> with TickerProviderStateMixin {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('⚠️ Startup failed',
+                    Text('⚠️ Startup failed',
                         style: TextStyle(
-                            color: Colors.white,
+                            color: fb.onSurface,
                             fontSize: 20,
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 16),
@@ -283,22 +282,22 @@ class _LoaderState extends State<_Loader> with TickerProviderStateMixin {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1A1A1A),
+                        color: fb.dangerBg,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: Colors.red.withValues(alpha: 0.3)),
+                            color: fb.danger.withValues(alpha: 0.3)),
                       ),
                       child: Text(ctrl.bootError.toString(),
-                          style: const TextStyle(
-                              color: Color(0xFFFF6B6B),
+                          style: TextStyle(
+                              color: fb.danger,
                               fontSize: 12,
                               fontFamily: 'monospace',
                               height: 1.5)),
                     ),
                     const SizedBox(height: 20),
-                    const Text(
+                    Text(
                         'Copy the error above and share it for debugging.',
-                        style: TextStyle(color: Colors.white38, fontSize: 13)),
+                        style: TextStyle(color: fb.onSurfaceFaint, fontSize: 13)),
                   ],
                 ),
               ),

@@ -45,6 +45,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../theme/app_theme.dart';
 import 'project_note_state_interface.dart';
 
 mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
@@ -355,6 +356,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   }
 
   void showImageOptions() {
+    final fb = Theme.of(context).fb;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -367,9 +369,9 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
+              color: fb.surfaceVar,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: fb.border),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -382,7 +384,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
                     pickImage(ImageSource.camera);
                   },
                 ),
-                const Divider(height: 1, color: Colors.white10),
+                Divider(height: 1, color: fb.border),
                 _ImageOptionRow(
                   icon: Icons.photo_library_rounded,
                   label: 'Choose Photo',
@@ -457,6 +459,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> showLinkDialog() async {
+    final fb = Theme.of(context).fb;
     final c = activeCtrl;
     if (c == null) return;
 
@@ -485,12 +488,12 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     final result = await showDialog<Map<String, String>>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: fb.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text(
+        title: Text(
           'Insert Link',
           style: TextStyle(
-            color: Colors.white,
+            color: fb.onSurface,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -519,16 +522,16 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
           if (existing.isNotEmpty)
             TextButton(
               onPressed: () => Navigator.pop(ctx, {'url': '', 'text': ''}),
-              child: const Text(
+              child: Text(
                 'Remove',
-                style: TextStyle(color: Color(0xFFFF3B30)),
+                style: TextStyle(color: fb.danger),
               ),
             ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, null),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54)),
             ),
           ),
           TextButton(
@@ -595,16 +598,17 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     bool autofocus = false,
     Widget? prefixIcon,
   }) {
+    final fb = Theme.of(context).fb;
     return TextField(
       controller: c,
       autofocus: autofocus,
       keyboardType: keyboardType,
-      style: const TextStyle(color: Colors.white, fontSize: 14),
+      style: TextStyle(color: fb.onSurface, fontSize: 14),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white38),
+        hintStyle: TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
         filled: true,
-        fillColor: const Color(0xFF252525),
+        fillColor: fb.surfaceVar,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
@@ -628,10 +632,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   Future<void> startRecording() async {
     if (!await recorder.hasPermission()) {
       if (mounted) {
-        AppToast.show(context,
-            msg: 'Microphone permission is required',
-            backgroundColor: const Color(0xFF2A1A1A),
-            textColor: const Color(0xFFFF3B30));
+        AppToast.error(context, 'Microphone permission is required');
       }
       return;
     }
@@ -656,10 +657,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     } catch (e) {
       await WakelockPlus.disable();
       if (mounted) {
-        AppToast.show(context,
-            msg: '⚠️ Could not start recording: $e',
-            backgroundColor: const Color(0xFF2A1A1A),
-            textColor: const Color(0xFFFF3B30));
+        AppToast.error(context, '⚠️ Could not start recording: $e');
       }
       return;
     }
@@ -707,10 +705,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
           recElapsed = Duration.zero;
           recPausedByBackground = false;
         });
-        AppToast.show(context,
-            msg: '⚠️ Recording failed to stop cleanly: $e',
-            backgroundColor: const Color(0xFF2A1A1A),
-            textColor: const Color(0xFFFF3B30));
+        AppToast.error(context, '⚠️ Recording failed to stop cleanly: $e');
       }
       return;
     }
@@ -730,10 +725,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
 
     if (path == null) {
       if (mounted) {
-        AppToast.show(context,
-            msg: '⚠️ Recording did not produce a file',
-            backgroundColor: const Color(0xFF2A1A1A),
-            textColor: const Color(0xFFFF3B30));
+        AppToast.error(context, '⚠️ Recording did not produce a file');
       }
       return;
     }
@@ -746,11 +738,9 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
 
     if (!exists || sizeBytes < minPlausibleBytes) {
       if (mounted) {
-        AppToast.show(context,
-            msg: '⚠️ Recording looks empty or corrupted (${sizeBytes}B). '
-                'Check Settings → Storage for the raw file at:\n$path',
-            backgroundColor: const Color(0xFF2A1A1A),
-            textColor: const Color(0xFFFF3B30));
+        AppToast.error(context,
+            '⚠️ Recording looks empty or corrupted (${sizeBytes}B). '
+            'Check Settings → Storage for the raw file at:\n$path');
       }
     }
 
@@ -882,11 +872,12 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // ─────────────────────────────────────────────────────────────────────────
 
   void showMoveSheet(NoteBlock audioBlock) {
+    final fb = Theme.of(context).fb;
     final isStandalone = widget.onSaveNote != null;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: fb.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -900,14 +891,14 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
           items = notes.map((note) {
             final title = note.title.isEmpty ? 'Untitled' : note.title;
             return ListTile(
-              leading: const Icon(
+              leading: Icon(
                 Icons.note_outlined,
-                color: Colors.white38,
+                color: fb.onSurface.withValues(alpha: 0.38),
                 size: 18,
               ),
               title: Text(
                 title,
-                style: const TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(color: fb.onSurface, fontSize: 14),
               ),
               onTap: () async {
                 Navigator.pop(ctx);
@@ -925,13 +916,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
                   note.title,
                   NoteBlock.encodeList(tBlocks),
                 );
-                if (mounted)
-                  AppToast.show(
-                    context,
-                    msg: 'Moved to "$title"',
-                    backgroundColor: const Color(0xFF0A1F0A),
-                    textColor: const Color(0xFF34C759),
-                  );
+                if (mounted) AppToast.success(context, 'Moved to "$title"');
               },
             );
           }).toList();
@@ -952,13 +937,13 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
                   ),
                   title: Text(
                     project.name,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(color: fb.onSurface, fontSize: 14),
                   ),
                   subtitle: project.description.isNotEmpty
                       ? Text(
                           project.description,
-                          style: const TextStyle(
-                            color: Colors.white38,
+                          style: TextStyle(
+                            color: fb.onSurface.withValues(alpha: 0.38),
                             fontSize: 12,
                           ),
                           maxLines: 1,
@@ -981,13 +966,9 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
                       project.id,
                       NoteBlock.encodeList(tBlocks),
                     );
-                    if (mounted)
-                      AppToast.show(
-                        context,
-                        msg: 'Moved to "${project.name}"',
-                        backgroundColor: const Color(0xFF0A1F0A),
-                        textColor: const Color(0xFF34C759),
-                      );
+                    if (mounted) {
+                      AppToast.success(context, 'Moved to "${project.name}"');
+                    }
                   },
                 ),
               )
@@ -1002,14 +983,14 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
               height: 4,
               margin: const EdgeInsets.only(top: 12, bottom: 14),
               decoration: BoxDecoration(
-                color: Colors.white24,
+                color: fb.onSurfaceFaint,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             Text(
               isStandalone ? 'Move to note' : 'Move to project',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fb.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 15,
               ),
@@ -1021,7 +1002,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
                   isStandalone
                       ? 'No other notes available'
                       : 'No other projects available',
-                  style: const TextStyle(color: Colors.white38, fontSize: 13),
+                  style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 13),
                 ),
               )
             else
@@ -1043,10 +1024,8 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
 
     if (!await file.exists()) {
       if (mounted) {
-        AppToast.show(context,
-            msg: '⚠️ Audio file not found — it may have been moved or deleted',
-            backgroundColor: const Color(0xFF2A1A1A),
-            textColor: const Color(0xFFFF3B30));
+        AppToast.error(context,
+            '⚠️ Audio file not found — it may have been moved or deleted');
       }
       return;
     }
@@ -1060,10 +1039,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       );
     } catch (e) {
       if (mounted) {
-        AppToast.show(context,
-            msg: '⚠️ Could not open share sheet: $e',
-            backgroundColor: const Color(0xFF2A1A1A),
-            textColor: const Color(0xFFFF3B30));
+        AppToast.error(context, '⚠️ Could not open share sheet: $e');
       }
     }
   }
@@ -1133,7 +1109,10 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // Save / clear / remove
   // ─────────────────────────────────────────────────────────────────────────
 
-  Future<void> saveNote() async {
+  /// Encodes and persists the current blocks. Shared by the explicit
+  /// Save action and the silent background autosave — neither touches
+  /// UI state (readOnly / focus / toast) here.
+  Future<void> _persistNote() async {
     autoDetectLinks();
     for (final b in blocks) {
       if (ctrl[b.id] != null) b.segs = List.from(ctrl[b.id]!.segs);
@@ -1156,14 +1135,14 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
         encoded,
       );
     }
+  }
 
+  /// Explicit "Save" action — persists, then exits edit mode (unfocuses,
+  /// flips to preview) and confirms with a toast.
+  Future<void> saveNote() async {
+    await _persistNote();
     if (mounted) {
-      AppToast.show(
-        context,
-        msg: 'Note saved',
-        backgroundColor: const Color(0xFF0A1F0A),
-        textColor: const Color(0xFF34C759),
-      );
+      AppToast.success(context, 'Note saved');
       setState(() {
         dirty = false;
         readOnly = true;
@@ -1172,32 +1151,41 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     }
   }
 
+  /// Background autosave — persists silently without disturbing whatever
+  /// the user is doing (no focus loss, no mode switch, no toast).
+  Future<void> autosaveNote() async {
+    if (!dirty) return;
+    await _persistNote();
+    if (mounted) setState(() => dirty = false);
+  }
+
   Future<void> clearNote() async {
+    final fb = Theme.of(context).fb;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
+        backgroundColor: fb.surface,
+        title: Text(
           'Clear note?',
-          style: TextStyle(color: Colors.white, fontSize: 17),
+          style: TextStyle(color: fb.onSurface, fontSize: 17),
         ),
-        content: const Text(
+        content: Text(
           'All note content will be removed.',
-          style: TextStyle(color: Colors.white60, fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54)),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
+            child: Text(
               'Clear',
-              style: TextStyle(color: Color(0xFFFF3B30)),
+              style: TextStyle(color: fb.danger),
             ),
           ),
         ],
@@ -1210,27 +1198,28 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   }
 
   Future<void> confirmRemoveBlock(NoteBlock b) async {
+    final fb = Theme.of(context).fb;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: const Text(
+        backgroundColor: fb.surface,
+        title: Text(
           'Remove block?',
-          style: TextStyle(color: Colors.white, fontSize: 16),
+          style: TextStyle(color: fb.onSurface, fontSize: 16),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
+            child: Text(
               'Cancel',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54)),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
+            child: Text(
               'Remove',
-              style: TextStyle(color: Color(0xFFFF3B30)),
+              style: TextStyle(color: fb.danger),
             ),
           ),
         ],
@@ -1253,13 +1242,13 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       lastDate: now.add(const Duration(days: 365)),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFFF9F0A),
-            onPrimary: Colors.black,
-            surface: Color(0xFF1E1E1E),
-            onSurface: Colors.white,
-          ),
-          dialogBackgroundColor: const Color(0xFF1A1A1A),
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary:   const Color(0xFFFF9F0A),
+                onPrimary: Colors.black,
+                surface:   Theme.of(ctx).fb.surfaceVar,
+                onSurface: Theme.of(ctx).fb.onSurface,
+              ),
+          dialogBackgroundColor: Theme.of(ctx).fb.card,
         ),
         child: child!,
       ),
@@ -1275,13 +1264,13 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
       initialTime: initialTime,
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFFF9F0A),
-            onPrimary: Colors.black,
-            surface: Color(0xFF1E1E1E),
-            onSurface: Colors.white,
-          ),
-          dialogBackgroundColor: const Color(0xFF1A1A1A),
+          colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary:   const Color(0xFFFF9F0A),
+                onPrimary: Colors.black,
+                surface:   Theme.of(ctx).fb.surfaceVar,
+                onSurface: Theme.of(ctx).fb.onSurface,
+              ),
+          dialogBackgroundColor: Theme.of(ctx).fb.card,
         ),
         child: child!,
       ),
@@ -1297,12 +1286,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     );
 
     if (remindAt.isBefore(now)) {
-      AppToast.show(
-        context,
-        msg: 'Choose a future time',
-        backgroundColor: const Color(0xFF2A1A1A),
-        textColor: const Color(0xFFFF3B30),
-      );
+      AppToast.error(context, 'Choose a future time');
       return;
     }
 
@@ -1327,12 +1311,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
 
     if (mounted) {
       setState(() => noteReminder = remindAt);
-      AppToast.show(
-        context,
-        msg: '🔔 Reminder set',
-        backgroundColor: const Color(0xFF1A1F0A),
-        textColor: const Color(0xFFFF9F0A),
-      );
+      AppToast.warning(context, '🔔 Reminder set');
     }
   }
 
@@ -1341,12 +1320,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     await NoteReminderService.instance.clear(widget.project.id);
     if (mounted) {
       setState(() => noteReminder = null);
-      AppToast.show(
-        context,
-        msg: 'Reminder removed',
-        backgroundColor: const Color(0xFF1A1A1A),
-        textColor: const Color(0xFFFF3B30),
-      );
+      AppToast.error(context, 'Reminder removed');
     }
   }
 
@@ -1364,9 +1338,10 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
   // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> showColorPicker({required bool isHighlight}) async {
+    final fb = Theme.of(context).fb;
     Color current = isHighlight
         ? (fmtHighlight ?? const Color(0xFFFFD60A))
-        : (fmtColor ?? Colors.white);
+        : (fmtColor ?? fb.onSurface);
     if (isHighlight) current = current.withValues(alpha: 1.0);
     HSVColor hsv = HSVColor.fromColor(current);
 
@@ -1378,14 +1353,14 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
               ? hsv.toColor().withValues(alpha: 0.4)
               : hsv.toColor();
           return AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
+            backgroundColor: fb.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
             title: Text(
               isHighlight ? 'Highlight color' : 'Text color',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fb.onSurface,
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
               ),
@@ -1398,7 +1373,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
                   decoration: BoxDecoration(
                     color: preview,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white12),
+                    border: Border.all(color: fb.onSurface.withValues(alpha: 0.12)),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1434,9 +1409,9 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, null),
-                child: const Text(
+                child: Text(
                   'Cancel',
-                  style: TextStyle(color: Colors.white54),
+                  style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54)),
                 ),
               ),
               TextButton(
@@ -1476,12 +1451,13 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
     Color activeColor,
     ValueChanged<double> onChanged,
   ) {
+    final fb = Theme.of(ctx).fb;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(color: Colors.white38, fontSize: 12),
+          style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 12),
         ),
         SliderTheme(
           data: SliderTheme.of(ctx).copyWith(
@@ -1493,7 +1469,7 @@ mixin ProjectNoteActionsMixin on State<ProjectNoteSheet>, NoteStateInterface {
             min: min,
             max: max,
             activeColor: activeColor,
-            inactiveColor: Colors.white12,
+            inactiveColor: fb.onSurface.withValues(alpha: 0.12),
             onChanged: onChanged,
           ),
         ),
@@ -1515,6 +1491,7 @@ class _ImageOptionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -1522,12 +1499,12 @@ class _ImageOptionRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white70, size: 22),
+            Icon(icon, color: fb.onSurface.withValues(alpha: 0.7), size: 22),
             const SizedBox(width: 16),
             Text(
               label,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fb.onSurface,
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
               ),

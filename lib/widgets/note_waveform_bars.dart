@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // WaveformBars
 //
@@ -137,6 +139,7 @@ class _WaveformBarsState extends State<WaveformBars>
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return LayoutBuilder(
       builder: (context, constraints) {
         return RawGestureDetector(
@@ -181,6 +184,7 @@ class _WaveformBarsState extends State<WaveformBars>
                   isPlaying: widget.isPlaying,
                   isScrubbing: _scrubbing,
                   animValue: _animCtrl.value,
+                  unplayedColor: fb.onSurface,
                 ),
                 // Only allocate a compositing layer when the bars are moving.
                 willChange: widget.isPlaying || _scrubbing,
@@ -203,6 +207,7 @@ class _WaveformPainter extends CustomPainter {
   final bool isPlaying;
   final bool isScrubbing;
   final double animValue;  // [0, 1] from AnimationController for ripple
+  final Color unplayedColor; // theme-aware base for the not-yet-played bars
 
   static const int    _barCount = 48;
   static const double _gap      = 2.0;
@@ -214,6 +219,7 @@ class _WaveformPainter extends CustomPainter {
     required this.isPlaying,
     required this.isScrubbing,
     required this.animValue,
+    required this.unplayedColor,
   });
 
   @override
@@ -228,7 +234,7 @@ class _WaveformPainter extends CustomPainter {
               .withValues(alpha: (isPlaying || isScrubbing) ? 1.0 : 0.80);
 
     final paintUnplayed = Paint()
-      ..color = Colors.white
+      ..color = unplayedColor
               .withValues(alpha: isPlaying ? 0.28 : 0.16);
 
     // Soft glow drawn on top of the boundary bar.
@@ -296,8 +302,9 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WaveformPainter old) =>
-      old.progress    != progress    ||
-      old.animValue   != animValue   ||
-      old.isPlaying   != isPlaying   ||
-      old.isScrubbing != isScrubbing;
+      old.progress      != progress      ||
+      old.animValue     != animValue     ||
+      old.isPlaying     != isPlaying     ||
+      old.isScrubbing   != isScrubbing   ||
+      old.unplayedColor != unplayedColor;
 }

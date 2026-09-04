@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class InfoDialog extends StatelessWidget {
   const InfoDialog({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A1A),
+          color: fb.surfaceVar,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
         child: SingleChildScrollView(
@@ -32,14 +35,14 @@ class InfoDialog extends StatelessWidget {
                     child: const Text('💰', style: TextStyle(fontSize: 18)),
                   ),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Finance Tracker',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: fb.onSurface,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
@@ -47,7 +50,7 @@ class InfoDialog extends StatelessWidget {
                         Text(
                           'Finance category.',
                           style: TextStyle(
-                            color: Colors.white24,
+                            color: fb.onSurfaceFaint,
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
                           ),
@@ -60,12 +63,12 @@ class InfoDialog extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.white10,
+                        color: fb.border,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.close_rounded,
-                        color: Colors.white54,
+                        color: fb.onSurface.withValues(alpha: 0.54),
                         size: 15,
                       ),
                     ),
@@ -75,10 +78,10 @@ class InfoDialog extends StatelessWidget {
 
               const SizedBox(height: 6),
 
-              const Text(
+              Text(
                 'Automatically track money across your tasks.',
                 style: TextStyle(
-                  color: Colors.white38,
+                  color: fb.onSurface.withValues(alpha: 0.38),
                   fontSize: 12,
                   height: 1.4,
                 ),
@@ -124,13 +127,13 @@ class InfoDialog extends StatelessWidget {
                                 vertical: 3,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF252525),
+                                color: fb.surfaceVar,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 pair.$1,
-                                style: const TextStyle(
-                                  color: Colors.white60,
+                                style: TextStyle(
+                                  color: fb.onSurfaceDim,
                                   fontSize: 12,
                                   fontFamily: 'monospace',
                                 ),
@@ -150,10 +153,10 @@ class InfoDialog extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
+                    Text(
                       'Suffixes: k = thousands · m = millions · b = billions',
                       style: TextStyle(
-                        color: Colors.white30,
+                        color: fb.onSurface.withValues(alpha: 0.30),
                         fontSize: 11,
                         height: 1.5,
                       ),
@@ -227,6 +230,7 @@ class _InfoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -246,8 +250,8 @@ class _InfoSection extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: fb.onSurface,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -256,8 +260,8 @@ class _InfoSection extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   body!,
-                  style: const TextStyle(
-                    color: Colors.white54,
+                  style: TextStyle(
+                    color: fb.onSurface.withValues(alpha: 0.54),
                     fontSize: 12,
                     height: 1.5,
                   ),

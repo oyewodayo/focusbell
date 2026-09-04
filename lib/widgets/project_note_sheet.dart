@@ -121,6 +121,14 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   @override bool suppressTotalRecompute = false;
   @override Timer? totalDebounce;
 
+  // ── Autosave ──────────────────────────────────────────────────────────────
+  // Polls rather than debouncing off every edit call site — `dirty` is set
+  // from ~15 places across the block/format mixins, so a periodic "save if
+  // dirty" is far less invasive than threading a debounce reset through
+  // each of them, and a couple seconds of latency is imperceptible for a
+  // notes editor.
+  Timer? _autosaveTimer;
+
   // ── Audio ─────────────────────────────────────────────────────────────────
   @override final AudioRecorder recorder = AudioRecorder();
   @override final AudioPlayer player = AudioPlayer();
@@ -267,6 +275,11 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (blocks.isNotEmpty) fn[blocks.first.id]?.requestFocus();
     });
+
+    _autosaveTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => autosaveNote(),
+    );
   }
 
   Future<void> _loadReminder() async {
@@ -277,11 +290,18 @@ class _ProjectNoteSheetState extends State<ProjectNoteSheet>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     handleAppLifecycleForRecording(state);
+    // Backgrounding can be followed by the OS killing the app outright —
+    // don't wait for the next autosave tick to catch it.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      autosaveNote();
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _autosaveTimer?.cancel();
     positionPoller?.cancel();
     for (final c in ctrl.values) c.dispose();
     for (final f in fn.values) f.dispose();

@@ -7,6 +7,11 @@
 //   • Arrive vs Leave trigger selector
 //   • Radius slider (50 m → 500 m)
 //   • When a place is selected it passes back a ReminderGeofence
+//
+// Note: interactive map elements deliberately use a fixed iOS-blue accent
+// (0xFF0A84FF) regardless of theme — that's an intentional "maps use blue"
+// convention, not a theming bug. Only neutrals (backgrounds, borders,
+// plain text/icon colors) are theme-aware.
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +21,7 @@ import '../models/reminder_model.dart';
 import '../models/saved_place.dart';
 import '../services/geofence_service.dart';
 import '../services/saved_places_service.dart';
+import '../theme/app_theme.dart';
 
 class LocationPickerSheet extends StatefulWidget {
   final ReminderGeofence? initial;
@@ -104,13 +110,14 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       height:  MediaQuery.of(context).size.height * 0.92,
       margin:  const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: fb.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Column(children: [
         // Handle
@@ -118,7 +125,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
         Center(child: Container(
           width: 40, height: 4,
           decoration: BoxDecoration(
-              color: Colors.white24, borderRadius: BorderRadius.circular(2)),
+              color: fb.onSurfaceFaint, borderRadius: BorderRadius.circular(2)),
         )),
         const SizedBox(height: 16),
 
@@ -136,8 +143,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                   color: Color(0xFF0A84FF), size: 20),
             ),
             const SizedBox(width: 12),
-            const Text('Set Location', style: TextStyle(
-              color: Colors.white, fontSize: 20,
+            Text('Set Location', style: TextStyle(
+              color: fb.onSurface, fontSize: 20,
               fontWeight: FontWeight.w700, letterSpacing: -0.4,
             )),
             const Spacer(),
@@ -208,22 +215,22 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(20),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1C1C1E),
+                            color: fb.surfaceVar,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white10),
+                            border: Border.all(color: fb.border),
                           ),
-                          child: const Column(children: [
+                          child: Column(children: [
                             Icon(CupertinoIcons.location_slash,
-                                color: Colors.white24, size: 32),
-                            SizedBox(height: 10),
+                                color: fb.onSurfaceFaint, size: 32),
+                            const SizedBox(height: 10),
                             Text('No places saved yet',
-                                style: TextStyle(color: Colors.white38,
+                                style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38),
                                     fontSize: 14, fontWeight: FontWeight.w500)),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text('Tap + Add place to save Home, Work and more',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                    color: Colors.white24, fontSize: 12)),
+                                    color: fb.onSurfaceFaint, fontSize: 12)),
                           ]),
                         ),
                       );
@@ -245,12 +252,12 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? const Color(0xFF0A84FF).withOpacity(0.12)
-                                    : const Color(0xFF1C1C1E),
+                                    : fb.surfaceVar,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: isSelected
                                       ? const Color(0xFF0A84FF)
-                                      : Colors.white10,
+                                      : fb.border,
                                 ),
                               ),
                               child: Row(children: [
@@ -260,7 +267,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                                   decoration: BoxDecoration(
                                     color: isSelected
                                         ? const Color(0xFF0A84FF).withOpacity(0.2)
-                                        : Colors.white.withOpacity(0.06),
+                                        : fb.onSurface.withValues(alpha: 0.06),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Center(child: Text(place.emoji,
@@ -274,7 +281,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                                       Text(place.name, style: TextStyle(
                                         color: isSelected
                                             ? const Color(0xFF0A84FF)
-                                            : Colors.white,
+                                            : fb.onSurface,
                                         fontSize: 15,
                                         fontWeight: isSelected
                                             ? FontWeight.w600
@@ -284,8 +291,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                                         '${place.latitude.toStringAsFixed(4)}, '
                                         '${place.longitude.toStringAsFixed(4)}  ·  '
                                         '${place.radiusMeters.round()} m radius',
-                                        style: const TextStyle(
-                                            color: Colors.white38,
+                                        style: TextStyle(
+                                            color: fb.onSurface.withValues(alpha: 0.38),
                                             fontSize: 11),
                                       ),
                                     ],
@@ -299,7 +306,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                                     child: Icon(CupertinoIcons.pencil,
                                         color: isSelected
                                             ? const Color(0xFF0A84FF)
-                                            : Colors.white24,
+                                            : fb.onSurfaceFaint,
                                         size: 16),
                                   ),
                                 ),
@@ -358,7 +365,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                 SliderTheme(
                   data: SliderTheme.of(context).copyWith(
                     activeTrackColor:   const Color(0xFF0A84FF),
-                    inactiveTrackColor: Colors.white12,
+                    inactiveTrackColor: fb.onSurface.withValues(alpha: 0.12),
                     thumbColor:         const Color(0xFF0A84FF),
                     overlayColor:
                         const Color(0xFF0A84FF).withOpacity(0.15),
@@ -369,10 +376,10 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                     onChanged: (v) => setState(() => _radius = v),
                   ),
                 ),
-                Row(children: const [
-                  Text('50 m', style: TextStyle(color: Colors.white24, fontSize: 11)),
-                  Spacer(),
-                  Text('500 m', style: TextStyle(color: Colors.white24, fontSize: 11)),
+                Row(children: [
+                  Text('50 m', style: TextStyle(color: fb.onSurfaceFaint, fontSize: 11)),
+                  const Spacer(),
+                  Text('500 m', style: TextStyle(color: fb.onSurfaceFaint, fontSize: 11)),
                 ]),
                 const SizedBox(height: 20),
 
@@ -519,6 +526,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     final hasCoords = _lat != null && _lng != null;
     final isEditing = widget.editing != null;
 
@@ -528,9 +536,9 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
         margin:  const EdgeInsets.fromLTRB(12, 0, 12, 12),
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
         decoration: BoxDecoration(
-          color: const Color(0xFF141414),
+          color: fb.surface,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -540,14 +548,14 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
               Center(child: Container(
                 width: 40, height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.white24,
+                    color: fb.onSurfaceFaint,
                     borderRadius: BorderRadius.circular(2)),
               )),
               const SizedBox(height: 18),
               Row(children: [
                 Text(isEditing ? 'Edit Place' : 'Add Place',
-                    style: const TextStyle(
-                        color: Colors.white, fontSize: 20,
+                    style: TextStyle(
+                        color: fb.onSurface, fontSize: 20,
                         fontWeight: FontWeight.w700, letterSpacing: -0.4)),
                 const Spacer(),
                 if (isEditing)
@@ -583,24 +591,24 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
               const SizedBox(height: 8),
               Container(
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1C1C1E),
+                  color: fb.surfaceVar,
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white10),
+                  border: Border.all(color: fb.border),
                 ),
                 child: Row(children: [
-                  const Padding(
-                    padding: EdgeInsets.only(left: 14),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 14),
                     child: Icon(CupertinoIcons.map_pin,
-                        color: Colors.white38, size: 18),
+                        color: fb.onSurface.withValues(alpha: 0.38), size: 18),
                   ),
                   Expanded(child: TextField(
                     controller: _nameCtrl,
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: fb.onSurface, fontSize: 15),
+                    decoration: InputDecoration(
                       hintText: 'e.g. Home, Office, Gym',
-                      hintStyle: TextStyle(color: Colors.white24),
+                      hintStyle: TextStyle(color: fb.onSurfaceFaint),
                       border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
+                      contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 14),
                     ),
                   )),
@@ -617,12 +625,12 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                   decoration: BoxDecoration(
                     color: hasCoords
                         ? const Color(0xFF30D158).withOpacity(0.10)
-                        : const Color(0xFF1C1C1E),
+                        : fb.surfaceVar,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: hasCoords
                           ? const Color(0xFF30D158).withOpacity(0.4)
-                          : Colors.white10,
+                          : fb.border,
                     ),
                   ),
                   child: Row(children: [
@@ -637,7 +645,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                             : CupertinoIcons.location,
                         color: hasCoords
                             ? const Color(0xFF30D158)
-                            : Colors.white54,
+                            : fb.onSurface.withValues(alpha: 0.54),
                         size: 22,
                       ),
                     const SizedBox(width: 14),
@@ -653,7 +661,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                           style: TextStyle(
                             color: hasCoords
                                 ? const Color(0xFF30D158)
-                                : Colors.white,
+                                : fb.onSurface,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -661,13 +669,13 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                         if (hasCoords)
                           Text(
                             '${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}',
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 11),
+                            style: TextStyle(
+                                color: fb.onSurface.withValues(alpha: 0.38), fontSize: 11),
                           )
                         else
-                          const Text('Use my current location',
+                          Text('Use my current location',
                               style: TextStyle(
-                                  color: Colors.white38, fontSize: 12)),
+                                  color: fb.onSurface.withValues(alpha: 0.38), fontSize: 12)),
                       ],
                     )),
                   ]),
@@ -686,7 +694,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   activeTrackColor:   const Color(0xFF0A84FF),
-                  inactiveTrackColor: Colors.white12,
+                  inactiveTrackColor: fb.onSurface.withValues(alpha: 0.12),
                   thumbColor:         const Color(0xFF0A84FF),
                   overlayColor: const Color(0xFF0A84FF).withOpacity(0.15),
                   trackHeight: 3,
@@ -708,12 +716,12 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                   decoration: BoxDecoration(
                     color: _isWatched
                         ? const Color(0xFF30D158).withOpacity(0.10)
-                        : const Color(0xFF1C1C1E),
+                        : fb.surfaceVar,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: _isWatched
                           ? const Color(0xFF30D158).withOpacity(0.4)
-                          : Colors.white10,
+                          : fb.border,
                     ),
                   ),
                   child: Row(children: [
@@ -722,7 +730,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                       decoration: BoxDecoration(
                         color: _isWatched
                             ? const Color(0xFF30D158).withOpacity(0.2)
-                            : Colors.white.withOpacity(0.06),
+                            : fb.onSurface.withValues(alpha: 0.06),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -731,7 +739,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                             : CupertinoIcons.location,
                         color: _isWatched
                             ? const Color(0xFF30D158)
-                            : Colors.white38,
+                            : fb.onSurface.withValues(alpha: 0.38),
                         size: 18,
                       ),
                     ),
@@ -745,7 +753,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                             style: TextStyle(
                               color: _isWatched
                                   ? const Color(0xFF30D158)
-                                  : Colors.white,
+                                  : fb.onSurface,
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
@@ -754,8 +762,8 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                             _isWatched
                                 ? 'Alarm fires every arrival & departure'
                                 : 'No time needed — rings when you arrive or leave',
-                            style: const TextStyle(
-                                color: Colors.white38, fontSize: 12),
+                            style: TextStyle(
+                                color: fb.onSurface.withValues(alpha: 0.38), fontSize: 12),
                           ),
                         ],
                       ),
@@ -767,7 +775,7 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                       decoration: BoxDecoration(
                         color: _isWatched
                             ? const Color(0xFF30D158)
-                            : Colors.white12,
+                            : fb.onSurface.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(13),
                       ),
                       child: Stack(children: [
@@ -778,8 +786,8 @@ class _AddPlaceSheetState extends State<_AddPlaceSheet> {
                           top: 2,
                           child: Container(
                             width: 22, height: 22,
-                            decoration: const BoxDecoration(
-                                color: Colors.white,
+                            decoration: BoxDecoration(
+                                color: fb.onSurface,
                                 shape: BoxShape.circle),
                           ),
                         ),
@@ -853,6 +861,7 @@ class _EmojiPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Wrap(
       spacing: 8, runSpacing: 8,
       children: _emojis.map((e) {
@@ -865,10 +874,10 @@ class _EmojiPicker extends StatelessWidget {
             decoration: BoxDecoration(
               color: isSel
                   ? const Color(0xFF0A84FF).withOpacity(0.2)
-                  : const Color(0xFF1C1C1E),
+                  : fb.surfaceVar,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSel ? const Color(0xFF0A84FF) : Colors.white10,
+                color: isSel ? const Color(0xFF0A84FF) : fb.border,
                 width: isSel ? 1.5 : 1,
               ),
             ),
@@ -887,10 +896,13 @@ class _Label extends StatelessWidget {
   final String text;
   const _Label(this.text);
   @override
-  Widget build(BuildContext context) => Text(text, style: const TextStyle(
-    color: Colors.white38, fontSize: 11,
-    fontWeight: FontWeight.w700, letterSpacing: 1.0,
-  ));
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return Text(text, style: TextStyle(
+      color: fb.onSurface.withValues(alpha: 0.38), fontSize: 11,
+      fontWeight: FontWeight.w700, letterSpacing: 1.0,
+    ));
+  }
 }
 
 class _TriggerPill extends StatelessWidget {
@@ -900,7 +912,9 @@ class _TriggerPill extends StatelessWidget {
   const _TriggerPill({required this.label, required this.selected, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => Expanded(
+  Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+    return Expanded(
     child: GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -909,18 +923,19 @@ class _TriggerPill extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? const Color(0xFF0A84FF).withOpacity(0.15)
-              : const Color(0xFF1C1C1E),
+              : fb.surfaceVar,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? const Color(0xFF0A84FF) : Colors.white12,
+            color: selected ? const Color(0xFF0A84FF) : fb.onSurface.withValues(alpha: 0.12),
           ),
         ),
         child: Center(child: Text(label, style: TextStyle(
-          color:      selected ? const Color(0xFF0A84FF) : Colors.white54,
+          color:      selected ? const Color(0xFF0A84FF) : fb.onSurface.withValues(alpha: 0.54),
           fontSize:   13,
           fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
         ))),
       ),
     ),
   );
+  }
 }

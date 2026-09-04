@@ -28,6 +28,7 @@ import '../services/continuity_service.dart';
 import '../services/reminder_service.dart';
 import '../services/reminder_group_service.dart';
 import '../services/saved_places_service.dart';
+import '../theme/app_theme.dart';
 import 'location_picker_sheet.dart';
 
 part 'reminders_clock_calendar.dart';
@@ -61,18 +62,19 @@ class _SheetField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
+        color: fb.surfaceVar,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 14, top: 14),
-            child: Icon(icon, color: Colors.white38, size: 18),
+            child: Icon(icon, color: fb.onSurface.withValues(alpha: 0.38), size: 18),
           ),
           Expanded(
             child: TextField(
@@ -80,10 +82,10 @@ class _SheetField extends StatelessWidget {
               keyboardType: keyboardType,
               maxLines: maxLines,
               onChanged: onChanged,
-              style: const TextStyle(color: Colors.white, fontSize: 15),
+              style: TextStyle(color: fb.onSurface, fontSize: 15),
               decoration: InputDecoration(
                 hintText: hint,
-                hintStyle: const TextStyle(color: Colors.white24),
+                hintStyle: TextStyle(color: fb.onSurfaceFaint),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -105,11 +107,12 @@ class _TogglePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1C1C1E),
+        color: fb.surfaceVar,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Row(
         children: [
@@ -141,6 +144,7 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
@@ -155,7 +159,7 @@ class _Pill extends StatelessWidget {
             child: Text(
               label,
               style: TextStyle(
-                color: selected ? Colors.white : Colors.white38,
+                color: selected ? Colors.white : fb.onSurface.withValues(alpha: 0.38),
                 fontSize: 14,
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
               ),
@@ -359,15 +363,16 @@ class _RemindersScreenState
   // ── Sheet helpers ──────────────────────────────────────────
 
   Widget _sheetWrap({required Widget child}) {
+    final fb = Theme.of(context).fb;
     return Container(
       margin:
           const EdgeInsets.fromLTRB(12, 0, 12, 12),
       padding:
           const EdgeInsets.fromLTRB(24, 20, 24, 32),
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: fb.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: SingleChildScrollView(child: child),
     );
@@ -378,7 +383,7 @@ class _RemindersScreenState
           width: 40,
           height: 4,
           decoration: BoxDecoration(
-            color: Colors.white24,
+            color: Theme.of(context).fb.onSurfaceFaint,
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -489,7 +494,9 @@ class _RemindersScreenState
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, ss) => Padding(
+        builder: (ctx, ss) {
+          final fb = Theme.of(ctx).fb;
+          return Padding(
           padding: EdgeInsets.only(
               bottom:
                   MediaQuery.of(ctx).viewInsets.bottom),
@@ -501,9 +508,9 @@ class _RemindersScreenState
               children: [
                 _sheetHandle(),
                 const SizedBox(height: 18),
-                const Text('New Reminder',
+                Text('New Reminder',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: fb.onSurface,
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.4,
@@ -731,7 +738,8 @@ class _RemindersScreenState
               ],
             ),
           ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -754,7 +762,9 @@ class _RemindersScreenState
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, ss) => Padding(
+        builder: (ctx, ss) {
+          final fb = Theme.of(ctx).fb;
+          return Padding(
           padding: EdgeInsets.only(
               bottom:
                   MediaQuery.of(ctx).viewInsets.bottom),
@@ -766,9 +776,9 @@ class _RemindersScreenState
               children: [
                 _sheetHandle(),
                 const SizedBox(height: 18),
-                const Text('New Reminder',
+                Text('New Reminder',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: fb.onSurface,
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.4,
@@ -864,7 +874,8 @@ class _RemindersScreenState
               ],
             ),
           ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -905,16 +916,18 @@ class _RemindersScreenState
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
+      builder: (ctx) {
+        final fb = Theme.of(ctx).fb;
+        return Container(
         margin:
             const EdgeInsets.fromLTRB(12, 0, 12, 12),
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(ctx).size.height * 0.85,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xFF141414),
+          color: fb.surface,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white10),
+          border: Border.all(color: fb.border),
         ),
         child: SingleChildScrollView(
         padding:
@@ -928,7 +941,7 @@ class _RemindersScreenState
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: fb.onSurfaceFaint,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -943,16 +956,16 @@ class _RemindersScreenState
                     height: 48,
                     decoration: BoxDecoration(
                       color: isPast
-                          ? const Color(0xFF1E1E1E)
+                          ? fb.surfaceVar
                           : priorityColor
-                              .withOpacity(0.14),
+                              .withValues(alpha: 0.14),
                       borderRadius:
                           BorderRadius.circular(14),
                     ),
                     child: Icon(
                         CupertinoIcons.bell_fill,
                         color: isPast
-                            ? Colors.white24
+                            ? fb.onSurfaceFaint
                             : priorityColor,
                         size: 22),
                   ),
@@ -969,23 +982,23 @@ class _RemindersScreenState
                                   vertical: 4),
                           decoration: BoxDecoration(
                             color: isPast
-                                ? Colors.white10
+                                ? fb.border
                                 : priorityColor
-                                    .withOpacity(0.12),
+                                    .withValues(alpha: 0.12),
                             borderRadius:
                                 BorderRadius.circular(20),
                             border: Border.all(
                               color: isPast
-                                  ? Colors.white12
+                                  ? fb.onSurface.withValues(alpha: 0.12)
                                   : priorityColor
-                                      .withOpacity(0.3),
+                                      .withValues(alpha: 0.3),
                             ),
                           ),
                           child: Text(
                             countdown,
                             style: TextStyle(
                               color: isPast
-                                  ? Colors.white38
+                                  ? fb.onSurface.withValues(alpha: 0.38)
                                   : priorityColor,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -996,8 +1009,8 @@ class _RemindersScreenState
                         Text(
                           DateFormat('EEE, MMM d · hh:mm a')
                               .format(r.dateTime),
-                          style: const TextStyle(
-                              color: Colors.white54,
+                          style: TextStyle(
+                              color: fb.onSurface.withValues(alpha: 0.54),
                               fontSize: 13),
                         ),
                       ],
@@ -1007,8 +1020,8 @@ class _RemindersScreenState
             const SizedBox(height: 20),
             Text(
               r.title,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: fb.onSurface,
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.3,
@@ -1022,10 +1035,10 @@ class _RemindersScreenState
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.04),
+                  color: fb.onSurface.withValues(alpha: 0.04),
                   borderRadius: BorderRadius.circular(14),
                   border:
-                      Border.all(color: Colors.white10),
+                      Border.all(color: fb.border),
                 ),
                 child: MarkdownBody(
                   data: r.notes!,
@@ -1048,8 +1061,8 @@ class _RemindersScreenState
                     }
                   },
                   styleSheet: MarkdownStyleSheet(
-                    p: const TextStyle(
-                      color: Colors.white70,
+                    p: TextStyle(
+                      color: fb.onSurface.withValues(alpha: 0.70),
                       fontSize: 14,
                       height: 1.5,
                     ),
@@ -1057,27 +1070,27 @@ class _RemindersScreenState
                       color: Color(0xFF64D2FF),
                       decoration: TextDecoration.none,
                     ),
-                    strong: const TextStyle(
-                      color: Colors.white,
+                    strong: TextStyle(
+                      color: fb.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
-                    em: const TextStyle(
-                      color: Colors.white60,
+                    em: TextStyle(
+                      color: fb.onSurfaceDim,
                       fontStyle: FontStyle.italic,
                     ),
-                    code: const TextStyle(
-                      color: Color(0xFF64D2FF),
-                      backgroundColor: Color(0xFF252525),
+                    code: TextStyle(
+                      color: const Color(0xFF64D2FF),
+                      backgroundColor: fb.surfaceVar,
                       fontFamily: 'monospace',
                       fontSize: 13,
                     ),
                     codeblockDecoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1C),
+                      color: fb.surfaceVar,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.white10),
+                      border: Border.all(color: fb.border),
                     ),
                     blockquoteDecoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1C),
+                      color: fb.surfaceVar,
                       borderRadius: BorderRadius.circular(6),
                       border: const Border(
                         left: BorderSide(
@@ -1086,12 +1099,12 @@ class _RemindersScreenState
                         ),
                       ),
                     ),
-                    blockquote: const TextStyle(
-                      color: Colors.white54,
+                    blockquote: TextStyle(
+                      color: fb.onSurface.withValues(alpha: 0.54),
                       fontSize: 14,
                     ),
                     listBullet:
-                        const TextStyle(color: Colors.white38),
+                        TextStyle(color: fb.onSurface.withValues(alpha: 0.38)),
                   ),
                 ),
               ),
@@ -1122,23 +1135,23 @@ class _RemindersScreenState
                     padding: const EdgeInsets.symmetric(
                         vertical: 15),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1C1C1E),
+                      color: fb.surfaceVar,
                       borderRadius:
                           BorderRadius.circular(16),
                       border: Border.all(
-                          color: Colors.white10),
+                          color: fb.border),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment:
                           MainAxisAlignment.center,
                       children: [
                         Icon(CupertinoIcons.pencil,
-                            color: Colors.white70,
+                            color: fb.onSurface.withValues(alpha: 0.70),
                             size: 16),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text('Edit',
                             style: TextStyle(
-                              color: Colors.white70,
+                              color: fb.onSurface.withValues(alpha: 0.70),
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             )),
@@ -1158,25 +1171,25 @@ class _RemindersScreenState
                     padding: const EdgeInsets.symmetric(
                         vertical: 15),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFF3B30)
-                          .withOpacity(0.12),
+                      color: fb.danger
+                          .withValues(alpha: 0.12),
                       borderRadius:
                           BorderRadius.circular(16),
                       border: Border.all(
-                          color: const Color(0xFFFF3B30)
-                              .withOpacity(0.3)),
+                          color: fb.danger
+                              .withValues(alpha: 0.3)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment:
                           MainAxisAlignment.center,
                       children: [
                         Icon(CupertinoIcons.trash,
-                            color: Color(0xFFFF3B30),
+                            color: fb.danger,
                             size: 16),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text('Delete',
                             style: TextStyle(
-                              color: Color(0xFFFF3B30),
+                              color: fb.danger,
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
                             )),
@@ -1189,7 +1202,8 @@ class _RemindersScreenState
           ],
         ),
         ),
-      ),
+        );
+      },
     );
   }
 
@@ -1198,6 +1212,7 @@ class _RemindersScreenState
   void _showMoveGroupSheet(Reminder reminder) {
     final groups =
         ReminderGroupService.instance.groups.value;
+    final fb = Theme.of(context).fb;
     showCupertinoModalPopup(
       context: context,
       builder: (_) => CupertinoActionSheet(
@@ -1215,14 +1230,14 @@ class _RemindersScreenState
                 mainAxisAlignment:
                     MainAxisAlignment.center,
                 children: [
-                  const Icon(CupertinoIcons.tray,
-                      size: 16, color: Colors.white54),
+                  Icon(CupertinoIcons.tray,
+                      size: 16, color: fb.onSurfaceDim),
                   const SizedBox(width: 8),
                   Text('No Group',
                       style: TextStyle(
                         color: reminder.groupId == null
                             ? const Color(0xFF0A84FF)
-                            : Colors.white,
+                            : fb.onSurface,
                         fontWeight:
                             reminder.groupId == null
                                 ? FontWeight.w700
@@ -1250,7 +1265,7 @@ class _RemindersScreenState
                             color:
                                 reminder.groupId == g.id
                                     ? g.color
-                                    : Colors.white,
+                                    : fb.onSurface,
                             fontWeight:
                                 reminder.groupId == g.id
                                     ? FontWeight.w700
@@ -1295,7 +1310,9 @@ class _RemindersScreenState
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, ss) => Padding(
+        builder: (ctx, ss) {
+          final fb = Theme.of(ctx).fb;
+          return Padding(
           padding: EdgeInsets.only(
               bottom:
                   MediaQuery.of(ctx).viewInsets.bottom),
@@ -1308,9 +1325,9 @@ class _RemindersScreenState
                 _sheetHandle(),
                 const SizedBox(height: 18),
                 Row(children: [
-                  const Text('Edit Reminder',
+                  Text('Edit Reminder',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: fb.onSurface,
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.4,
@@ -1328,25 +1345,25 @@ class _RemindersScreenState
                               horizontal: 12,
                               vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFF3B30)
-                            .withOpacity(0.12),
+                        color: fb.danger
+                            .withValues(alpha: 0.12),
                         borderRadius:
                             BorderRadius.circular(20),
                         border: Border.all(
-                            color: const Color(0xFFFF3B30)
-                                .withOpacity(0.3)),
+                            color: fb.danger
+                                .withValues(alpha: 0.3)),
                       ),
-                      child: const Row(
+                      child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(CupertinoIcons.trash,
-                                color: Color(0xFFFF3B30),
+                                color: fb.danger,
                                 size: 13),
-                            SizedBox(width: 5),
+                            const SizedBox(width: 5),
                             Text('Delete',
                                 style: TextStyle(
                                   color:
-                                      Color(0xFFFF3B30),
+                                      fb.danger,
                                   fontSize: 12,
                                   fontWeight:
                                       FontWeight.w600,
@@ -1446,7 +1463,8 @@ class _RemindersScreenState
               ],
             ),
           ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1455,8 +1473,8 @@ class _RemindersScreenState
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
       body: SafeArea(
         child: Column(children: [
           Padding(
@@ -1466,13 +1484,13 @@ class _RemindersScreenState
               GestureDetector(
                 onTap: () =>
                     Navigator.of(context).pop(),
-                child: const Icon(CupertinoIcons.back,
-                    color: Colors.white54, size: 26),
+                child: Icon(CupertinoIcons.back,
+                    color: fb.onSurfaceDim, size: 26),
               ),
               const SizedBox(width: 8),
-              const Text('Reminders',
+              Text('Reminders',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: fb.onSurface,
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.6,

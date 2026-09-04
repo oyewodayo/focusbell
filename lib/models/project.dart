@@ -48,17 +48,29 @@ enum Priority {
 
   Color get color => switch (this) {
         Priority.low      => const Color(0xFF4CAF50),
-        Priority.medium   => const Color(0xFFFFCC00),
+        // Deeper gold rather than pure yellow — pure yellow text has very
+        // poor contrast against light backgrounds (near-invisible in Light
+        // mode), while this still reads as a warm, bright accent on black.
+        Priority.medium   => const Color(0xFFB8860B),
         Priority.high     => const Color(0xFFFF8C00),
         Priority.critical => const Color(0xFFFF3B30),
       };
 
-  Color get bgColor => switch (this) {
-        Priority.low      => const Color(0xFF1A2E1A),
-        Priority.medium   => const Color(0xFF2E2A0A),
-        Priority.high     => const Color(0xFF2E1A00),
-        Priority.critical => const Color(0xFF2E0A0A),
-      };
+  /// Tinted chip background. Pass the resolved theme brightness — dark
+  /// gets a dim tint, light gets a pastel tint of the same hue.
+  Color bgColor(bool isDark) => isDark
+      ? switch (this) {
+          Priority.low      => const Color(0xFF1A2E1A),
+          Priority.medium   => const Color(0xFF2E2A0A),
+          Priority.high     => const Color(0xFF2E1A00),
+          Priority.critical => const Color(0xFF2E0A0A),
+        }
+      : switch (this) {
+          Priority.low      => const Color(0xFFDFF2DF),
+          Priority.medium   => const Color(0xFFFBF0D6),
+          Priority.high     => const Color(0xFFFCE8D6),
+          Priority.critical => const Color(0xFFFCE1DF),
+        };
 }
 
 // ── ReminderOffset ────────────────────────────────────────────────
@@ -125,12 +137,21 @@ enum TaskStatus {
         TaskStatus.completed => const Color(0xFF34C759),
       };
 
-  Color get bgColor => switch (this) {
-        TaskStatus.todo      => const Color(0xFF1C1C1E),
-        TaskStatus.ongoing   => const Color(0xFF001A33),
-        TaskStatus.blocked   => const Color(0xFF2E0A0A),
-        TaskStatus.completed => const Color(0xFF0A2E14),
-      };
+  /// Tinted chip background. Pass the resolved theme brightness — dark
+  /// gets a dim tint, light gets a pastel tint of the same hue.
+  Color bgColor(bool isDark) => isDark
+      ? switch (this) {
+          TaskStatus.todo      => const Color(0xFF1C1C1E),
+          TaskStatus.ongoing   => const Color(0xFF001A33),
+          TaskStatus.blocked   => const Color(0xFF2E0A0A),
+          TaskStatus.completed => const Color(0xFF0A2E14),
+        }
+      : switch (this) {
+          TaskStatus.todo      => const Color(0xFFE5E5EA),
+          TaskStatus.ongoing   => const Color(0xFFD6E9FC),
+          TaskStatus.blocked   => const Color(0xFFFCE1DF),
+          TaskStatus.completed => const Color(0xFFDDF2E3),
+        };
 }
 
 // ── Task ──────────────────────────────────────────────────────────

@@ -137,14 +137,15 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return Container(
       height: MediaQuery.of(context).size.height * 0.9,
       margin:
           const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF141414),
+        color: fb.surface,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: fb.border),
       ),
       child: Column(children: [
         const SizedBox(height: 12),
@@ -153,7 +154,7 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.white24,
+              color: fb.onSurfaceFaint,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -164,9 +165,9 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
           padding: const EdgeInsets.symmetric(
               horizontal: 20),
           child: Row(children: [
-            const Text('Select City',
+            Text('Select City',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: fb.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.4,
@@ -186,20 +187,20 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
                   color: widget.useDeviceTz
                       ? const Color(0xFF0A84FF)
                           .withOpacity(0.18)
-                      : const Color(0xFF1C1C1E),
+                      : fb.surfaceVar,
                   borderRadius:
                       BorderRadius.circular(20),
                   border: Border.all(
                     color: widget.useDeviceTz
                         ? const Color(0xFF0A84FF)
-                        : Colors.white12,
+                        : fb.onSurface.withValues(alpha: 0.12),
                   ),
                 ),
                 child: Text('Use device',
                     style: TextStyle(
                       color: widget.useDeviceTz
                           ? const Color(0xFF0A84FF)
-                          : Colors.white38,
+                          : fb.onSurface.withValues(alpha: 0.38),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     )),
@@ -214,30 +215,30 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
               horizontal: 20),
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
+              color: fb.surfaceVar,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: fb.border),
             ),
             child: Row(children: [
-              const Padding(
-                padding: EdgeInsets.only(left: 14),
+              Padding(
+                padding: const EdgeInsets.only(left: 14),
                 child: Icon(CupertinoIcons.search,
-                    color: Colors.white38, size: 18),
+                    color: fb.onSurface.withValues(alpha: 0.38), size: 18),
               ),
               Expanded(
                 child: TextField(
                   controller: _searchCtrl,
                   onChanged: _onSearch,
-                  style: const TextStyle(
-                      color: Colors.white,
+                  style: TextStyle(
+                      color: fb.onSurface,
                       fontSize: 15),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     hintText:
                         'Search cities or countries...',
                     hintStyle: TextStyle(
-                        color: Colors.white24),
+                        color: fb.onSurfaceFaint),
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
+                    contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 12),
                   ),
                 ),
@@ -248,13 +249,13 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
                     _searchCtrl.clear();
                     _onSearch('');
                   },
-                  child: const Padding(
+                  child: Padding(
                     padding:
-                        EdgeInsets.only(right: 12),
+                        const EdgeInsets.only(right: 12),
                     child: Icon(
                         CupertinoIcons
                             .xmark_circle_fill,
-                        color: Colors.white24,
+                        color: fb.onSurfaceFaint,
                         size: 18),
                   ),
                 ),
@@ -311,7 +312,7 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
                               color: isActive
                                   ? const Color(
                                       0xFF0A84FF)
-                                  : Colors.white24,
+                                  : fb.onSurfaceFaint,
                               fontSize:
                                   isActive ? 14 : 12,
                               fontWeight:
@@ -374,7 +375,7 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
                                       color: isSelected
                                           ? const Color(
                                               0xFF0A84FF)
-                                          : Colors.white,
+                                          : fb.onSurface,
                                       fontSize: 15,
                                       fontWeight:
                                           isSelected
@@ -391,7 +392,7 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
                                                   0xFF0A84FF)
                                               .withOpacity(
                                                   0.7)
-                                          : Colors.white38,
+                                          : fb.onSurface.withValues(alpha: 0.38),
                                       fontSize: 12,
                                     )),
                               ],
@@ -522,8 +523,8 @@ class _TzPickerSheetState extends State<_TzPickerSheet> {
                                               : isActive
                                                   ? const Color(
                                                       0xFF0A84FF)
-                                                  : Colors
-                                                      .white38,
+                                                  : fb.onSurface
+                                                      .withValues(alpha: 0.38),
                                           fontSize:
                                               isDragTarget ||
                                                       isActive

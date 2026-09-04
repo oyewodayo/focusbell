@@ -305,7 +305,7 @@ class _ActiveCard extends StatelessWidget {
             height: 72,
             decoration: BoxDecoration(
             shape:  BoxShape.circle,
-            color:  p.bgColor,
+            color:  p.bgColor(fb.isDark),
             border: Border.all(
                 color: p.color.withValues(alpha: 0.5), width: 2),
             boxShadow: [
@@ -329,7 +329,7 @@ class _ActiveCard extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
-            color:        p.bgColor,
+            color:        p.bgColor(fb.isDark),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: p.color.withValues(alpha: 0.35)),
           ),
@@ -444,14 +444,18 @@ class _TrayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).fb.isDark;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color:        color.withValues(alpha: 0.12),
+          // Low alpha reads fine tinting a near-black surface, but washes
+          // out almost to nothing over a light one — bump it up there.
+          color:        color.withValues(alpha: isDark ? 0.12 : 0.18),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
+          border: Border.all(
+              color: color.withValues(alpha: isDark ? 0.3 : 0.5)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -489,14 +493,18 @@ class _CardIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).fb.isDark;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color:        color.withValues(alpha: 0.10),
+          // Low alpha reads fine tinting a near-black surface, but washes
+          // out almost to nothing over a light one — bump it up there.
+          color:        color.withValues(alpha: isDark ? 0.10 : 0.16),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.28)),
+          border: Border.all(
+              color: color.withValues(alpha: isDark ? 0.28 : 0.45)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -551,7 +559,7 @@ class _PrioritySwitcher extends StatelessWidget {
                 AppToast.show(
                   context,
                   msg:             '${p.emoji} Priority → ${p.label}',
-                  backgroundColor: p.bgColor,
+                  backgroundColor: p.bgColor(fb.isDark),
                   textColor:       p.color,
                 );
               },
@@ -561,7 +569,7 @@ class _PrioritySwitcher extends StatelessWidget {
                 width:    selected ? 48 : 36,
                 height:   36,
                 decoration: BoxDecoration(
-                  color: selected ? p.bgColor : fb.surfaceVar,
+                  color: selected ? p.bgColor(fb.isDark) : fb.surfaceVar,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: selected
@@ -682,7 +690,7 @@ class _ActionButton extends StatelessWidget {
           border:       Border.all(color: fb.border),
           boxShadow: fb.isDark ? null : [
             BoxShadow(
-              color:      Colors.black.withValues(alpha: 0.06),
+              color:      Colors.black.withValues(alpha: 0.10),
               blurRadius: 8,
               offset:     const Offset(0, 2),
             ),

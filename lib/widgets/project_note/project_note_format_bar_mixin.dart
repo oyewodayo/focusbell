@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:focusbell/models/note_models.dart';
 import 'package:focusbell/widgets/project_note_sheet.dart';
 
+import '../../theme/app_theme.dart';
 import '../../widgets/note_toolbar_widgets.dart';
 import 'project_note_state_interface.dart';
 import 'project_note_actions_mixin.dart';
@@ -63,13 +64,14 @@ mixin ProjectNoteFormatBarMixin
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget buildFormatBar() {
+    final fb = Theme.of(context).fb;
     return Container(
-      decoration: const BoxDecoration(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        color: Color(0xFF141414),
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        color: fb.surface,
         border: Border(
-          top: BorderSide(color: Color(0xFF1E1E1E)),
-          bottom: BorderSide(color: Color(0xFF1E1E1E)),
+          top: BorderSide(color: fb.border),
+          bottom: BorderSide(color: fb.border),
         ),
       ),
       child: Column(
@@ -86,7 +88,7 @@ mixin ProjectNoteFormatBarMixin
             NoteTChip('H4', fmtH4, const Color(0xFF64D2FF),
                 () => applyParagraphFmt((b) { b.isH4 = !b.isH4; b.isH1 = b.isH2 = b.isH3 = false; })),
             // "body" chip is active when no heading level is set.
-            NoteTChip('body', !fmtH1 && !fmtH2 && !fmtH3 && !fmtH4, Colors.white,
+            NoteTChip('body', !fmtH1 && !fmtH2 && !fmtH3 && !fmtH4, fb.onSurface,
                 () => applyParagraphFmt((b) => b.isH1 = b.isH2 = b.isH3 = b.isH4 = false)),
           ]),
 
@@ -117,10 +119,10 @@ mixin ProjectNoteFormatBarMixin
 
           // ── Row 3: text colour swatches ─────────────────────────────────────
           _fmtRow([
-            const Padding(
-              padding: EdgeInsets.only(right: 6),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
               child: Center(child: Text('A',
-                  style: TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.w700))),
+                  style: TextStyle(color: fb.onSurface.withValues(alpha: 0.38), fontSize: 12, fontWeight: FontWeight.w700))),
             ),
             ..._textColors.map((c) => NoteColorDot(
               color: c == _kCustomColor ? null : c,
@@ -137,9 +139,9 @@ mixin ProjectNoteFormatBarMixin
 
           // ── Row 4: highlight colour swatches ────────────────────────────────
           _fmtRow([
-            const Padding(
-              padding: EdgeInsets.only(right: 6),
-              child: Center(child: Icon(Icons.highlight_rounded, size: 14, color: Colors.white38)),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Center(child: Icon(Icons.highlight_rounded, size: 14, color: fb.onSurface.withValues(alpha: 0.38))),
             ),
             ..._highlights.map((c) => NoteColorDot(
               color: c,
@@ -179,11 +181,12 @@ mixin ProjectNoteFormatBarMixin
   /// Persistent toolbar at the very bottom: insert media, toggle format bar,
   /// toggle recording, and add checkbox.
   Widget buildBottomBar() {
+    final fb = Theme.of(context).fb;
     return Container(
       height: 56,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0E0E0F),
-        border: Border(top: BorderSide(color: Color(0xFF1A1A1A), width: 1)),
+      decoration: BoxDecoration(
+        color: fb.scaffoldBg,
+        border: Border(top: BorderSide(color: fb.border, width: 1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -233,6 +236,7 @@ class _BarIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -246,7 +250,7 @@ class _BarIcon extends StatelessWidget {
               color: active ? activeColor.withValues(alpha: 0.12) : Colors.transparent,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 24, color: active ? activeColor : Colors.white60),
+            child: Icon(icon, size: 24, color: active ? activeColor : fb.onSurfaceDim),
           ),
         ),
       ),

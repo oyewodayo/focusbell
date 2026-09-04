@@ -5,6 +5,7 @@ import '../models/project.dart';
 import '../models/settings.dart';
 import '../services/app_controller.dart';
 import '../services/pin_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/app_toast.dart';
 import 'pin_entry_sheet.dart';
 import 'project_add_dialog.dart';
@@ -95,14 +96,15 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
     return ListenableBuilder(
       listenable: _ctrl,
       builder: (context, _) {
+        final fb = Theme.of(context).fb;
         final projects     = _process(_ctrl.projects);
         final archivedCount =
             _ctrl.projects.where((p) => p.isArchived).length;
 
         return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFF111111),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: fb.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: EdgeInsets.only(
             bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -114,7 +116,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
               Container(
                 width: 40, height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white24,
+                  color: fb.onSurfaceFaint,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -142,8 +144,8 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                             child: Text(
                               _showArchive ? 'Archive' : 'Projects',
                               key: ValueKey(_showArchive),
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: fb.onSurface,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -0.5,
@@ -159,13 +161,14 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                               color: _showArchive
                                   ? const Color(0xFFFF9F0A)
                                       .withValues(alpha: 0.2)
-                                  : Colors.white.withValues(alpha: 0.06),
+                                  : fb.onSurface
+                                      .withValues(alpha: fb.isDark ? 0.06 : 0.08),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: _showArchive
                                     ? const Color(0xFFFF9F0A)
                                         .withValues(alpha: 0.5)
-                                    : Colors.white12,
+                                    : fb.border,
                               ),
                             ),
                             child: Icon(
@@ -175,7 +178,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                               size: 13,
                               color: _showArchive
                                   ? const Color(0xFFFF9F0A)
-                                  : Colors.white38,
+                                  : fb.onSurface.withValues(alpha: 0.38),
                             ),
                           ),
                           if (archivedCount > 0 && !_showArchive) ...[
@@ -220,7 +223,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                               color: _sortMode == _SortMode.priority
                                   ? const Color(0xFFFFD60A)
                                       .withValues(alpha: 0.4)
-                                  : Colors.white12,
+                                  : fb.border,
                             ),
                           ),
                           child: Row(
@@ -231,7 +234,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                                 size: 14,
                                 color: _sortMode == _SortMode.priority
                                     ? const Color(0xFFFFD60A)
-                                    : Colors.white38,
+                                    : fb.onSurface.withValues(alpha: 0.38),
                               ),
                               if (_sortMode == _SortMode.priority) ...[
                                 const SizedBox(width: 4),
@@ -268,7 +271,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                             color: _filterPriority != null
                                 ? _filterPriority!.color
                                     .withValues(alpha: 0.45)
-                                : Colors.white12,
+                                : fb.border,
                           ),
                         ),
                         child: Row(
@@ -292,7 +295,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                                 size: 16,
                                 color: _filterPriority != null
                                     ? _filterPriority!.color
-                                    : Colors.white38,
+                                    : fb.onSurface.withValues(alpha: 0.38),
                               ),
                             ),
                           ],
@@ -325,7 +328,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                             color: _searchOpen
                                 ? const Color(0xFF0A84FF)
                                     .withValues(alpha: 0.45)
-                                : Colors.white12,
+                                : fb.border,
                           ),
                         ),
                         child: Icon(
@@ -335,7 +338,7 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                           size: 15,
                           color: _searchOpen
                               ? const Color(0xFF0A84FF)
-                              : Colors.white38,
+                              : fb.onSurface.withValues(alpha: 0.38),
                         ),
                       ),
                     ),
@@ -358,9 +361,9 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                             const EdgeInsets.fromLTRB(20, 10, 20, 0),
                         child: Container(
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1A1A1A),
+                            color: fb.surfaceVar,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white10),
+                            border: Border.all(color: fb.border),
                           ),
                           child: Column(
                             children: [
@@ -368,13 +371,13 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                                 emoji: '🔘',
                                 label: 'All Priorities',
                                 selected: _filterPriority == null,
-                                color: Colors.white54,
+                                color: fb.onSurface.withValues(alpha: 0.54),
                                 onTap: () => setState(() {
                                   _filterPriority   = null;
                                   _priorityDropOpen = false;
                                 }),
                               ),
-                              const Divider(height: 1, color: Colors.white10),
+                              Divider(height: 1, color: fb.border),
                               ..._priorityMeta.map((m) => _PriorityFilterOption(
                                     emoji:    m.emoji,
                                     label:    m.label,
@@ -403,29 +406,29 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                         child: TextField(
                           controller: _searchCtrl,
                           autofocus: true,
-                          style: const TextStyle(
-                              color: Color.fromARGB(255, 204, 201, 201),
+                          style: TextStyle(
+                              color: fb.onSurface,
                               fontSize: 14),
                           onChanged: (v) =>
                               setState(() => _searchQuery = v),
                           decoration: InputDecoration(
                             hintText: 'Search projects…',
-                            hintStyle: const TextStyle(
-                                color: Colors.white38, fontSize: 14),
-                            prefixIcon: const Icon(Icons.search_rounded,
-                                color: Colors.white38, size: 18),
+                            hintStyle: TextStyle(
+                                color: fb.onSurface.withValues(alpha: 0.38), fontSize: 14),
+                            prefixIcon: Icon(Icons.search_rounded,
+                                color: fb.onSurface.withValues(alpha: 0.38), size: 18),
                             suffixIcon: _searchQuery.isNotEmpty
                                 ? GestureDetector(
                                     onTap: () => setState(() {
                                       _searchQuery = '';
                                       _searchCtrl.clear();
                                     }),
-                                    child: const Icon(Icons.close_rounded,
-                                        color: Colors.white38, size: 16),
+                                    child: Icon(Icons.close_rounded,
+                                        color: fb.onSurface.withValues(alpha: 0.38), size: 16),
                                   )
                                 : null,
                             filled: true,
-                            fillColor: const Color(0xFF1C1C1C),
+                            fillColor: fb.surfaceVar,
                             contentPadding:
                                 const EdgeInsets.symmetric(vertical: 10),
                             border: OutlineInputBorder(
@@ -452,8 +455,8 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                       _showArchive
                           ? 'Tap archive icon to go back'
                           : 'Double-tap to activate · Drag to reorder',
-                      style: const TextStyle(
-                          color: Colors.white24, fontSize: 11),
+                      style: TextStyle(
+                          color: fb.onSurfaceFaint, fontSize: 11),
                     ),
                     if (_filterPriority != null) ...[
                       const Spacer(),
@@ -482,8 +485,8 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                     children: [
                       Text(
                         _showArchive ? '📦' : '📋',
-                        style: const TextStyle(
-                            fontSize: 40, color: Colors.white24),
+                        style: TextStyle(
+                            fontSize: 40, color: fb.onSurfaceFaint),
                       ),
                       const SizedBox(height: 12),
                       Text(
@@ -495,8 +498,8 @@ class _ProjectsBottomSheetState extends State<ProjectsBottomSheet> {
                                     ? 'No ${_filterPriority!.label} projects.'
                                     : 'No projects yet.\nTap + to add one.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white38,
+                        style: TextStyle(
+                          color: fb.onSurface.withValues(alpha: 0.38),
                           fontSize: 14,
                           height: 1.6,
                         ),
@@ -568,6 +571,7 @@ class _PriorityFilterOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -585,7 +589,7 @@ class _PriorityFilterOption extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: selected ? color : Colors.white60,
+                color: selected ? color : fb.onSurfaceDim,
                 fontSize: 13,
                 fontWeight:
                     selected ? FontWeight.w600 : FontWeight.w400,
@@ -713,12 +717,7 @@ class _ProjectTileState extends State<_ProjectTile> {
       );
 
       if (mounted) {
-        AppToast.show(
-          context,
-          msg: '🔓 Note unlocked',
-          backgroundColor: const Color(0xFF1A2E1A),
-          textColor: const Color(0xFF4CAF50),
-        );
+        AppToast.success(context, '🔓 Note unlocked');
       }
     } else {
       // Lock: no PIN needed — user is in the app.
@@ -728,6 +727,8 @@ class _ProjectTileState extends State<_ProjectTile> {
       );
 
       if (mounted) {
+        // NOTE: kept as a fixed navy/cyan "info" tint — not a success/
+        // warning/danger case, and there's no theme token for it yet.
         AppToast.show(
           context,
           msg: '🔒 Note locked',
@@ -739,23 +740,24 @@ class _ProjectTileState extends State<_ProjectTile> {
   }
 
   void _showNoPinDialog() {
+    final fb = Theme.of(context).fb;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
+        backgroundColor: fb.surfaceVar,
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('No PIN set',
-            style: TextStyle(color: Colors.white, fontSize: 17)),
-        content: const Text(
+        title: Text('No PIN set',
+            style: TextStyle(color: fb.onSurface, fontSize: 17)),
+        content: Text(
           'Go to Settings → Security to set a PIN before locking notes.',
-          style: TextStyle(color: Colors.white60, fontSize: 14),
+          style: TextStyle(color: fb.onSurfaceDim, fontSize: 14),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK',
-                style: TextStyle(color: Color(0xFF4CAF50))),
+            child: Text('OK',
+                style: TextStyle(color: fb.success)),
           ),
         ],
       ),
@@ -764,6 +766,7 @@ class _ProjectTileState extends State<_ProjectTile> {
 
   @override
   Widget build(BuildContext context) {
+    final fb       = Theme.of(context).fb;
     final ctrl     = AppController.instance;
     final p        = widget.project;
     final isActive = p.isActive;
@@ -785,7 +788,7 @@ class _ProjectTileState extends State<_ProjectTile> {
           padding: const EdgeInsets.only(left: 20),
           margin: const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
-            color: const Color(0xFF0A1F0A),
+            color: fb.successBg,
             borderRadius: BorderRadius.circular(14),
           ),
           child: const Row(
@@ -805,10 +808,7 @@ class _ProjectTileState extends State<_ProjectTile> {
         confirmDismiss: (_) async {
           await ctrl.unarchiveProject(p.id);
           if (context.mounted) {
-            AppToast.show(context,
-                msg: '"${p.name}" restored',
-                backgroundColor: const Color(0xFF1A2A1A),
-                textColor: const Color(0xFF34C759));
+            AppToast.success(context, '"${p.name}" restored');
           }
           return false;
         },
@@ -828,22 +828,22 @@ class _ProjectTileState extends State<_ProjectTile> {
         return await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            title: const Text('Delete project?',
-                style: TextStyle(color: Colors.white, fontSize: 17)),
+            backgroundColor: fb.surfaceVar,
+            title: Text('Delete project?',
+                style: TextStyle(color: fb.onSurface, fontSize: 17)),
             content: Text('"${p.name}" will be permanently removed.',
-                style: const TextStyle(
-                    color: Colors.white60, fontSize: 14)),
+                style: TextStyle(
+                    color: fb.onSurfaceDim, fontSize: 14)),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel',
-                    style: TextStyle(color: Colors.white54)),
+                child: Text('Cancel',
+                    style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54))),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Delete',
-                    style: TextStyle(color: Color(0xFFFF3B30))),
+                child: Text('Delete',
+                    style: TextStyle(color: fb.danger)),
               ),
             ],
           ),
@@ -853,17 +853,14 @@ class _ProjectTileState extends State<_ProjectTile> {
         final name = p.name;
         await ctrl.removeProject(p.id);
         if (!context.mounted) return;
-        AppToast.show(context,
-            msg: '"$name" deleted',
-            backgroundColor: const Color(0xFF222222),
-            textColor: Colors.white70);
+        AppToast.show(context, msg: '"$name" deleted');
       },
       background: Container(
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.only(left: 20),
         margin: const EdgeInsets.symmetric(vertical: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1200),
+          color: fb.warningBg,
           borderRadius: BorderRadius.circular(14),
         ),
         child: const Row(
@@ -885,10 +882,10 @@ class _ProjectTileState extends State<_ProjectTile> {
         padding: const EdgeInsets.only(right: 20),
         margin: const EdgeInsets.symmetric(vertical: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFF2E0A0A),
+          color: fb.dangerBg,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: const Icon(Icons.delete_outline, color: Color(0xFFFF3B30)),
+        child: Icon(Icons.delete_outline, color: fb.danger),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -909,16 +906,16 @@ class _ProjectTileState extends State<_ProjectTile> {
               padding: const EdgeInsets.symmetric(
                   horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1C),
+                color: fb.surfaceVar,
                 borderRadius: const BorderRadius.vertical(
                     bottom: Radius.circular(14)),
-                border: Border.all(color: Colors.white10),
+                border: Border.all(color: fb.border),
               ),
               child: Row(
                 children: [
-                  const Text('Actions',
+                  Text('Actions',
                       style: TextStyle(
-                          color: Colors.white30, fontSize: 11)),
+                          color: fb.onSurface.withValues(alpha: 0.30), fontSize: 11)),
                   const SizedBox(width: 10),
                   Expanded(
                     child: SingleChildScrollView(
@@ -944,7 +941,7 @@ class _ProjectTileState extends State<_ProjectTile> {
                             label: liveLocked ? 'Unlock' : 'Lock',
                             color: liveLocked
                                 ? const Color(0xFFFF9F0A)
-                                : const Color(0xFF4CAF50),
+                                : fb.success,
                             onTap: _toggleLock,
                           ),
                           const SizedBox(width: 8),
@@ -976,13 +973,8 @@ class _ProjectTileState extends State<_ProjectTile> {
                               _closeTray();
                               await ctrl.archiveProject(p.id);
                               if (context.mounted) {
-                                AppToast.show(context,
-                                    msg:
-                                        '"${p.name}" archived',
-                                    backgroundColor:
-                                        const Color(0xFF1A1200),
-                                    textColor:
-                                        const Color(0xFFFF9F0A));
+                                AppToast.warning(
+                                    context, '"${p.name}" archived');
                               }
                             },
                           ),
@@ -1006,6 +998,7 @@ class _ProjectTileState extends State<_ProjectTile> {
     bool           isActive,
     bool           liveLocked,
   ) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: () {
         if (!widget.isArchiveView) {
@@ -1018,7 +1011,7 @@ class _ProjectTileState extends State<_ProjectTile> {
         if (!context.mounted) return;
         AppToast.show(context,
             msg: '${p.priority.emoji} Now: ${p.name}',
-            backgroundColor: p.priority.bgColor,
+            backgroundColor: p.priority.bgColor(fb.isDark),
             textColor:       p.priority.color);
       },
       child: AnimatedContainer(
@@ -1027,17 +1020,17 @@ class _ProjectTileState extends State<_ProjectTile> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: widget.isArchiveView
-              ? const Color(0xFF161616)
+              ? fb.card
               : isActive
-                  ? p.priority.bgColor
-                  : const Color(0xFF1C1C1C),
+                  ? p.priority.bgColor(fb.isDark)
+                  : fb.surfaceVar,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: widget.isArchiveView
                 ? const Color(0xFFFF9F0A).withValues(alpha: 0.2)
                 : isActive
                     ? p.priority.color.withValues(alpha: 0.6)
-                    : Colors.white10,
+                    : fb.border,
             width: isActive ? 1.5 : 1,
           ),
         ),
@@ -1077,8 +1070,10 @@ class _ProjectTileState extends State<_ProjectTile> {
                 p.name,
                 style: TextStyle(
                   color: widget.isArchiveView
-                      ? Colors.white38
-                      : isActive ? Colors.white : Colors.white70,
+                      ? fb.onSurface.withValues(alpha: 0.38)
+                      : isActive
+                          ? fb.onSurface
+                          : fb.onSurface.withValues(alpha: 0.70),
                   fontSize:   15,
                   fontWeight: isActive && !widget.isArchiveView
                       ? FontWeight.w600
@@ -1093,8 +1088,8 @@ class _ProjectTileState extends State<_ProjectTile> {
             // ── Lock indicator dot on the tile ───────────────
             if (liveLocked) ...[
               const SizedBox(width: 6),
-              const Icon(Icons.lock_rounded,
-                  size: 12, color: Color(0xFF4CAF50)),
+              Icon(Icons.lock_rounded,
+                  size: 12, color: fb.success),
             ],
 
             const SizedBox(width: 8),
@@ -1103,7 +1098,9 @@ class _ProjectTileState extends State<_ProjectTile> {
                   horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: p.priority.color.withValues(
-                    alpha: widget.isArchiveView ? 0.08 : 0.15),
+                    alpha: widget.isArchiveView
+                        ? (fb.isDark ? 0.08 : 0.12)
+                        : (fb.isDark ? 0.15 : 0.20)),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -1197,21 +1194,22 @@ class _AddButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
     return GestureDetector(
       onTap: () => showProjectAddDialog(context, onAdded: onAdded),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color:        const Color(0xFF1C1C1C),
+          color:        fb.surfaceVar,
           borderRadius: BorderRadius.circular(20),
-          border:       Border.all(color: Colors.white12),
+          border:       Border.all(color: fb.border),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add, color: Colors.white54, size: 16),
-            SizedBox(width: 4),
-            Text('Add', style: TextStyle(color: Colors.white54, fontSize: 13)),
+            Icon(Icons.add, color: fb.onSurface.withValues(alpha: 0.54), size: 16),
+            const SizedBox(width: 4),
+            Text('Add', style: TextStyle(color: fb.onSurface.withValues(alpha: 0.54), fontSize: 13)),
           ],
         ),
       ),

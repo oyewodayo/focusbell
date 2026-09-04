@@ -4,6 +4,7 @@ import '../models/settings.dart';
 import '../services/app_controller.dart';
 import '../services/notification_service.dart';
 import '../services/pin_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/app_toast.dart';
 import 'pin_entry_sheet.dart';
 
@@ -26,12 +27,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
   Future<void> _save() async {
     await AppController.instance.updateSettings(_draft);
     if (!mounted) return;
-    AppToast.show(
-      context,
-      msg: '✓ Settings saved',
-      backgroundColor: const Color(0xFF1C2E1C),
-      textColor: const Color(0xFF4CAF50),
-    );
+    AppToast.success(context, '✓ Settings saved');
     Navigator.pop(context);
   }
 
@@ -56,12 +52,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
         pinEnabled: true,
       );
     });
-    AppToast.show(
-      context,
-      msg: '✓ PIN set successfully',
-      backgroundColor: const Color(0xFF1C2E1C),
-      textColor: const Color(0xFF4CAF50),
-    );
+    AppToast.success(context, '✓ PIN set successfully');
   }
 
   /// Called when the user taps "Change PIN" — verifies old then sets new.
@@ -76,12 +67,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
     setState(() {
       _draft = _draft.copyWith(pinHash: PinService.hash(newPin));
     });
-    AppToast.show(
-      context,
-      msg: '✓ PIN changed successfully',
-      backgroundColor: const Color(0xFF1C2E1C),
-      textColor: const Color(0xFF4CAF50),
-    );
+    AppToast.success(context, '✓ PIN changed successfully');
   }
 
   /// Called when the user taps "Remove PIN" — verifies before removing.
@@ -98,28 +84,34 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
     // Confirm destructive action.
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Remove PIN?',
-          style: TextStyle(color: Colors.white, fontSize: 17),
-        ),
-        content: const Text(
-          'All locked notes will become accessible without a PIN.',
-          style: TextStyle(color: Colors.white60, fontSize: 14),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+      builder: (ctx) {
+        final dialogFb = Theme.of(ctx).fb;
+        return AlertDialog(
+          backgroundColor: dialogFb.surfaceVar,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Remove PIN?',
+            style: TextStyle(color: dialogFb.onSurface, fontSize: 17),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove', style: TextStyle(color: Color(0xFFFF3B30))),
+          content: Text(
+            'All locked notes will become accessible without a PIN.',
+            style: TextStyle(color: dialogFb.onSurfaceDim, fontSize: 14),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: dialogFb.onSurface.withValues(alpha: 0.54)),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('Remove', style: TextStyle(color: dialogFb.danger)),
+            ),
+          ],
+        );
+      },
     );
     if (ok != true || !mounted) return;
 
@@ -131,12 +123,8 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
         pinEnabled: false,
       );
     });
-    AppToast.show(
-      context,
-      msg: 'PIN removed',
-      backgroundColor: const Color(0xFF2E1A1A),
-      textColor: const Color(0xFFFF6B6B),
-    );
+    if (!mounted) return;
+    AppToast.error(context, 'PIN removed');
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -145,10 +133,12 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF111111),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: fb.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
@@ -164,7 +154,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
           Container(
             width: 40, height: 4,
             decoration: BoxDecoration(
-              color: Colors.white24,
+              color: fb.onSurfaceFaint,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -173,10 +163,10 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               children: [
-                const Text(
+                Text(
                   'Settings',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: fb.onSurface,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     letterSpacing: -0.5,
@@ -190,16 +180,16 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                       horizontal: 16, vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1A2E1A),
+                      color: fb.successBg,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFF4CAF50).withValues(alpha: 0.4),
+                        color: fb.success.withValues(alpha: 0.4),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Save',
                       style: TextStyle(
-                        color: Color(0xFF4CAF50),
+                        color: fb.success,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
@@ -226,18 +216,16 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                         label: 'Reminders',
                         trailing: CupertinoSwitch(
                           value: _draft.notificationsEnabled,
-                          activeTrackColor: const Color(0xFF4CAF50),
+                          activeTrackColor: fb.primary,
                           onChanged: (v) async {
                             if (v) {
                               final granted = await NotificationService.instance
                                   .requestPermissions();
                               if (!mounted) return;
                               if (!granted) {
-                                AppToast.show(
+                                AppToast.error(
                                   context,
-                                  msg: 'Notification permission denied.',
-                                  backgroundColor: const Color(0xFF2E0A0A),
-                                  textColor: const Color(0xFFFF3B30),
+                                  'Notification permission denied.',
                                 );
                                 return;
                               }
@@ -296,7 +284,7 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                           () => _draft = _draft.copyWith(quietStartHour: h),
                         ),
                       ),
-                      const Divider(color: Colors.white10, height: 1),
+                      Divider(color: fb.border, height: 1),
                       _TimePickerRow(
                         icon:      Icons.wb_sunny_outlined,
                         label:     'Until',
@@ -382,6 +370,8 @@ class _PinRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -391,19 +381,17 @@ class _PinRow extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: pinIsSet
-                  ? const Color(0xFF1C2E1C)
-                  : const Color(0xFF1E1E1E),
+              color: pinIsSet ? fb.successBg : fb.surfaceVar,
               shape: BoxShape.circle,
               border: Border.all(
                 color: pinIsSet
-                    ? const Color(0xFF4CAF50).withValues(alpha: 0.35)
-                    : Colors.white10,
+                    ? fb.success.withValues(alpha: 0.35)
+                    : fb.border,
               ),
             ),
             child: Icon(
               pinIsSet ? Icons.lock_rounded : Icons.lock_open_rounded,
-              color: pinIsSet ? const Color(0xFF4CAF50) : Colors.white38,
+              color: pinIsSet ? fb.success : fb.onSurface.withValues(alpha: 0.38),
               size: 16,
             ),
           ),
@@ -414,17 +402,17 @@ class _PinRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Note PIN lock',
-                  style: TextStyle(color: Colors.white, fontSize: 15),
+                  style: TextStyle(color: fb.onSurface, fontSize: 15),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   pinIsSet ? 'PIN is active' : 'No PIN set',
                   style: TextStyle(
                     color: pinIsSet
-                        ? const Color(0xFF4CAF50).withValues(alpha: 0.8)
-                        : Colors.white30,
+                        ? fb.success.withValues(alpha: 0.8)
+                        : fb.onSurface.withValues(alpha: 0.3),
                     fontSize: 12,
                   ),
                 ),
@@ -436,7 +424,7 @@ class _PinRow extends StatelessWidget {
           if (!pinIsSet)
             _PinActionButton(
               label: 'Set PIN',
-              color: const Color(0xFF4CAF50),
+              color: fb.success,
               onTap: onSet,
             )
           else
@@ -451,7 +439,7 @@ class _PinRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 _PinActionButton(
                   label:    'Remove',
-                  color:    const Color(0xFFFF6B6B),
+                  color:    fb.danger,
                   onTap:    onRemove,
                   outlined: true,
                 ),
@@ -511,6 +499,8 @@ class _Section extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -521,8 +511,8 @@ class _Section extends StatelessWidget {
               padding: const EdgeInsets.only(left: 4, bottom: 6),
               child: Text(
                 header!,
-                style: const TextStyle(
-                  color: Colors.white38,
+                style: TextStyle(
+                  color: fb.onSurface.withValues(alpha: 0.38),
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 0.5,
@@ -532,9 +522,9 @@ class _Section extends StatelessWidget {
           ],
           Container(
             decoration: BoxDecoration(
-              color:        const Color(0xFF1C1C1C),
+              color:        fb.surfaceVar,
               borderRadius: BorderRadius.circular(14),
-              border:       Border.all(color: Colors.white10),
+              border:       Border.all(color: fb.border),
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -542,7 +532,7 @@ class _Section extends StatelessWidget {
                 final isLast = entry.key == children.length - 1;
                 return [
                   entry.value,
-                  if (!isLast) const Divider(height: 1, color: Colors.white10),
+                  if (!isLast) Divider(height: 1, color: fb.border),
                 ];
               }).toList(),
             ),
@@ -561,15 +551,17 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white38, size: 18),
+          Icon(icon, color: fb.onSurface.withValues(alpha: 0.38), size: 18),
           const SizedBox(width: 12),
           Expanded(
             child: Text(label,
-                style: const TextStyle(color: Colors.white, fontSize: 15)),
+                style: TextStyle(color: fb.onSurface, fontSize: 15)),
           ),
           trailing,
         ],
@@ -590,6 +582,8 @@ class _SelectRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -600,14 +594,14 @@ class _SelectRow extends StatelessWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  color:      selected ? Colors.white : Colors.white60,
+                  color:      selected ? fb.onSurface : fb.onSurfaceDim,
                   fontSize:   15,
                   fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
                 ),
               ),
             ),
             if (selected)
-              const Icon(Icons.check_rounded, color: Color(0xFF4CAF50), size: 18),
+              Icon(Icons.check_rounded, color: fb.primary, size: 18),
           ],
         ),
       ),
@@ -635,17 +629,19 @@ class _TimePickerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final fb = Theme.of(context).fb;
+
     return InkWell(
       onTap: () async {
         final picked = await showTimePicker(
           context: context,
           initialTime: TimeOfDay(hour: hour, minute: 0),
           builder: (ctx, child) => Theme(
-            data: ThemeData.dark().copyWith(
-              colorScheme: const ColorScheme.dark(
-                primary:   Color(0xFF4CAF50),
-                onSurface: Colors.white,
-                surface:   Color(0xFF1A1A1A),
+            data: Theme.of(ctx).copyWith(
+              colorScheme: Theme.of(ctx).colorScheme.copyWith(
+                primary:   fb.primary,
+                onSurface: fb.onSurface,
+                surface:   fb.surfaceVar,
               ),
             ),
             child: child!,
@@ -657,16 +653,16 @@ class _TimePickerRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, color: Colors.white38, size: 18),
+            Icon(icon, color: fb.onSurface.withValues(alpha: 0.38), size: 18),
             const SizedBox(width: 12),
             Expanded(
               child: Text(label,
-                  style: const TextStyle(color: Colors.white, fontSize: 15)),
+                  style: TextStyle(color: fb.onSurface, fontSize: 15)),
             ),
             Text(_fmt(hour),
-                style: const TextStyle(color: Color(0xFF4CAF50), fontSize: 14)),
+                style: TextStyle(color: fb.primary, fontSize: 14)),
             const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, color: Colors.white24, size: 16),
+            Icon(Icons.chevron_right, color: fb.onSurfaceFaint, size: 16),
           ],
         ),
       ),
