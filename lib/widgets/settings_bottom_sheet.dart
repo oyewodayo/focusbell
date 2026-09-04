@@ -309,6 +309,22 @@ class _SettingsBottomSheetState extends State<SettingsBottomSheet> {
                   ),
                   const SizedBox(height: 12),
 
+                  // ── Passed reminders ─────────────────────────────
+                  _Section(
+                    header: 'Delete passed reminders',
+                    children: ReminderAutoDelete.values.map((option) {
+                      final selected = _draft.reminderAutoDelete == option;
+                      return _SelectRow(
+                        label:    option.label,
+                        selected: selected,
+                        onTap: () => setState(
+                          () => _draft = _draft.copyWith(reminderAutoDelete: option),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+
                     // ── Appearance ───────────────────────────────────────────────────
                     _Section(
                     header: 'Appearance',

@@ -160,19 +160,21 @@ class AlarmService {
     debugPrint('[AlarmService] stopped alarm $alarmId (snooze).');
   }
 
-  /// Stops alarm AND removes/reschedules reminders permanently.
-  /// Used by the Done action.
+  /// Stops alarm audio and reschedules repeating reminders to their next
+  /// occurrence. Used by the Done action.
+  ///
+  /// Non-repeating reminders are deliberately left in place — they should
+  /// only disappear when the user deletes them, or via the auto-delete
+  /// grace period configured in Settings (see ReminderService.sweepAutoDelete).
   Future<void> stopAll(List<Reminder> reminders) async {
     if (reminders.isEmpty) return;
     await Alarm.stop(_alarmId(reminders.first.dateTime));
     for (final r in reminders) {
       if (r.isRepeating) {
         await ReminderService.instance.rescheduleRepeating(r);
-      } else {
-        await ReminderService.instance.remove(r.id);
       }
     }
-    debugPrint('[AlarmService] stopped + removed ${reminders.length} reminder(s).');
+    debugPrint('[AlarmService] stopped alarm for ${reminders.length} reminder(s).');
   }
 
   void dispose() => _ringSub?.cancel();

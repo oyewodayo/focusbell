@@ -292,9 +292,9 @@ class GeofenceService {
           '${reminder.notes != null ? '\n${reminder.notes}' : ''}',
     );
     _pushAlarmScreen([triggered]);
-    if (!reminder.isRepeating) {
-      await ReminderService.instance.remove(reminder.id);
-    }
+    // Non-repeating location reminders are left in place after firing —
+    // only the user deleting them, or the auto-delete grace period in
+    // Settings, removes them (see ReminderService.sweepAutoDelete).
   }
 
   // ── Fire: watched place alarm ─────────────────────────────────

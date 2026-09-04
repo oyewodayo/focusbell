@@ -11,10 +11,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:intl/intl.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest_all.dart' as tz_data;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../data/timezone_data.dart';
 import '../models/reminder_model.dart';
@@ -629,7 +632,7 @@ class _RemindersScreenState
                 const SizedBox(height: 12),
                 _SheetField(
                   controller: notesCtrl,
-                  hint: 'Notes (optional)',
+                  hint: 'Notes (optional, Markdown supported)',
                   icon: CupertinoIcons.doc_text,
                   maxLines: 3,
                 ),
@@ -802,7 +805,7 @@ class _RemindersScreenState
                 const SizedBox(height: 12),
                 _SheetField(
                   controller: notesCtrl,
-                  hint: 'Notes (optional)',
+                  hint: 'Notes (optional, Markdown supported)',
                   icon: CupertinoIcons.doc_text,
                   maxLines: 3,
                 ),
@@ -905,13 +908,17 @@ class _RemindersScreenState
       builder: (ctx) => Container(
         margin:
             const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        padding:
-            const EdgeInsets.fromLTRB(24, 20, 24, 36),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFF141414),
           borderRadius: BorderRadius.circular(28),
           border: Border.all(color: Colors.white10),
         ),
+        child: SingleChildScrollView(
+        padding:
+            const EdgeInsets.fromLTRB(24, 20, 24, 36),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1020,12 +1027,71 @@ class _RemindersScreenState
                   border:
                       Border.all(color: Colors.white10),
                 ),
-                child: Text(
-                  r.notes!,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    height: 1.5,
+                child: MarkdownBody(
+                  data: r.notes!,
+                  selectable: true,
+                  shrinkWrap: true,
+                  extensionSet: md.ExtensionSet(
+                    md.ExtensionSet.gitHubFlavored.blockSyntaxes,
+                    <md.InlineSyntax>[
+                      md.EmojiSyntax(),
+                      md.AutolinkExtensionSyntax(),
+                      ...md.ExtensionSet.gitHubFlavored.inlineSyntaxes,
+                    ],
+                  ),
+                  onTapLink: (text, href, title) async {
+                    if (href == null) return;
+                    final uri = Uri.tryParse(href);
+                    if (uri != null && await canLaunchUrl(uri)) {
+                      await launchUrl(uri,
+                          mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  styleSheet: MarkdownStyleSheet(
+                    p: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      height: 1.5,
+                    ),
+                    a: const TextStyle(
+                      color: Color(0xFF64D2FF),
+                      decoration: TextDecoration.none,
+                    ),
+                    strong: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    em: const TextStyle(
+                      color: Colors.white60,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    code: const TextStyle(
+                      color: Color(0xFF64D2FF),
+                      backgroundColor: Color(0xFF252525),
+                      fontFamily: 'monospace',
+                      fontSize: 13,
+                    ),
+                    codeblockDecoration: BoxDecoration(
+                      color: const Color(0xFF1C1C1C),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    blockquoteDecoration: BoxDecoration(
+                      color: const Color(0xFF1C1C1C),
+                      borderRadius: BorderRadius.circular(6),
+                      border: const Border(
+                        left: BorderSide(
+                          color: Color(0xFF0A84FF),
+                          width: 3,
+                        ),
+                      ),
+                    ),
+                    blockquote: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 14,
+                    ),
+                    listBullet:
+                        const TextStyle(color: Colors.white38),
                   ),
                 ),
               ),
@@ -1121,6 +1187,7 @@ class _RemindersScreenState
               ),
             ]),
           ],
+        ),
         ),
       ),
     );
@@ -1320,7 +1387,7 @@ class _RemindersScreenState
                 const SizedBox(height: 12),
                 _SheetField(
                   controller: notesCtrl,
-                  hint: 'Notes (optional)',
+                  hint: 'Notes (optional, Markdown supported)',
                   icon: CupertinoIcons.doc_text,
                   maxLines: 3,
                 ),

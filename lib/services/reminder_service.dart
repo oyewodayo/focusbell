@@ -1,13 +1,16 @@
 // services/reminder_service.dart — FULL REPLACEMENT
 // Adds GeofenceService wiring alongside existing alarm scheduling
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:focusbell/services/app_controller.dart';
 import 'package:focusbell/services/continuity_service.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../models/reminder_model.dart';
+import '../models/settings.dart';
 import 'alarm_service.dart';
 import 'database_helper.dart';
 import 'geofence_service.dart';
@@ -19,6 +22,7 @@ class ReminderService {
 
   final reminders = ValueNotifier<List<Reminder>>([]);
   bool _ready = false;
+  Timer? _sweepTimer;
 
   Future<void> init() async {
     if (_ready) return;
@@ -27,8 +31,36 @@ class ReminderService {
     await _load();
     // Boot geofence service after reminders are loaded so it can poll
     await GeofenceService.instance.init();
+    await sweepAutoDelete();
+    _sweepTimer = Timer.periodic(
+        const Duration(minutes: 1), (_) => sweepAutoDelete());
     debugPrint('[ReminderService] ready — ${reminders.value.length} reminder(s).');
   }
+
+  /// Removes reminders whose due time has passed by at least the grace
+  /// period configured in Settings (`AppSettings.reminderAutoDelete`).
+  /// Repeating reminders are never swept — they're rescheduled instead.
+  /// When the setting is `manual` (the default), this is a no-op: reminders
+  /// only ever go away when the user deletes them.
+  Future<void> sweepAutoDelete() async {
+    final graceMinutes = AppController.instance.settings.reminderAutoDelete.minutes;
+    if (graceMinutes == null) return;
+
+    final now = DateTime.now();
+    final expired = reminders.value.where((r) =>
+        !r.isRepeating &&
+        r.isPast &&
+        now.difference(r.dateTime).inMinutes >= graceMinutes).toList();
+
+    for (final r in expired) {
+      await remove(r.id);
+    }
+    if (expired.isNotEmpty) {
+      debugPrint('[ReminderService] auto-deleted ${expired.length} passed reminder(s).');
+    }
+  }
+
+  void dispose() => _sweepTimer?.cancel();
 
   Future<void> add(Reminder reminder) async {
     final db = await DatabaseHelper.instance.database;

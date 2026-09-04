@@ -62,6 +62,47 @@ enum ReminderInterval {
   }
 }
 
+// ── ReminderAutoDelete ────────────────────────────────────────────
+//
+// Controls whether reminders are removed automatically once their
+// due time has passed. Default is `manual` — reminders stick around
+// until the user deletes them, so nothing gets missed by disappearing
+// silently after the alarm rings.
+
+enum ReminderAutoDelete { manual, after5Min, after15Min, after30Min, after1Hour, after1Day }
+
+extension ReminderAutoDeleteX on ReminderAutoDelete {
+  String get label => switch (this) {
+        ReminderAutoDelete.manual     => 'Never (keep until I delete)',
+        ReminderAutoDelete.after5Min  => '5 minutes after due',
+        ReminderAutoDelete.after15Min => '15 minutes after due',
+        ReminderAutoDelete.after30Min => '30 minutes after due',
+        ReminderAutoDelete.after1Hour => '1 hour after due',
+        ReminderAutoDelete.after1Day  => '1 day after due',
+      };
+
+  /// Minutes of grace after the due time before auto-deletion.
+  /// `null` means never auto-delete.
+  int? get minutes => switch (this) {
+        ReminderAutoDelete.manual     => null,
+        ReminderAutoDelete.after5Min  => 5,
+        ReminderAutoDelete.after15Min => 15,
+        ReminderAutoDelete.after30Min => 30,
+        ReminderAutoDelete.after1Hour => 60,
+        ReminderAutoDelete.after1Day  => 60 * 24,
+      };
+
+  static ReminderAutoDelete fromJson(dynamic raw) {
+    if (raw is String) {
+      return ReminderAutoDelete.values.firstWhere(
+        (e) => e.name == raw,
+        orElse: () => ReminderAutoDelete.manual,
+      );
+    }
+    return ReminderAutoDelete.manual;
+  }
+}
+
 // ── SoundMode ─────────────────────────────────────────────────────
 
 enum SoundMode { silent, vibrate, ring, both }
@@ -156,6 +197,7 @@ class AppSettings {
   final String?        pinHash;
   final bool           pinEnabled;
   final AppThemeMode   themeMode;
+  final ReminderAutoDelete reminderAutoDelete;
 
   const AppSettings({
     this.notificationsEnabled = true,
@@ -166,6 +208,7 @@ class AppSettings {
     this.pinHash              = null,
     this.pinEnabled           = false,
     this.themeMode            = AppThemeMode.dark,
+    this.reminderAutoDelete   = ReminderAutoDelete.manual,
   });
 
   AppSettings copyWith({
@@ -177,6 +220,7 @@ class AppSettings {
     Object?            pinHash   = _sentinel,
     bool?              pinEnabled,
     AppThemeMode?      themeMode,
+    ReminderAutoDelete? reminderAutoDelete,
   }) =>
       AppSettings(
         notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
@@ -187,6 +231,7 @@ class AppSettings {
         pinHash: identical(pinHash, _sentinel) ? this.pinHash : pinHash as String?,
         pinEnabled:           pinEnabled           ?? this.pinEnabled,
         themeMode:            themeMode            ?? this.themeMode,
+        reminderAutoDelete:   reminderAutoDelete   ?? this.reminderAutoDelete,
       );
 
   static const Object _sentinel = Object();
@@ -200,6 +245,7 @@ class AppSettings {
         if (pinHash != null) 'pinHash': pinHash,
         'pinEnabled':           pinEnabled,
         'themeMode':            themeMode.name,
+        'reminderAutoDelete':   reminderAutoDelete.name,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
@@ -212,5 +258,6 @@ class AppSettings {
         pinHash:    json['pinHash']    as String?,
         pinEnabled: json['pinEnabled'] as bool? ?? false,
         themeMode:  AppThemeModeX.fromJson(json['themeMode']),
+        reminderAutoDelete: ReminderAutoDeleteX.fromJson(json['reminderAutoDelete']),
       );
 }

@@ -62,9 +62,7 @@ class RecordingLiveService : Service() {
             builder.javaClass
                 .getMethod("setRequestPromotedOngoing", Boolean::class.javaPrimitiveType)
                 .invoke(builder, true)
-        } catch (_: Exception) {  
-            android.util.Log.d("RecordingLiveService", "Promoted ongoing NOT available: ${e.message}")
-        }
+        } catch (_: Exception) { /* fine — graceful degrade */ }
 
         return builder.build()
     }
